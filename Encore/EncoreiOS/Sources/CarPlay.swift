@@ -42,8 +42,27 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 
     @MainActor
     private func populateHome(_ template: CPListTemplate) async {
-        let shelves = (try? await YTM.shared.home()) ?? []
+        // Fetch the home feed and the user's playlists together.
+        async let shelvesTask = (try? await YTM.shared.home()) ?? []
+        async let playlistsTask = (try? await YTM.shared.libraryPlaylists()) ?? []
+        let shelves = await shelvesTask
+        let playlists = await playlistsTask
+
         var sections: [CPListSection] = []
+
+        // Your playlists, right at the top of Home.
+        let playlistItems = playlists.map { playlist -> CPListItem in
+            let item = CPListItem(text: playlist.title, detailText: playlist.subtitle)
+            setArtwork(item, url: playlist.thumbnailURL)
+            item.handler = { [weak self] _, completion in
+                Task { @MainActor in await self?.openCard(playlist); completion() }
+            }
+            return item
+        }
+        if !playlistItems.isEmpty {
+            sections.append(CPListSection(items: playlistItems, header: "Your Playlists", sectionIndexTitle: nil))
+        }
+
         for shelf in shelves.prefix(6) {
             var items: [CPListItem] = []
             for case .card(let card) in shelf.items.prefix(12) {
