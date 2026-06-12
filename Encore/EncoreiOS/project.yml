@@ -1,0 +1,42 @@
+name: EncoreiOS
+options:
+  bundleIdPrefix: dev.charlie
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  Encore:
+    path: ..
+targets:
+  Encore:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    dependencies:
+      - package: Encore
+        product: EncoreCore
+    entitlements:
+      path: Encore.entitlements
+      properties:
+        com.apple.developer.carplay-audio: true
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Encore
+        UIBackgroundModes: [audio]
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Phone
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).PhoneSceneDelegate
+            CPTemplateApplicationSceneSessionRoleApplication:
+              - UISceneConfigurationName: CarPlay
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).CarPlaySceneDelegate
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.charlie.encore.ios
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "5.0"
