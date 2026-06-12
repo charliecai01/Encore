@@ -7,7 +7,7 @@ packages:
   Encore:
     path: ..
 targets:
-  Encore:
+  EncoreiOS:
     type: application
     platform: iOS
     sources: [Sources]
