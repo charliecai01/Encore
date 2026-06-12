@@ -4,6 +4,12 @@ import PackageDescription
 let package = Package(
     name: "Encore",
     platforms: [.macOS(.v15), .iOS(.v17)],
+    products: [
+        // Exposed so the iOS app (a separate Xcode project) can link the
+        // shared core. Without an explicit product, only the package's own
+        // targets can use EncoreCore.
+        .library(name: "EncoreCore", targets: ["EncoreCore"]),
+    ],
     targets: [
         .target(
             name: "EncoreCore",

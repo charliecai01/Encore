@@ -1,0 +1,481 @@
+import SwiftUI
+import EncoreCore
+
+// MARK: - Shared rows / cards
+
+struct TrackRowView: View {
+    @EnvironmentObject var player: PlayerEngine
+    @EnvironmentObject var nav: Nav
+    let track: Track
+    var onRemoveFromPlaylist: (() -> Void)?
+    let onPlay: () -> Void
+
+    var body: some View {
+        HStack(spacing: 11) {
+            ArtworkView(url: track.thumbnailURL, corner: 5).frame(width: 46, height: 46)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(track.title)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(player.current?.videoId == track.videoId ? Theme.accent : Theme.textPrimary)
+                    .lineLimit(1)
+                Text(track.artistLine).font(.system(size: 12)).foregroundStyle(Theme.textSecondary).lineLimit(1)
+            }
+            Spacer()
+            Menu {
+                Button("Play") { onPlay() }
+                Button("Play Next") { player.playNext(track) }
+                Button("Add to Queue") { player.addToQueue(track) }
+                Button("Start Radio") { player.playRadio(from: track) }
+                if let a = track.artists.first {
+                    Button("Go to Artist") { nav.goArtist(id: a.id, name: a.name) }
+                }
+                Button(player.likedIds.contains(track.videoId) ? "Remove from Liked" : "Add to Liked") {
+                    player.toggleLike(track)
+                }
+                if let onRemoveFromPlaylist {
+                    Button("Remove from Playlist", role: .destructive) { onRemoveFromPlaylist() }
+                }
+            } label: {
+                Image(systemName: "ellipsis").font(.system(size: 15)).foregroundStyle(Theme.textSecondary)
+                    .frame(width: 30, height: 44)
+            }
+        }
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+        .onTapGesture { onPlay() }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            if let onRemoveFromPlaylist {
+                Button(role: .destructive) { onRemoveFromPlaylist() } label: { Label("Remove", systemImage: "trash") }
+            }
+        }
+        .swipeActions(edge: .leading) {
+            Button { player.addToQueue(track) } label: { Label("Queue", systemImage: "text.badge.plus") }
+                .tint(Theme.accent)
+        }
+    }
+}
+
+struct CardCircleOrSquare: View {
+    @EnvironmentObject var nav: Nav
+    let item: CardItem
+
+    var body: some View {
+        Button { nav.open(item) } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                ArtworkView(url: Artwork.upscale(item.thumbnailURL, to: 300),
+                            corner: item.kind == .artist ? 80 : 8)
+                    .aspectRatio(1, contentMode: .fit)
+                Text(item.title).font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary).lineLimit(1)
+                    .multilineTextAlignment(item.kind == .artist ? .center : .leading)
+                    .frame(maxWidth: .infinity, alignment: item.kind == .artist ? .center : .leading)
+                if !item.subtitle.isEmpty {
+                    Text(item.subtitle).font(.system(size: 11)).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct ShelfRow: View {
+    let shelf: Shelf
+    @EnvironmentObject var player: PlayerEngine
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !shelf.title.isEmpty {
+                Text(shelf.title).font(.system(size: 19, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary).padding(.horizontal, 16)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(Array(shelf.items.enumerated()), id: \.offset) { _, item in
+                        if case .card(let card) = item {
+                            CardCircleOrSquare(item: card).frame(width: 140)
+                        } else if case .track(let track) = item {
+                            Button { player.playRadio(from: track) } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ArtworkView(url: Artwork.upscale(track.thumbnailURL, to: 300), corner: 8)
+                                        .frame(width: 140, height: 140)
+                                    Text(track.title).font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(Theme.textPrimary).lineLimit(1).frame(width: 140, alignment: .leading)
+                                    Text(track.artistLine).font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
+                                        .lineLimit(1).frame(width: 140, alignment: .leading)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+    }
+}
+
+// MARK: - Home
+
+struct HomeScreen: View {
+    @EnvironmentObject var auth: AuthManager
+    @State private var shelves: [Shelf] = []
+    @State private var loading = true
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 24) {
+                if loading { ProgressView().frame(maxWidth: .infinity).padding(.top, 60) }
+                ForEach(shelves) { ShelfRow(shelf: $0) }
+                Color.clear.frame(height: 80)
+            }
+            .padding(.top, 8)
+        }
+        .background(Theme.bg)
+        .navigationTitle("Home")
+        .toolbar { accountButton }
+        .task(id: auth.isSignedIn) { await load() }
+    }
+
+    private func load() async {
+        loading = true
+        if let cached = PageCache.shared.shelves["home"], !cached.isEmpty { shelves = cached; loading = false }
+        let fresh = (try? await YTM.shared.home()) ?? []
+        if !fresh.isEmpty { shelves = fresh; PageCache.shared.shelves["home"] = fresh }
+        loading = false
+    }
+}
+
+var accountButton: some ToolbarContent {
+    ToolbarItem(placement: .topBarTrailing) { AccountButton() }
+}
+
+struct AccountButton: View {
+    @EnvironmentObject var auth: AuthManager
+    var body: some View {
+        Menu {
+            if auth.isSignedIn {
+                Text("Signed in")
+                Button("Sign Out", role: .destructive) { Task { await auth.signOut() } }
+            } else {
+                Button("Sign in with Google") { auth.showLogin = true }
+            }
+        } label: {
+            Image(systemName: auth.isSignedIn ? "person.crop.circle.fill" : "person.crop.circle")
+        }
+    }
+}
+
+// MARK: - Search
+
+struct SearchScreen: View {
+    var initialQuery: String = ""
+    var initialFilter: YTM.SearchFilter? = nil
+
+    @EnvironmentObject var player: PlayerEngine
+    @EnvironmentObject var nav: Nav
+    @State private var query = ""
+    @State private var filter: YTM.SearchFilter?
+    @State private var results = SearchResults()
+    @State private var loading = false
+    @State private var started = false
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 18) {
+                HStack(spacing: 8) {
+                    chip("All", filter == nil) { filter = nil; Task { await run() } }
+                    ForEach(YTM.SearchFilter.allCases, id: \.self) { f in
+                        chip(f.title, filter == f) { filter = f; Task { await run() } }
+                    }
+                }
+                .padding(.horizontal, 16)
+
+                if loading { ProgressView().frame(maxWidth: .infinity).padding(.top, 40) }
+                ForEach(results.shelves) { shelf in
+                    if shelf.isTrackShelf {
+                        VStack(spacing: 0) {
+                            ForEach(Array(shelf.tracks.enumerated()), id: \.offset) { i, t in
+                                TrackRowView(track: t, onRemoveFromPlaylist: nil) {
+                                    player.playCollection(shelf.tracks, startAt: i)
+                                }
+                                .padding(.horizontal, 16)
+                            }
+                        }
+                    } else {
+                        ShelfRow(shelf: shelf)
+                    }
+                }
+                Color.clear.frame(height: 80)
+            }
+            .padding(.top, 8)
+        }
+        .background(Theme.bg)
+        .navigationTitle("Search")
+        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: "Songs, albums, artists…")
+        .onSubmit(of: .search) { Task { await run() } }
+        .task {
+            guard !started else { return }
+            started = true
+            if !initialQuery.isEmpty { query = initialQuery; filter = initialFilter; await run() }
+        }
+    }
+
+    private func chip(_ title: String, _ selected: Bool, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(selected ? .black : Theme.textPrimary)
+                .padding(.horizontal, 13).padding(.vertical, 6)
+                .background(Capsule().fill(selected ? Color.white : Theme.card))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func run() async {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return }
+        loading = true
+        results = (try? await YTM.shared.search(q, filter: filter)) ?? SearchResults()
+        loading = false
+    }
+}
+
+// MARK: - Library
+
+struct LibraryScreen: View {
+    @EnvironmentObject var auth: AuthManager
+    @EnvironmentObject var player: PlayerEngine
+    @EnvironmentObject var nav: Nav
+    @State private var tab: LibraryTab = .playlists
+    @State private var cards: [CardItem] = []
+    @State private var tracks: [Track] = []
+    @State private var loading = false
+
+    private let cols = [GridItem(.adaptive(minimum: 150), spacing: 14)]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Picker("", selection: $tab) {
+                    ForEach(LibraryTab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+
+                if !auth.isSignedIn {
+                    VStack(spacing: 12) {
+                        Image(systemName: "lock.circle").font(.system(size: 40)).foregroundStyle(Theme.textTertiary)
+                        Text("Sign in to see your library").foregroundStyle(Theme.textSecondary)
+                        Button("Sign in with Google") { auth.showLogin = true }.buttonStyle(.borderedProminent)
+                    }
+                    .frame(maxWidth: .infinity).padding(.top, 60)
+                } else if loading {
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
+                } else if tab == .songs {
+                    if tracks.count > 1 {
+                        HStack(spacing: 10) {
+                            Button { player.playCollection(tracks, startAt: 0) } label: {
+                                Label("Play", systemImage: "play.fill").frame(maxWidth: .infinity)
+                            }.buttonStyle(.borderedProminent).tint(Theme.accent)
+                            Button { player.playShuffled(tracks) } label: {
+                                Label("Shuffle", systemImage: "shuffle").frame(maxWidth: .infinity)
+                            }.buttonStyle(.bordered)
+                        }.padding(.horizontal, 16)
+                    }
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(tracks.enumerated()), id: \.offset) { i, t in
+                            TrackRowView(track: t, onRemoveFromPlaylist: nil) { player.playCollection(tracks, startAt: i) }
+                                .padding(.horizontal, 16)
+                        }
+                    }
+                } else {
+                    LazyVGrid(columns: cols, spacing: 16) {
+                        ForEach(cards) { CardCircleOrSquare(item: $0) }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                Color.clear.frame(height: 80)
+            }
+            .padding(.top, 8)
+        }
+        .background(Theme.bg)
+        .navigationTitle("Library")
+        .toolbar { accountButton }
+        .task(id: "\(auth.isSignedIn)-\(tab.rawValue)") { await load() }
+    }
+
+    private func load() async {
+        guard auth.isSignedIn else { return }
+        loading = true
+        switch tab {
+        case .playlists: cards = (try? await YTM.shared.libraryPlaylists()) ?? []
+        case .songs: tracks = await LibraryStore.shared.allKnownTracks()
+        case .albums: cards = (try? await YTM.shared.libraryAlbums()) ?? []
+        case .artists:
+            let corpus = (try? await YTM.shared.libraryArtists()) ?? []
+            cards = corpus
+        }
+        loading = false
+    }
+}
+
+// MARK: - Collection (album/playlist)
+
+struct CollectionScreen: View {
+    enum Kind: Hashable { case album(String), playlist(String) }
+    let kind: Kind
+
+    @EnvironmentObject var player: PlayerEngine
+    @State private var page: CollectionPage?
+    @State private var loading = true
+
+    private var cacheKey: String {
+        switch kind { case .album(let id): return "album-\(id)"; case .playlist(let id): return "playlist-\(id)" }
+    }
+    private var isAlbum: Bool { if case .album = kind { return true }; return false }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if let page {
+                    ArtworkView(url: Artwork.upscale(page.thumbnailURL, to: 500), corner: 12)
+                        .frame(width: 200, height: 200).frame(maxWidth: .infinity)
+                        .shadow(color: .black.opacity(0.4), radius: 16, y: 6).padding(.top, 8)
+                    VStack(spacing: 4) {
+                        Text(page.title).font(.system(size: 22, weight: .bold)).multilineTextAlignment(.center)
+                        if !page.subtitle.isEmpty {
+                            Text(page.subtitle).font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
+                        }
+                    }.frame(maxWidth: .infinity)
+                    HStack(spacing: 10) {
+                        Button { player.playCollection(page.tracks, startAt: 0) } label: {
+                            Label("Play", systemImage: "play.fill").frame(maxWidth: .infinity)
+                        }.buttonStyle(.borderedProminent).tint(Theme.accent)
+                        Button { player.playShuffled(page.tracks) } label: {
+                            Label("Shuffle", systemImage: "shuffle").frame(maxWidth: .infinity)
+                        }.buttonStyle(.bordered)
+                    }.padding(.horizontal, 16)
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(page.tracks.enumerated()), id: \.offset) { i, t in
+                            TrackRowView(track: t,
+                                         onRemoveFromPlaylist: isAlbum ? nil : { remove(t) }) {
+                                player.playCollection(page.tracks, startAt: i)
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                    }
+                } else if loading {
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
+                }
+                Color.clear.frame(height: 80)
+            }
+        }
+        .background(Theme.bg)
+        .navigationTitle(page?.title ?? "").navigationBarTitleDisplayMode(.inline)
+        .task { await load() }
+    }
+
+    private func load() async {
+        if let cached = PageCache.shared.collections[cacheKey] { page = cached; loading = false }
+        let fresh: CollectionPage?
+        switch kind {
+        case .album(let id): fresh = try? await YTM.shared.album(browseId: id)
+        case .playlist(let id): fresh = try? await YTM.shared.playlist(id: id)
+        }
+        if let fresh { page = fresh; PageCache.shared.collections[cacheKey] = fresh }
+        loading = false
+    }
+
+    private func remove(_ track: Track) {
+        guard case .playlist(let id) = kind else { return }
+        Task {
+            let ok = (try? await YTM.shared.removeFromPlaylist(playlistId: id, videoId: track.videoId,
+                                                              setVideoId: track.setVideoId)) ?? false
+            if ok, var updated = page {
+                updated.tracks.removeAll { $0.videoId == track.videoId && $0.setVideoId == track.setVideoId }
+                page = updated; PageCache.shared.collections[cacheKey] = updated
+                player.showToast("Removed from playlist")
+            } else { player.showToast("Couldn't remove — you can only edit your own playlists") }
+        }
+    }
+}
+
+// MARK: - Artist
+
+struct ArtistScreen: View {
+    let browseId: String
+    @EnvironmentObject var player: PlayerEngine
+    @State private var page: ArtistPage?
+    @State private var libraryTracks: [Track] = []
+    @State private var loading = true
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                if let page {
+                    ZStack(alignment: .bottomLeading) {
+                        AsyncImage(url: Artwork.upscale(page.heroURL, to: 800)) { phase in
+                            if case .success(let img) = phase { img.resizable().aspectRatio(contentMode: .fill) }
+                            else { Theme.card }
+                        }
+                        .frame(height: 240).frame(maxWidth: .infinity).clipped()
+                        .overlay(LinearGradient(colors: [.clear, Theme.bg], startPoint: .center, endPoint: .bottom))
+                        Text(page.name).font(.system(size: 30, weight: .heavy)).foregroundStyle(.white).padding(16)
+                    }
+                    if !libraryTracks.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("In your playlists & likes").font(.system(size: 18, weight: .bold)).padding(.horizontal, 16)
+                            ForEach(Array(libraryTracks.prefix(8).enumerated()), id: \.offset) { i, t in
+                                TrackRowView(track: t, onRemoveFromPlaylist: nil) {
+                                    player.playCollection(libraryTracks, startAt: i)
+                                }.padding(.horizontal, 16)
+                            }
+                        }
+                    }
+                    ForEach(page.shelves) { ShelfRow(shelf: $0) }
+                } else if loading {
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
+                }
+                Color.clear.frame(height: 80)
+            }
+        }
+        .background(Theme.bg).ignoresSafeArea(edges: .top)
+        .task { await load() }
+    }
+
+    private func load() async {
+        if let cached = PageCache.shared.artists[browseId] { page = cached; loading = false }
+        if let fresh = try? await YTM.shared.artist(browseId: browseId) {
+            page = fresh; PageCache.shared.artists[browseId] = fresh
+            let all = await LibraryStore.shared.allKnownTracks()
+            libraryTracks = all.filter { t in t.artists.contains { $0.id == browseId }
+                || t.artistLine.localizedCaseInsensitiveContains(fresh.name) }
+        }
+        loading = false
+    }
+}
+
+// MARK: - Browse (library-artist / generic)
+
+struct BrowseScreen: View {
+    let browseId: String
+    @State private var title = ""
+    @State private var shelves: [Shelf] = []
+    @State private var loading = true
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 22) {
+                if loading { ProgressView().frame(maxWidth: .infinity).padding(.top, 80) }
+                ForEach(shelves) { ShelfRow(shelf: $0) }
+                Color.clear.frame(height: 80)
+            }.padding(.top, 8)
+        }
+        .background(Theme.bg)
+        .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+        .task {
+            if let p = try? await YTM.shared.browsePage(browseId: browseId) { title = p.title; shelves = p.shelves }
+            loading = false
+        }
+    }
+}
