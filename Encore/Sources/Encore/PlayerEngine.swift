@@ -95,6 +95,9 @@ final class PlayerEngine: NSObject, ObservableObject {
     private var fetchingMoreRadio = false
     private var toastTask: Task<Void, Never>?
     private var sleepTask: Task<Void, Never>?
+    // When the sleep timer fires we must keep playback stopped even though
+    // music.youtube.com may try to autoplay the next track on its own.
+    private var sleepStopActive = false
     private var lastLoadAt = Date.distantPast
     private var mismatchTicks = 0
     private var loadedOnce = false
@@ -260,6 +263,7 @@ final class PlayerEngine: NSObject, ObservableObject {
 
     func togglePlay() {
         guard let track = current else { return }
+        sleepStopActive = false // explicit user intent overrides the sleep stop
         // First play after a restored session: load the saved track, then the
         // playing-state event seeks back to the saved position.
         if !loadedOnce {
@@ -363,15 +367,17 @@ final class PlayerEngine: NSObject, ObservableObject {
     func cancelSleepTimer() {
         sleepTask?.cancel()
         sleepTimer = .off
+        sleepStopActive = false
         showToast("Sleep timer off")
     }
 
     private func fireSleepTimer() {
         sleepTask?.cancel()
         sleepTimer = .off
-        if isPlaying {
-            js("window.__encore && __encore.pause()")
-        }
+        sleepStopActive = true
+        js("window.__encore && __encore.pause()")
+        isPlaying = false
+        updateNowPlayingInfo()
         showToast("Sleep timer — paused. Good night ♪")
     }
 
@@ -405,6 +411,7 @@ final class PlayerEngine: NSObject, ObservableObject {
     private func load(_ track: Track) {
         loadedOnce = true
         restoreSeekTime = nil
+        sleepStopActive = false
         current = track
         currentTime = 0
         duration = Double(track.durationSeconds ?? 0)
@@ -538,6 +545,13 @@ final class PlayerEngine: NSObject, ObservableObject {
             let state = body["data"] as? Int ?? -1
             switch state {
             case 1:
+                // The sleep timer fired but the site auto-started a track —
+                // force it back to paused.
+                if sleepStopActive {
+                    js("window.__encore && __encore.pause()")
+                    isPlaying = false
+                    break
+                }
                 isPlaying = true
                 if let resumeAt = restoreSeekTime {
                     restoreSeekTime = nil

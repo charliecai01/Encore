@@ -1,6 +1,96 @@
 import SwiftUI
 import EncoreCore
 
+// MARK: - Sorting / filtering (parity with macOS)
+
+enum SortMode: String, CaseIterable {
+    case recent = "Recently Added"
+    case title = "Title"
+    case artist = "Artist"
+    case album = "Album"
+}
+
+enum TrackSort {
+    /// Filter (CJK-aware) then sort tracks. `order` keeps source order.
+    static func apply(_ tracks: [Track], filter: String, sort: SortMode, keepOrder: Bool) -> [Track] {
+        var result = tracks
+        let q = filter.trimmingCharacters(in: .whitespaces).matchNormalized
+        if !q.isEmpty {
+            result = result.filter {
+                $0.title.matches(normalizedQuery: q)
+                    || $0.artistLine.matches(normalizedQuery: q)
+                    || ($0.album?.name.matches(normalizedQuery: q) ?? false)
+            }
+        }
+        if keepOrder { return result }
+        switch sort {
+        case .recent: return result
+        case .title: return result.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        case .artist: return result.sorted { cmp($0.artistLine, $1.artistLine, $0.title, $1.title) }
+        case .album: return result.sorted { cmp($0.album?.name ?? "~", $1.album?.name ?? "~", $0.title, $1.title) }
+        }
+    }
+    private static func cmp(_ a: String, _ b: String, _ at: String, _ bt: String) -> Bool {
+        let c = a.localizedCaseInsensitiveCompare(b)
+        if c != .orderedSame { return c == .orderedAscending }
+        return at.localizedCaseInsensitiveCompare(bt) == .orderedAscending
+    }
+
+    static func cards(_ cards: [CardItem], filter: String, sort: SortMode) -> [CardItem] {
+        var result = cards
+        let q = filter.trimmingCharacters(in: .whitespaces).matchNormalized
+        if !q.isEmpty {
+            result = result.filter { $0.title.matches(normalizedQuery: q) || $0.subtitle.matches(normalizedQuery: q) }
+        }
+        switch sort {
+        case .recent: return result
+        case .title, .artist: return result.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        case .album: return result.sorted { $0.subtitle.localizedCaseInsensitiveCompare($1.subtitle) == .orderedAscending }
+        }
+    }
+}
+
+/// Filter field + sort menu, matching the macOS controls.
+struct SortFilterBar: View {
+    @Binding var filter: String
+    @Binding var sort: SortMode
+    var sortOptions: [SortMode]
+    var sortLabel: (SortMode) -> String = { $0.rawValue }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal.decrease").font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.textTertiary)
+                TextField("Filter", text: $filter).font(.system(size: 13)).autocorrectionDisabled()
+                if !filter.isEmpty {
+                    Button { filter = "" } label: {
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 12)).foregroundStyle(Theme.textTertiary)
+                    }
+                }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(Theme.card, in: Capsule())
+            if sortOptions.count > 1 {
+                Menu {
+                    ForEach(sortOptions, id: \.self) { opt in
+                        Button { sort = opt } label: {
+                            if sort == opt { Label(sortLabel(opt), systemImage: "checkmark") } else { Text(sortLabel(opt)) }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.arrow.down").font(.system(size: 11, weight: .semibold))
+                        Text(sortLabel(sort)).font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(Theme.textSecondary)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+}
+
 // MARK: - Shared rows / cards
 
 struct TrackRowView: View {
@@ -78,6 +168,25 @@ struct CardCircleOrSquare: View {
     }
 }
 
+struct PlaylistShelf: View {
+    let title: String
+    let playlists: [CardItem]
+    @EnvironmentObject var nav: Nav
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.system(size: 19, weight: .bold))
+                .foregroundStyle(Theme.textPrimary).padding(.horizontal, 16)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(playlists) { pl in CardCircleOrSquare(item: pl).frame(width: 140) }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+    }
+}
+
 struct ShelfRow: View {
     let shelf: Shelf
     @EnvironmentObject var player: PlayerEngine
@@ -118,12 +227,37 @@ struct ShelfRow: View {
 
 struct HomeScreen: View {
     @EnvironmentObject var auth: AuthManager
+    @EnvironmentObject var library: LibraryStore
+    @EnvironmentObject var nav: Nav
     @State private var shelves: [Shelf] = []
+    @State private var playlists: [CardItem] = []
     @State private var loading = true
+
+    private let quickCols = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
+                // Spotify-style quick-access grid of your playlists, up top.
+                if !playlists.isEmpty {
+                    LazyVGrid(columns: quickCols, spacing: 8) {
+                        ForEach(playlists.prefix(6)) { pl in
+                            Button { nav.open(pl) } label: {
+                                HStack(spacing: 8) {
+                                    ArtworkView(url: pl.thumbnailURL, corner: 4).frame(width: 44, height: 44)
+                                    Text(pl.title).font(.system(size: 12.5, weight: .semibold))
+                                        .foregroundStyle(Theme.textPrimary).lineLimit(2)
+                                    Spacer(minLength: 0)
+                                }
+                                .background(Theme.card, in: RoundedRectangle(cornerRadius: 6))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+
+                    PlaylistShelf(title: "Your Playlists", playlists: playlists)
+                }
                 if loading { ProgressView().frame(maxWidth: .infinity).padding(.top, 60) }
                 ForEach(shelves) { ShelfRow(shelf: $0) }
                 Color.clear.frame(height: 80)
@@ -142,6 +276,12 @@ struct HomeScreen: View {
         let fresh = (try? await YTM.shared.home()) ?? []
         if !fresh.isEmpty { shelves = fresh; PageCache.shared.shelves["home"] = fresh }
         loading = false
+        // Load the user's saved playlists directly so the grid is independent
+        // of shared-store timing.
+        if auth.isSignedIn {
+            playlists = (try? await YTM.shared.libraryPlaylists()) ?? []
+            await library.loadIfNeeded()
+        }
     }
 }
 
@@ -250,8 +390,25 @@ struct LibraryScreen: View {
     @State private var cards: [CardItem] = []
     @State private var tracks: [Track] = []
     @State private var loading = false
+    @State private var filter = ""
+    @State private var songSort: SortMode = .recent
+    @State private var cardSort: SortMode = .recent
 
     private let cols = [GridItem(.adaptive(minimum: 150), spacing: 14)]
+
+    private var visibleTracks: [Track] {
+        TrackSort.apply(tracks, filter: filter, sort: songSort, keepOrder: false)
+    }
+    private var visibleCards: [CardItem] {
+        TrackSort.cards(cards, filter: filter, sort: cardSort)
+    }
+    private var sortOptions: [SortMode] {
+        switch tab {
+        case .songs: return SortMode.allCases
+        case .albums: return [.recent, .title, .artist]
+        default: return [.recent, .title]
+        }
+    }
 
     var body: some View {
         ScrollView {
@@ -261,6 +418,13 @@ struct LibraryScreen: View {
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
+
+                if auth.isSignedIn && !loading {
+                    SortFilterBar(filter: $filter,
+                                  sort: tab == .songs ? $songSort : $cardSort,
+                                  sortOptions: sortOptions,
+                                  sortLabel: { tab == .artists && $0 == .title ? "Artist" : $0.rawValue })
+                }
 
                 if !auth.isSignedIn {
                     VStack(spacing: 12) {
@@ -272,25 +436,26 @@ struct LibraryScreen: View {
                 } else if loading {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
                 } else if tab == .songs {
-                    if tracks.count > 1 {
+                    let shown = visibleTracks
+                    if shown.count > 1 {
                         HStack(spacing: 10) {
-                            Button { player.playCollection(tracks, startAt: 0) } label: {
+                            Button { player.playCollection(shown, startAt: 0) } label: {
                                 Label("Play", systemImage: "play.fill").frame(maxWidth: .infinity)
                             }.buttonStyle(.borderedProminent).tint(Theme.accent)
-                            Button { player.playShuffled(tracks) } label: {
+                            Button { player.playShuffled(shown) } label: {
                                 Label("Shuffle", systemImage: "shuffle").frame(maxWidth: .infinity)
                             }.buttonStyle(.bordered)
                         }.padding(.horizontal, 16)
                     }
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(tracks.enumerated()), id: \.offset) { i, t in
-                            TrackRowView(track: t, onRemoveFromPlaylist: nil) { player.playCollection(tracks, startAt: i) }
+                        ForEach(Array(shown.enumerated()), id: \.offset) { i, t in
+                            TrackRowView(track: t, onRemoveFromPlaylist: nil) { player.playCollection(shown, startAt: i) }
                                 .padding(.horizontal, 16)
                         }
                     }
                 } else {
                     LazyVGrid(columns: cols, spacing: 16) {
-                        ForEach(cards) { CardCircleOrSquare(item: $0) }
+                        ForEach(visibleCards) { CardCircleOrSquare(item: $0) }
                     }
                     .padding(.horizontal, 16)
                 }
@@ -301,7 +466,15 @@ struct LibraryScreen: View {
         .background(Theme.bg)
         .navigationTitle("Library")
         .toolbar { accountButton }
-        .task(id: "\(auth.isSignedIn)-\(tab.rawValue)") { await load() }
+        .task(id: "\(auth.isSignedIn)-\(tab.rawValue)") { restoreSort(); await load() }
+        .onChange(of: songSort) { _, v in UserDefaults.standard.set(v.rawValue, forKey: "sort-lib-songs") }
+        .onChange(of: cardSort) { _, v in UserDefaults.standard.set(v.rawValue, forKey: "sort-lib-\(tab.rawValue)") }
+    }
+
+    private func restoreSort() {
+        if let s = UserDefaults.standard.string(forKey: "sort-lib-songs").flatMap(SortMode.init) { songSort = s }
+        if let s = UserDefaults.standard.string(forKey: "sort-lib-\(tab.rawValue)").flatMap(SortMode.init) { cardSort = s }
+        else { cardSort = .recent }
     }
 
     private func load() async {
@@ -313,9 +486,63 @@ struct LibraryScreen: View {
         case .albums: cards = (try? await YTM.shared.libraryAlbums()) ?? []
         case .artists:
             let corpus = (try? await YTM.shared.libraryArtists()) ?? []
-            cards = corpus
+            let all = await LibraryStore.shared.allKnownTracks()
+            cards = Self.artistCards(corpus: corpus, tracks: all)
         }
         loading = false
+    }
+
+    /// Aggregate artists across likes + all playlists (parity with macOS).
+    static func artistCards(corpus: [CardItem], tracks: [Track]) -> [CardItem] {
+        struct Tally { var name: String; var count = 0; var thumb: URL? }
+        var byId: [String: Tally] = [:]
+        var byName: [String: Tally] = [:]
+        for track in tracks {
+            for ref in track.artists {
+                if let id = ref.id, id.hasPrefix("UC") {
+                    var t = byId[id] ?? Tally(name: ref.name); t.count += 1
+                    if t.thumb == nil { t.thumb = track.thumbnailURL }; byId[id] = t
+                } else if !ref.name.isEmpty {
+                    let k = ref.name.matchNormalized
+                    var t = byName[k] ?? Tally(name: ref.name); t.count += 1
+                    if t.thumb == nil { t.thumb = track.thumbnailURL }; byName[k] = t
+                }
+            }
+            if track.artists.isEmpty {
+                let name = track.artistLine.components(separatedBy: CharacterSet(charactersIn: ",&"))
+                    .first?.trimmingCharacters(in: .whitespaces) ?? ""
+                guard !name.isEmpty else { continue }
+                let k = name.matchNormalized
+                var t = byName[k] ?? Tally(name: name); t.count += 1
+                if t.thumb == nil { t.thumb = track.thumbnailURL }; byName[k] = t
+            }
+        }
+        func label(_ n: Int) -> String { "\(n) song\(n == 1 ? "" : "s")" }
+        var out: [CardItem] = []
+        var seenIds = Set<String>(); var seenNames = Set<String>()
+        for card in corpus {
+            let cid = card.browseId.map { $0.hasPrefix("MPLA") ? String($0.dropFirst(4)) : $0 }
+            var item = card
+            if let cid, let t = byId[cid] { item.subtitle = label(t.count) }
+            out.append(item)
+            if let cid { seenIds.insert(cid) }
+            seenNames.insert(card.title.matchNormalized)
+        }
+        func isDup(_ name: String) -> Bool {
+            let n = name.matchNormalized
+            guard n.count >= 3 else { return seenNames.contains(n) }
+            return seenNames.contains { $0.contains(n) || n.contains($0) }
+        }
+        for (id, t) in byId.sorted(by: { $0.value.count > $1.value.count }) where !seenIds.contains(id) && !isDup(t.name) {
+            seenNames.insert(t.name.matchNormalized)
+            out.append(CardItem(kind: .artist, title: t.name, subtitle: label(t.count), thumbnailURL: t.thumb, browseId: id))
+        }
+        for (k, t) in byName where !isDup(t.name) {
+            seenNames.insert(k)
+            out.append(CardItem(kind: .artist, title: t.name, subtitle: label(t.count), thumbnailURL: t.thumb))
+        }
+        func cnt(_ i: CardItem) -> Int { Int(i.subtitle.components(separatedBy: " ").first ?? "") ?? 0 }
+        return out.sorted { cnt($0) != cnt($1) ? cnt($0) > cnt($1) : $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 }
 
@@ -328,11 +555,16 @@ struct CollectionScreen: View {
     @EnvironmentObject var player: PlayerEngine
     @State private var page: CollectionPage?
     @State private var loading = true
+    @State private var filter = ""
+    @State private var sort: SortMode = .recent
 
     private var cacheKey: String {
         switch kind { case .album(let id): return "album-\(id)"; case .playlist(let id): return "playlist-\(id)" }
     }
     private var isAlbum: Bool { if case .album = kind { return true }; return false }
+    private func shownTracks(_ page: CollectionPage) -> [Track] {
+        TrackSort.apply(page.tracks, filter: filter, sort: sort, keepOrder: sort == .recent)
+    }
 
     var body: some View {
         ScrollView {
@@ -347,19 +579,23 @@ struct CollectionScreen: View {
                             Text(page.subtitle).font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
                         }
                     }.frame(maxWidth: .infinity)
+                    let shown = shownTracks(page)
                     HStack(spacing: 10) {
-                        Button { player.playCollection(page.tracks, startAt: 0) } label: {
+                        Button { player.playCollection(shown, startAt: 0) } label: {
                             Label("Play", systemImage: "play.fill").frame(maxWidth: .infinity)
                         }.buttonStyle(.borderedProminent).tint(Theme.accent)
-                        Button { player.playShuffled(page.tracks) } label: {
+                        Button { player.playShuffled(shown) } label: {
                             Label("Shuffle", systemImage: "shuffle").frame(maxWidth: .infinity)
                         }.buttonStyle(.bordered)
                     }.padding(.horizontal, 16)
+                    SortFilterBar(filter: $filter, sort: $sort,
+                                  sortOptions: isAlbum ? [] : SortMode.allCases,
+                                  sortLabel: { $0 == .recent ? "Playlist Order" : $0.rawValue })
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(page.tracks.enumerated()), id: \.offset) { i, t in
+                        ForEach(Array(shown.enumerated()), id: \.offset) { i, t in
                             TrackRowView(track: t,
                                          onRemoveFromPlaylist: isAlbum ? nil : { remove(t) }) {
-                                player.playCollection(page.tracks, startAt: i)
+                                player.playCollection(shown, startAt: i)
                             }
                             .padding(.horizontal, 16)
                         }
