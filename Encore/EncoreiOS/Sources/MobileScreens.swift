@@ -488,6 +488,8 @@ struct LibraryScreen: View {
             let corpus = (try? await YTM.shared.libraryArtists()) ?? []
             let all = await LibraryStore.shared.allKnownTracks()
             cards = Self.artistCards(corpus: corpus, tracks: all)
+        case .podcasts:
+            cards = (try? await YTM.shared.libraryPodcasts()) ?? []
         }
         loading = false
     }
@@ -549,7 +551,7 @@ struct LibraryScreen: View {
 // MARK: - Collection (album/playlist)
 
 struct CollectionScreen: View {
-    enum Kind: Hashable { case album(String), playlist(String) }
+    enum Kind: Hashable { case album(String), playlist(String), podcast(String) }
     let kind: Kind
 
     @EnvironmentObject var player: PlayerEngine
@@ -559,9 +561,14 @@ struct CollectionScreen: View {
     @State private var sort: SortMode = .recent
 
     private var cacheKey: String {
-        switch kind { case .album(let id): return "album-\(id)"; case .playlist(let id): return "playlist-\(id)" }
+        switch kind {
+        case .album(let id): return "album-\(id)"
+        case .playlist(let id): return "playlist-\(id)"
+        case .podcast(let id): return "podcast-\(id)"
+        }
     }
     private var isAlbum: Bool { if case .album = kind { return true }; return false }
+    private var isPlaylist: Bool { if case .playlist = kind { return true }; return false }
     private func shownTracks(_ page: CollectionPage) -> [Track] {
         TrackSort.apply(page.tracks, filter: filter, sort: sort, keepOrder: sort == .recent)
     }
@@ -594,7 +601,7 @@ struct CollectionScreen: View {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(shown.enumerated()), id: \.offset) { i, t in
                             TrackRowView(track: t,
-                                         onRemoveFromPlaylist: isAlbum ? nil : { remove(t) }) {
+                                         onRemoveFromPlaylist: isPlaylist ? { remove(t) } : nil) {
                                 player.playCollection(shown, startAt: i)
                             }
                             .padding(.horizontal, 16)
@@ -617,6 +624,7 @@ struct CollectionScreen: View {
         switch kind {
         case .album(let id): fresh = try? await YTM.shared.album(browseId: id)
         case .playlist(let id): fresh = try? await YTM.shared.playlist(id: id)
+        case .podcast(let id): fresh = try? await YTM.shared.podcastShow(browseId: id)
         }
         if let fresh { page = fresh; PageCache.shared.collections[cacheKey] = fresh }
         loading = false

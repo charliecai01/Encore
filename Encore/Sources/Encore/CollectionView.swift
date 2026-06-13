@@ -6,11 +6,13 @@ struct CollectionView: View {
     enum Kind {
         case album(String)
         case playlist(String)
+        case podcast(String)
 
         var label: String {
             switch self {
             case .album: return "Album"
             case .playlist: return "Playlist"
+            case .podcast: return "Podcast"
             }
         }
     }
@@ -37,6 +39,7 @@ struct CollectionView: View {
         switch kind {
         case .album(let id): return "sort-album-\(id)"
         case .playlist(let id): return "sort-playlist-\(id)"
+        case .podcast(let id): return "sort-podcast-\(id)"
         }
     }
 
@@ -223,7 +226,7 @@ struct CollectionView: View {
                          index: i,
                          showsArtwork: !isAlbum,
                          showsAlbum: !isAlbum,
-                         onRemoveFromPlaylist: isAlbum ? nil : { removeTrack(track) }) {
+                         onRemoveFromPlaylist: isPlaylist ? { removeTrack(track) } : nil) {
                     player.playCollection(shown, startAt: i)
                 }
             }
@@ -257,10 +260,16 @@ struct CollectionView: View {
         return false
     }
 
+    private var isPlaylist: Bool {
+        if case .playlist = kind { return true }
+        return false
+    }
+
     private var cacheKey: String {
         switch kind {
         case .album(let id): return "album-\(id)"
         case .playlist(let id): return "playlist-\(id)"
+        case .podcast(let id): return "podcast-\(id)"
         }
     }
 
@@ -296,6 +305,8 @@ struct CollectionView: View {
             return try await YTM.shared.album(browseId: browseId)
         case .playlist(let id):
             return try await YTM.shared.playlist(id: id)
+        case .podcast(let browseId):
+            return try await YTM.shared.podcastShow(browseId: browseId)
         }
     }
 }

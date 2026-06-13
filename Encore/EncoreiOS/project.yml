@@ -35,9 +35,13 @@ targets:
             UIWindowSceneSessionRoleApplication:
               - UISceneConfigurationName: Phone
                 UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).PhoneSceneDelegate
-            CPTemplateApplicationSceneSessionRoleApplication:
-              - UISceneConfigurationName: CarPlay
-                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).CarPlaySceneDelegate
+            # The CarPlay scene must be declared ONLY when the carplay-audio
+            # entitlement above is enabled — iOS refuses to launch an app that
+            # declares a CarPlay scene without the entitlement. Uncomment this
+            # together with the entitlement block:
+            # CPTemplateApplicationSceneSessionRoleApplication:
+            #   - UISceneConfigurationName: CarPlay
+            #     UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).CarPlaySceneDelegate
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.charlie.encore.ios

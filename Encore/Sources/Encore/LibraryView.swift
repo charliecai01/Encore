@@ -393,6 +393,8 @@ struct LibraryView: View {
                 let corpus = (try? await YTM.shared.libraryArtists()) ?? []
                 let allTracks = await LibraryStore.shared.allKnownTracks()
                 cards = Self.artistCards(corpus: corpus, tracks: allTracks)
+            case .podcasts:
+                cards = try await YTM.shared.libraryPodcasts()
             case .history:
                 shelves = try await YTM.shared.history()
             }

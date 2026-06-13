@@ -76,7 +76,7 @@ public enum Artwork {
 
 public struct CardItem: Identifiable, Hashable {
     public enum Kind: Hashable {
-        case album, playlist, artist, song, video, station, unknown
+        case album, playlist, artist, song, video, station, podcast, unknown
     }
 
     public var id: String

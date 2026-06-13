@@ -138,6 +138,22 @@ Task {
         check("home", true, "\(shelves.count) shelves: \(shelves.prefix(3).map(\.title).joined(separator: ", "))")
     } catch { check("home", false, "\(error)") }
 
+    // Podcasts feed + show page
+    do {
+        let shelves = try await ytm.podcasts()
+        let shows = shelves.flatMap(\.items).compactMap { item -> CardItem? in
+            if case .card(let c) = item, c.kind == .podcast { return c }
+            return nil
+        }
+        check("podcasts feed", !shows.isEmpty,
+              "\(shelves.count) shelves, \(shows.count) podcast shows; e.g. \(shows.first?.title ?? "")")
+        if let showId = shows.first?.browseId {
+            let page = try await ytm.podcastShow(browseId: showId)
+            check("podcast show", !page.tracks.isEmpty,
+                  "\(page.title): \(page.tracks.count) episodes; first=\(page.tracks.first?.title ?? "")")
+        }
+    } catch { check("podcasts", false, "\(error)") }
+
     exit(0)
 }
 

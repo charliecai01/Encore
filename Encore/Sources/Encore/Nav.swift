@@ -6,6 +6,7 @@ enum LibraryTab: String, CaseIterable, Hashable {
     case songs = "Songs"
     case albums = "Albums"
     case artists = "Artists"
+    case podcasts = "Podcasts"
     case history = "History"
 
     var icon: String {
@@ -14,6 +15,7 @@ enum LibraryTab: String, CaseIterable, Hashable {
         case .songs: return "heart"
         case .albums: return "square.stack"
         case .artists: return "music.microphone"
+        case .podcasts: return "mic"
         case .history: return "clock"
         }
     }
@@ -27,6 +29,7 @@ enum Route: Hashable {
     case album(String)
     case playlist(String)
     case artist(String)
+    case podcastShow(String)
     case browse(String)
 }
 
@@ -114,6 +117,7 @@ final class Nav: ObservableObject {
         case .album(let id): return "album|\(id)"
         case .playlist(let id): return "playlist|\(id)"
         case .artist(let id): return "artist|\(id)"
+        case .podcastShow(let id): return "podcastShow|\(id)"
         case .browse(let id): return "browse|\(id)"
         case .search: return nil
         }
@@ -130,6 +134,7 @@ final class Nav: ObservableObject {
         case "album": return arg.map { .album($0) }
         case "playlist": return arg.map { .playlist($0) }
         case "artist": return arg.map { .artist($0) }
+        case "podcastShow": return arg.map { .podcastShow($0) }
         case "browse": return arg.map { .browse($0) }
         default: return nil
         }
@@ -159,6 +164,8 @@ final class Nav: ObservableObject {
                                   artistLine: item.subtitle, thumbnailURL: item.thumbnailURL)
                 PlayerEngine.shared.playRadio(from: track)
             }
+        case .podcast:
+            if let id = item.browseId { go(.podcastShow(id)) }
         case .unknown:
             break
         }

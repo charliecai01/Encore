@@ -248,6 +248,7 @@ enum LibraryTab: String, CaseIterable, Hashable {
     case songs = "Songs"
     case albums = "Albums"
     case artists = "Artists"
+    case podcasts = "Podcasts"
 
     var icon: String {
         switch self {
@@ -255,6 +256,7 @@ enum LibraryTab: String, CaseIterable, Hashable {
         case .songs: return "heart"
         case .albums: return "square.stack"
         case .artists: return "music.mic"
+        case .podcasts: return "mic"
         }
     }
 }
@@ -263,6 +265,7 @@ enum Route: Hashable {
     case album(String)
     case playlist(String)
     case artist(String)
+    case podcastShow(String)
     case browse(String)
     case search(String, YTM.SearchFilter?)
 }
@@ -296,6 +299,7 @@ final class Nav: ObservableObject {
     func open(_ item: CardItem) {
         switch item.kind {
         case .album: if let id = item.browseId { go(.album(id)) }
+        case .podcast: if let id = item.browseId { go(.podcastShow(id)) }
         case .artist: goArtist(id: item.browseId, name: item.title)
         case .playlist:
             if let id = item.playlistId, id.hasPrefix("RD") {

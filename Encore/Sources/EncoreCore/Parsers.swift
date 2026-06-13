@@ -147,10 +147,12 @@ public enum P {
 
     static func cardKind(forBrowseId browseId: String, pageType: String?) -> CardItem.Kind {
         if let pageType {
+            if pageType.contains("PODCAST") { return .podcast }
             if pageType.contains("ALBUM") { return .album }
             if pageType.contains("ARTIST") || pageType.contains("USER_CHANNEL") { return .artist }
             if pageType.contains("PLAYLIST") { return .playlist }
         }
+        if browseId.hasPrefix("MPSP") { return .podcast }  // podcast show
         if browseId.hasPrefix("MPRE") { return .album }
         if browseId.hasPrefix("MPLA") { return .artist }  // library artist page
         if browseId.hasPrefix("UC") { return .artist }
@@ -173,7 +175,7 @@ public enum P {
                 let plId = browseId.hasPrefix("VL") ? String(browseId.dropFirst(2)) : browseId
                 return CardItem(kind: .playlist, title: title, subtitle: subtitle,
                                 thumbnailURL: thumb, browseId: browseId, playlistId: plId)
-            case .album, .artist:
+            case .album, .artist, .podcast:
                 return CardItem(kind: kind, title: title, subtitle: subtitle,
                                 thumbnailURL: thumb, browseId: browseId)
             default:
@@ -364,6 +366,20 @@ public enum P {
 
     public static func continuationCards(from page: JSONValue) -> [CardItem] {
         continuationScope(of: page).findAll("musicTwoRowItemRenderer").compactMap { card(fromMTRIR: $0) }
+    }
+
+    /// Podcast episodes (musicMultiRowListItemRenderer) → playable Tracks.
+    public static func podcastEpisodes(from root: JSONValue, showTitle: String, showThumb: URL?) -> [Track] {
+        continuationScope(of: root).findAll("musicMultiRowListItemRenderer").compactMap { r in
+            guard let videoId = r.findFirst("watchEndpoint")?["videoId"].string
+                ?? r.findFirst("videoId")?.string else { return nil }
+            let title = r["title"].runsText ?? "Episode"
+            let thumb = thumbnailURL(in: r) ?? showThumb
+            // subtitle is usually the publish date; keep the show name as the byline.
+            return Track(videoId: videoId, title: title, artists: [],
+                         artistLine: showTitle, album: nil,
+                         durationSeconds: nil, thumbnailURL: thumb)
+        }
     }
 
     /// Find the next continuation token, preferring tokens that belong to the
