@@ -72,7 +72,7 @@ extension View {
             case .album(let id): CollectionScreen(kind: .album(id))
             case .playlist(let id): CollectionScreen(kind: .playlist(id))
             case .artist(let id): ArtistScreen(browseId: id)
-            case .podcastShow(let id): CollectionScreen(kind: .podcast(id))
+            case .podcastShow(let id): PodcastScreen(browseId: id)
             case .browse(let id): BrowseScreen(browseId: id)
             case .search(let q, let f): SearchScreen(initialQuery: q, initialFilter: f)
             }

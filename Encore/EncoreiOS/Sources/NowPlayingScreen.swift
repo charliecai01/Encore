@@ -36,6 +36,7 @@ struct NowPlayingScreen: View {
                 case .queue: QueuePane()
                 }
             }
+            .padding(.top, 14) // clear the Dynamic Island
             .padding(.bottom, 12)
             .frame(maxWidth: .infinity)
         }
@@ -97,32 +98,73 @@ struct NowPlayingScreen: View {
 
             ProgressBar().padding(.horizontal, 36).padding(.top, 18)
 
-            HStack(spacing: 28) {
-                ctrl("shuffle", active: player.shuffleOn, size: 18) { player.toggleShuffle() }
-                ctrl("backward.fill", size: 26) { player.previous() }
-                Button { player.togglePlay() } label: {
-                    ZStack {
-                        Circle().fill(.white).frame(width: 70, height: 70)
-                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 28, weight: .bold)).foregroundStyle(.black)
-                            .offset(x: player.isPlaying ? 0 : 2)
-                    }
+            if player.current?.isEpisode == true {
+                HStack(spacing: 22) {
+                    speedButton
+                    ctrl("gobackward.15", size: 28) { player.skip(-15) }
+                    bigPlayButton
+                    ctrl("goforward.30", size: 28) { player.skip(30) }
+                    sleepMenu
                 }
-                ctrl("forward.fill", size: 26) { player.next() }
-                ctrl(player.repeatMode == .one ? "repeat.1" : "repeat",
-                     active: player.repeatMode != .off, size: 18) { player.cycleRepeat() }
-            }
-            .padding(.top, 22)
-
-            HStack(spacing: 36) {
-                sleepMenu
+                .padding(.top, 22)
                 Button { player.showNowPlaying = false } label: {
                     Image(systemName: "chevron.down").font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.6))
                 }
+                .padding(.top, 18)
+            } else {
+                HStack(spacing: 28) {
+                    ctrl("shuffle", active: player.shuffleOn, size: 18) { player.toggleShuffle() }
+                    ctrl("backward.fill", size: 26) { player.previous() }
+                    bigPlayButton
+                    ctrl("forward.fill", size: 26) { player.next() }
+                    ctrl(player.repeatMode == .one ? "repeat.1" : "repeat",
+                         active: player.repeatMode != .off, size: 18) { player.cycleRepeat() }
+                }
+                .padding(.top, 22)
+
+                HStack(spacing: 36) {
+                    sleepMenu
+                    Button { player.showNowPlaying = false } label: {
+                        Image(systemName: "chevron.down").font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
+                }
+                .padding(.top, 18)
             }
-            .padding(.top, 18)
             Spacer(minLength: 0)
+        }
+    }
+
+    private var bigPlayButton: some View {
+        Button { player.togglePlay() } label: {
+            ZStack {
+                Circle().fill(.white).frame(width: 70, height: 70)
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 28, weight: .bold)).foregroundStyle(.black)
+                    .offset(x: player.isPlaying ? 0 : 2)
+            }
+        }
+    }
+
+    private func rateLabel(_ r: Double) -> String {
+        let s = r == r.rounded() ? String(Int(r)) : String(format: "%g", r)
+        return "\(s)×"
+    }
+
+    private var speedButton: some View {
+        Menu {
+            ForEach([0.8, 1.0, 1.2, 1.5, 1.75, 2.0], id: \.self) { r in
+                Button { player.setPlaybackRate(r) } label: {
+                    if player.playbackRate == r { Label(rateLabel(r), systemImage: "checkmark") }
+                    else { Text(rateLabel(r)) }
+                }
+            }
+        } label: {
+            Text(rateLabel(player.playbackRate))
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(player.playbackRate != 1.0 ? Theme.accent : .white)
+                .frame(minWidth: 40)
         }
     }
 

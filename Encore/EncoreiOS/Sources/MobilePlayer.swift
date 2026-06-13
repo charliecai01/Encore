@@ -60,6 +60,9 @@ final class PlayerEngine: NSObject, ObservableObject {
     @Published var autoplayEnabled = true {
         didSet { UserDefaults.standard.set(autoplayEnabled, forKey: "autoplayEnabled") }
     }
+    @Published var playbackRate: Double = 1.0 {
+        didSet { UserDefaults.standard.set(playbackRate, forKey: "playbackRate") }
+    }
 
     let webView: WKWebView
     let clock = PlayerClock.shared
@@ -107,6 +110,10 @@ final class PlayerEngine: NSObject, ObservableObject {
         setupRemoteCommands()
         if UserDefaults.standard.object(forKey: "autoplayEnabled") != nil {
             autoplayEnabled = UserDefaults.standard.bool(forKey: "autoplayEnabled")
+        }
+        if UserDefaults.standard.object(forKey: "playbackRate") != nil {
+            let r = UserDefaults.standard.double(forKey: "playbackRate")
+            if r > 0 { playbackRate = r }
         }
         restoreSession()
     }
@@ -279,6 +286,18 @@ final class PlayerEngine: NSObject, ObservableObject {
     func seek(fraction: Double) {
         guard duration > 0 else { return }
         seek(to: fraction * duration)
+    }
+
+    /// Skip forward/back by a number of seconds (podcast controls).
+    func skip(_ delta: Double) {
+        let target = currentTime + delta
+        let upper = duration > 0 ? duration : target
+        seek(to: max(0, min(target, upper)))
+    }
+
+    func setPlaybackRate(_ rate: Double) {
+        playbackRate = rate
+        js("window.__encore && __encore.rate(\(rate))")
     }
 
     func toggleShuffle() {
@@ -500,6 +519,9 @@ final class PlayerEngine: NSObject, ObservableObject {
                     break
                 }
                 isPlaying = true
+                if playbackRate != 1.0 {
+                    js("window.__encore && __encore.rate(\(playbackRate))")
+                }
                 if let resumeAt = restoreSeekTime {
                     restoreSeekTime = nil
                     seek(to: resumeAt)
@@ -650,6 +672,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         play: function () { var p = mp(); if (p) p.playVideo(); },
         pause: function () { var p = mp(); if (p) p.pauseVideo(); },
         seek: function (s) { var p = mp(); if (p) p.seekTo(s, true); },
+        rate: function (r) { var p = mp(); if (p && p.setPlaybackRate) { try { p.setPlaybackRate(r); } catch (e) {} } },
         vol: function (v) {
           var p = mp();
           if (p) { p.setVolume(v); if (v > 0 && p.isMuted && p.isMuted()) p.unMute(); }

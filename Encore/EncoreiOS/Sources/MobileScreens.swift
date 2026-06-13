@@ -654,6 +654,164 @@ struct CollectionScreen: View {
     }
 }
 
+// MARK: - Podcast (Apple Podcasts–style show page)
+
+struct PodcastScreen: View {
+    let browseId: String
+
+    @EnvironmentObject var player: PlayerEngine
+    @State private var page: CollectionPage?
+    @State private var loading = true
+    @State private var descExpanded = false
+    @State private var newestFirst = true
+
+    private var cacheKey: String { "podcast-\(browseId)" }
+    private var sortKey: String { "podsort-\(browseId)" }
+
+    private var episodes: [Track] {
+        guard let page else { return [] }
+        return newestFirst ? page.tracks : page.tracks.reversed()
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                if let page {
+                    header(page)
+                    HStack {
+                        Text("Episodes").font(.system(size: 20, weight: .bold)).foregroundStyle(Theme.textPrimary)
+                        Spacer()
+                        Menu {
+                            Button { newestFirst = true } label: {
+                                if newestFirst { Label("Recent", systemImage: "checkmark") } else { Text("Recent") }
+                            }
+                            Button { newestFirst = false } label: {
+                                if !newestFirst { Label("Oldest", systemImage: "checkmark") } else { Text("Oldest") }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(newestFirst ? "Recent" : "Oldest").font(.system(size: 13, weight: .medium))
+                                Image(systemName: "arrow.up.arrow.down").font(.system(size: 11, weight: .semibold))
+                            }.foregroundStyle(Theme.textSecondary)
+                        }
+                    }
+                    .padding(.horizontal, 16).padding(.top, 20).padding(.bottom, 4)
+
+                    ForEach(Array(episodes.enumerated()), id: \.offset) { i, ep in
+                        EpisodeRow(episode: ep,
+                                   isCurrent: player.current?.videoId == ep.videoId) {
+                            player.playCollection(episodes, startAt: i)
+                        }
+                        Divider().background(Theme.stroke).padding(.leading, 16)
+                    }
+                } else if loading {
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
+                }
+                Color.clear.frame(height: 80)
+            }
+        }
+        .background(Theme.bg)
+        .navigationTitle(page?.title ?? "").navigationBarTitleDisplayMode(.inline)
+        .task {
+            newestFirst = UserDefaults.standard.object(forKey: sortKey) as? Bool ?? true
+            await load()
+        }
+        .onChange(of: newestFirst) { _, v in UserDefaults.standard.set(v, forKey: sortKey) }
+    }
+
+    private func header(_ page: CollectionPage) -> some View {
+        VStack(spacing: 12) {
+            ArtworkView(url: Artwork.upscale(page.thumbnailURL, to: 500), corner: 14)
+                .frame(width: 168, height: 168)
+                .shadow(color: .black.opacity(0.4), radius: 16, y: 6)
+            Text(page.title).font(.system(size: 22, weight: .bold))
+                .foregroundStyle(Theme.textPrimary).multilineTextAlignment(.center)
+            if !page.subtitle.isEmpty {
+                Text(page.subtitle).font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Theme.accent).lineLimit(1)
+            }
+            HStack(spacing: 10) {
+                Button { player.playCollection(episodes, startAt: 0) } label: {
+                    Label("Play", systemImage: "play.fill").frame(maxWidth: .infinity)
+                }.buttonStyle(.borderedProminent).tint(Theme.accent)
+                Button { player.playShuffled(episodes) } label: {
+                    Label("Shuffle", systemImage: "shuffle").frame(maxWidth: .infinity)
+                }.buttonStyle(.bordered)
+            }
+            .padding(.horizontal, 16).padding(.top, 2)
+            if let desc = page.description, !desc.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(desc).font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
+                        .lineLimit(descExpanded ? nil : 3)
+                    Text(descExpanded ? "less" : "more").font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16).padding(.top, 4)
+                .contentShape(Rectangle())
+                .onTapGesture { withAnimation { descExpanded.toggle() } }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 12)
+    }
+
+    private func load() async {
+        if let cached = PageCache.shared.collections[cacheKey] { page = cached; loading = false }
+        if let fresh = try? await YTM.shared.podcastShow(browseId: browseId) {
+            page = fresh; PageCache.shared.collections[cacheKey] = fresh
+        }
+        loading = false
+    }
+}
+
+struct EpisodeRow: View {
+    @EnvironmentObject var player: PlayerEngine
+    let episode: Track
+    let isCurrent: Bool
+    let onPlay: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            if let date = episode.dateText, !date.isEmpty {
+                Text(date.uppercased()).font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            Text(episode.title).font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(isCurrent ? Theme.accent : Theme.textPrimary).lineLimit(2)
+            if let details = episode.details, !details.isEmpty {
+                Text(details).font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
+                    .lineLimit(2)
+            }
+            HStack(spacing: 12) {
+                Button(action: onPlay) {
+                    HStack(spacing: 7) {
+                        Image(systemName: isCurrent && player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.system(size: 30))
+                        if !episode.lengthText.isEmpty {
+                            Text(episode.lengthText).font(.system(size: 12, weight: .medium))
+                        }
+                    }
+                    .foregroundStyle(Theme.textPrimary)
+                }
+                .buttonStyle(.plain)
+                Spacer()
+                Menu {
+                    Button("Play") { onPlay() }
+                    Button("Play Next") { player.playNext(episode) }
+                    Button("Add to Queue") { player.addToQueue(episode) }
+                } label: {
+                    Image(systemName: "ellipsis").font(.system(size: 16)).foregroundStyle(Theme.textSecondary)
+                        .frame(width: 36, height: 36)
+                }
+            }
+            .padding(.top, 2)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .contentShape(Rectangle())
+    }
+}
+
 // MARK: - Artist
 
 struct ArtistScreen: View {

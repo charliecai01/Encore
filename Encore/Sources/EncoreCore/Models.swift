@@ -22,12 +22,19 @@ public struct Track: Identifiable, Hashable, Codable {
     /// Playlist-item id (playlistSetVideoId) — required to remove this entry
     /// from the playlist it was parsed out of.
     public var setVideoId: String?
+    /// Podcast episode metadata (nil for music tracks).
+    public var isEpisode: Bool
+    /// Published/relative date text for episodes, e.g. "6d ago".
+    public var dateText: String?
+    /// Episode description / show notes.
+    public var details: String?
 
     public var id: String { videoId }
 
     public init(videoId: String, title: String, artists: [Ref] = [], artistLine: String = "",
                 album: Ref? = nil, durationSeconds: Int? = nil, thumbnailURL: URL? = nil,
-                setVideoId: String? = nil) {
+                setVideoId: String? = nil, isEpisode: Bool = false,
+                dateText: String? = nil, details: String? = nil) {
         self.videoId = videoId
         self.title = title
         self.artists = artists
@@ -36,11 +43,40 @@ public struct Track: Identifiable, Hashable, Codable {
         self.durationSeconds = durationSeconds
         self.thumbnailURL = thumbnailURL
         self.setVideoId = setVideoId
+        self.isEpisode = isEpisode
+        self.dateText = dateText
+        self.details = details
+    }
+
+    // Tolerant decoder so older cached payloads (without the episode fields)
+    // still decode instead of dropping the whole cache.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        videoId = try c.decode(String.self, forKey: .videoId)
+        title = (try? c.decode(String.self, forKey: .title)) ?? ""
+        artists = (try? c.decode([Ref].self, forKey: .artists)) ?? []
+        artistLine = (try? c.decode(String.self, forKey: .artistLine)) ?? ""
+        album = try? c.decode(Ref.self, forKey: .album)
+        durationSeconds = try? c.decode(Int.self, forKey: .durationSeconds)
+        thumbnailURL = try? c.decode(URL.self, forKey: .thumbnailURL)
+        setVideoId = try? c.decode(String.self, forKey: .setVideoId)
+        isEpisode = (try? c.decode(Bool.self, forKey: .isEpisode)) ?? false
+        dateText = try? c.decode(String.self, forKey: .dateText)
+        details = try? c.decode(String.self, forKey: .details)
     }
 
     public var durationText: String {
         guard let s = durationSeconds else { return "" }
         return Track.format(seconds: s)
+    }
+
+    /// Podcast-style length, e.g. "1 hr 1 min" / "32 min".
+    public var lengthText: String {
+        guard let s = durationSeconds, s > 0 else { return "" }
+        let h = s / 3600, m = (s % 3600) / 60
+        if h > 0 { return m > 0 ? "\(h) hr \(m) min" : "\(h) hr" }
+        if m > 0 { return "\(m) min" }
+        return "\(s) sec"
     }
 
     public static func format(seconds: Int) -> String {
