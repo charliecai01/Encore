@@ -23,7 +23,7 @@ struct NowPlayingView: View {
         // SwiftUI would otherwise center the overflow and clip both edges.
         GeometryReader { geo in
             ZStack {
-                backdrop
+                backdrop(geo.size)
 
                 VStack(spacing: 0) {
                 // ZStack keeps the picker dead-center and the buttons pinned
@@ -105,9 +105,11 @@ struct NowPlayingView: View {
         }
     }
 
-    private var backdrop: some View {
+    private func backdrop(_ size: CGSize) -> some View {
         ZStack {
             Theme.bg
+            // A .fill image with no fixed frame inflates the layout and shifts
+            // the controls off-screen on resize; pin it to the window size.
             AsyncImage(url: player.current?.artworkURL) { phase in
                 if case .success(let image) = phase {
                     image.resizable()
@@ -117,10 +119,12 @@ struct NowPlayingView: View {
                         .opacity(0.55)
                 }
             }
+            .frame(width: size.width, height: size.height)
+            .clipped()
             LinearGradient(colors: [.black.opacity(0.25), .black.opacity(0.65)],
                            startPoint: .top, endPoint: .bottom)
         }
-        .ignoresSafeArea()
+        .frame(width: size.width, height: size.height)
         .contentShape(Rectangle())
         .onTapGesture { expanded = false }
     }

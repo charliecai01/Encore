@@ -10,6 +10,12 @@ struct NowPlayingScreen: View {
     enum Tab { case song, lyrics, queue }
     @State private var tab: Tab = .song
 
+    /// Square artwork sized so it never makes the layout wider than the screen.
+    private var artSize: CGFloat {
+        let b = UIScreen.main.bounds
+        return min(b.width - 72, b.height * 0.40)
+    }
+
     var body: some View {
         ZStack {
             backdrop
@@ -31,7 +37,10 @@ struct NowPlayingScreen: View {
                 }
             }
             .padding(.bottom, 12)
+            .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity)
+        .clipped()
         .preferredColorScheme(.dark)
         .gesture(DragGesture().onEnded { v in if v.translation.height > 90 { dismiss() } })
     }
@@ -39,23 +48,25 @@ struct NowPlayingScreen: View {
     private var backdrop: some View {
         ZStack {
             Theme.bg
+            // A .fill image with no fixed frame inflates the layout width and
+            // pushes the rest of the screen off-center; pin it to the screen.
             AsyncImage(url: player.current?.artworkURL) { phase in
                 if case .success(let image) = phase {
                     image.resizable().aspectRatio(contentMode: .fill).blur(radius: 60).opacity(0.5)
                 }
             }
-            .ignoresSafeArea()
+            .frame(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)
+            .clipped()
             LinearGradient(colors: [.black.opacity(0.3), .black.opacity(0.7)], startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea()
         }
+        .ignoresSafeArea()
     }
 
     private var songPane: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
             ArtworkView(url: player.current?.artworkURL, corner: 16)
-                .aspectRatio(1, contentMode: .fit)
-                .padding(.horizontal, 36)
+                .frame(width: artSize, height: artSize)
                 .shadow(color: .black.opacity(0.5), radius: 24, y: 10)
                 .scaleEffect(player.isPlaying ? 1 : 0.95)
                 .animation(.spring(duration: 0.4), value: player.isPlaying)
