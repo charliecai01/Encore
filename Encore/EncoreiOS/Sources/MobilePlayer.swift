@@ -78,6 +78,10 @@ final class PlayerEngine: NSObject, ObservableObject {
     private var toastTask: Task<Void, Never>?
     private var sleepTask: Task<Void, Never>?
     private var sleepStopActive = false
+    /// On a cold launch the real music.youtube.com session can auto-start the
+    /// account's last track. Block any site-initiated playback until the user
+    /// explicitly presses play.
+    private var suppressSiteAutoplay = true
     private var lastLoadAt = Date.distantPast
     private var mismatchTicks = 0
     private var loadedOnce = false
@@ -240,6 +244,7 @@ final class PlayerEngine: NSObject, ObservableObject {
     func togglePlay() {
         guard let track = current else { return }
         sleepStopActive = false
+        suppressSiteAutoplay = false // explicit user intent overrides the launch guard
         if !loadedOnce {
             let resumeAt = restoreSeekTime
             load(track)
@@ -379,6 +384,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         loadedOnce = true
         restoreSeekTime = nil
         sleepStopActive = false
+        suppressSiteAutoplay = false
         current = track
         currentTime = 0
         duration = Double(track.durationSeconds ?? 0)
@@ -488,7 +494,7 @@ final class PlayerEngine: NSObject, ObservableObject {
             let state = body["data"] as? Int ?? -1
             switch state {
             case 1:
-                if sleepStopActive {
+                if sleepStopActive || suppressSiteAutoplay {
                     js("window.__encore && __encore.pause()")
                     isPlaying = false
                     break
@@ -512,7 +518,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         case "time":
             guard reportedMatchesCurrent(body) || Date().timeIntervalSince(lastLoadAt) < 6 else {
                 mismatchTicks += 1
-                if mismatchTicks > 8, let track = current {
+                if mismatchTicks > 8, !suppressSiteAutoplay, let track = current {
                     mismatchTicks = 0
                     lastLoadAt = Date()
                     js("window.__encore && __encore.ensure('\(track.videoId)')")
