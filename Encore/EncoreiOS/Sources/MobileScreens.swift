@@ -567,6 +567,7 @@ struct CollectionScreen: View {
         case .podcast(let id): return "podcast-\(id)"
         }
     }
+    private var sortStorageKey: String { "sort-\(cacheKey)" }
     private var isAlbum: Bool { if case .album = kind { return true }; return false }
     private var isPlaylist: Bool { if case .playlist = kind { return true }; return false }
     private func shownTracks(_ page: CollectionPage) -> [Track] {
@@ -615,7 +616,15 @@ struct CollectionScreen: View {
         }
         .background(Theme.bg)
         .navigationTitle(page?.title ?? "").navigationBarTitleDisplayMode(.inline)
-        .task { await load() }
+        .task {
+            if let saved = UserDefaults.standard.string(forKey: sortStorageKey).flatMap(SortMode.init) {
+                sort = saved
+            }
+            await load()
+        }
+        .onChange(of: sort) { _, newSort in
+            UserDefaults.standard.set(newSort.rawValue, forKey: sortStorageKey)
+        }
     }
 
     private func load() async {
