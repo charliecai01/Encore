@@ -679,8 +679,24 @@ final class PlayerEngine: NSObject, ObservableObject {
         }
       };
 
+      // Event-driven state reporting: polling alone misses the brief "ended"
+      // state when the site's own autoplay immediately starts loading the next
+      // video — which leaves our queue behind and yanks playback back to the
+      // previous track. The onStateChange hook catches it so we advance in sync.
+      var hooked = null;
+      function hookPlayer() {
+        var p = mp();
+        if (!p || p === hooked || !p.addEventListener) { return; }
+        hooked = p;
+        p.addEventListener('onStateChange', function (state) {
+          var data = p.getVideoData ? p.getVideoData() : null;
+          send({ event: 'state', data: state, vid: data ? data.video_id : null });
+        });
+      }
+
       var lastState = -9;
       setInterval(function () {
+        hookPlayer();
         var p = mp();
         if (!p || !p.getPlayerState) { return; }
         var data = p.getVideoData ? p.getVideoData() : null;
