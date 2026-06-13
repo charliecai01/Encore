@@ -264,15 +264,16 @@ struct QueuePane: View {
             ScrollViewReader { proxy in
                 List {
                     ForEach(Array(player.queue.enumerated()), id: \.offset) { i, track in
-                        HStack(spacing: 10) {
-                            ArtworkView(url: track.thumbnailURL, corner: 4).frame(width: 38, height: 38)
+                        HStack(spacing: 11) {
+                            ArtworkView(url: track.thumbnailURL, corner: 4).frame(width: 44, height: 44)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(track.title).font(.system(size: 13, weight: i == player.index ? .semibold : .regular))
+                                Text(track.title).font(.system(size: 14, weight: i == player.index ? .semibold : .regular))
                                     .foregroundStyle(i == player.index ? Theme.accent : .white).lineLimit(1)
-                                Text(track.artistLine).font(.system(size: 11)).foregroundStyle(.white.opacity(0.5)).lineLimit(1)
+                                Text(track.artistLine).font(.system(size: 12)).foregroundStyle(.white.opacity(0.5)).lineLimit(1)
                             }
                             Spacer()
                         }
+                        .padding(.vertical, 3)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .contentShape(Rectangle())

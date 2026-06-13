@@ -101,14 +101,14 @@ struct TrackRowView: View {
     let onPlay: () -> Void
 
     var body: some View {
-        HStack(spacing: 11) {
-            ArtworkView(url: track.thumbnailURL, corner: 5).frame(width: 46, height: 46)
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 12) {
+            ArtworkView(url: track.thumbnailURL, corner: 5).frame(width: 52, height: 52)
+            VStack(alignment: .leading, spacing: 3) {
                 Text(track.title)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(player.current?.videoId == track.videoId ? Theme.accent : Theme.textPrimary)
                     .lineLimit(1)
-                Text(track.artistLine).font(.system(size: 12)).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                Text(track.artistLine).font(.system(size: 13)).foregroundStyle(Theme.textSecondary).lineLimit(1)
             }
             Spacer()
             Menu {
@@ -126,11 +126,11 @@ struct TrackRowView: View {
                     Button("Remove from Playlist", role: .destructive) { onRemoveFromPlaylist() }
                 }
             } label: {
-                Image(systemName: "ellipsis").font(.system(size: 15)).foregroundStyle(Theme.textSecondary)
-                    .frame(width: 30, height: 44)
+                Image(systemName: "ellipsis").font(.system(size: 17)).foregroundStyle(Theme.textSecondary)
+                    .frame(width: 36, height: 52)
             }
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, 5)
         .contentShape(Rectangle())
         .onTapGesture { onPlay() }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
@@ -155,12 +155,12 @@ struct CardCircleOrSquare: View {
                 ArtworkView(url: Artwork.upscale(item.thumbnailURL, to: 300),
                             corner: item.kind == .artist ? 80 : 8)
                     .aspectRatio(1, contentMode: .fit)
-                Text(item.title).font(.system(size: 13, weight: .semibold))
+                Text(item.title).font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary).lineLimit(1)
                     .multilineTextAlignment(item.kind == .artist ? .center : .leading)
                     .frame(maxWidth: .infinity, alignment: item.kind == .artist ? .center : .leading)
                 if !item.subtitle.isEmpty {
-                    Text(item.subtitle).font(.system(size: 11)).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                    Text(item.subtitle).font(.system(size: 12)).foregroundStyle(Theme.textSecondary).lineLimit(1)
                 }
             }
         }
@@ -179,7 +179,7 @@ struct PlaylistShelf: View {
                 .foregroundStyle(Theme.textPrimary).padding(.horizontal, 16)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) {
-                    ForEach(playlists) { pl in CardCircleOrSquare(item: pl).frame(width: 140) }
+                    ForEach(playlists) { pl in CardCircleOrSquare(item: pl).frame(width: 152) }
                 }
                 .padding(.horizontal, 16)
             }
@@ -201,16 +201,16 @@ struct ShelfRow: View {
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(Array(shelf.items.enumerated()), id: \.offset) { _, item in
                         if case .card(let card) = item {
-                            CardCircleOrSquare(item: card).frame(width: 140)
+                            CardCircleOrSquare(item: card).frame(width: 152)
                         } else if case .track(let track) = item {
                             Button { player.playRadio(from: track) } label: {
                                 VStack(alignment: .leading, spacing: 6) {
                                     ArtworkView(url: Artwork.upscale(track.thumbnailURL, to: 300), corner: 8)
-                                        .frame(width: 140, height: 140)
-                                    Text(track.title).font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(Theme.textPrimary).lineLimit(1).frame(width: 140, alignment: .leading)
-                                    Text(track.artistLine).font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
-                                        .lineLimit(1).frame(width: 140, alignment: .leading)
+                                        .frame(width: 152, height: 152)
+                                    Text(track.title).font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(Theme.textPrimary).lineLimit(1).frame(width: 152, alignment: .leading)
+                                    Text(track.artistLine).font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
+                                        .lineLimit(1).frame(width: 152, alignment: .leading)
                                 }
                             }
                             .buttonStyle(.plain)
@@ -244,11 +244,12 @@ struct HomeScreen: View {
                         ForEach(playlists.prefix(6)) { pl in
                             Button { nav.open(pl) } label: {
                                 HStack(spacing: 8) {
-                                    ArtworkView(url: pl.thumbnailURL, corner: 4).frame(width: 44, height: 44)
-                                    Text(pl.title).font(.system(size: 12.5, weight: .semibold))
+                                    ArtworkView(url: pl.thumbnailURL, corner: 4).frame(width: 52, height: 52)
+                                    Text(pl.title).font(.system(size: 13.5, weight: .semibold))
                                         .foregroundStyle(Theme.textPrimary).lineLimit(2)
                                     Spacer(minLength: 0)
                                 }
+                                .padding(.trailing, 8)
                                 .background(Theme.card, in: RoundedRectangle(cornerRadius: 6))
                             }
                             .buttonStyle(.plain)
@@ -394,7 +395,7 @@ struct LibraryScreen: View {
     @State private var songSort: SortMode = .recent
     @State private var cardSort: SortMode = .recent
 
-    private let cols = [GridItem(.adaptive(minimum: 150), spacing: 14)]
+    private let cols = [GridItem(.adaptive(minimum: 160), spacing: 14)]
 
     private var visibleTracks: [Track] {
         TrackSort.apply(tracks, filter: filter, sort: songSort, keepOrder: false)

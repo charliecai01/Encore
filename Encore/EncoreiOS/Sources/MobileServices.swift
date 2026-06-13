@@ -169,7 +169,10 @@ final class LibraryStore: ObservableObject {
         guard !loaded, AuthManager.shared.isSignedIn else { return }
         loaded = true
         playlists = (try? await YTM.shared.libraryPlaylists()) ?? []
-        Task { _ = await self.songs() }
+        // Warm liked songs + every playlist page into the cache (disk-backed)
+        // in the background, so hearts are correct app-wide and playlists open
+        // instantly instead of fetching on first tap.
+        Task { _ = await self.allKnownTracks() }
     }
 
     func songs(forceRefresh: Bool = false) async -> [Track] {

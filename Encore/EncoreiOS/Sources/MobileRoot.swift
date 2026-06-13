@@ -102,15 +102,15 @@ struct MiniPlayer: View {
             player.showNowPlaying = true
         } label: {
             VStack(spacing: 0) {
-                HStack(spacing: 10) {
+                HStack(spacing: 11) {
                     ArtworkView(url: player.current?.thumbnailURL, corner: 5)
-                        .frame(width: 40, height: 40)
+                        .frame(width: 46, height: 46)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(player.current?.title ?? "")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Theme.textPrimary).lineLimit(1)
                         Text(player.current?.artistLine ?? "")
-                            .font(.system(size: 11))
+                            .font(.system(size: 12))
                             .foregroundStyle(Theme.textSecondary).lineLimit(1)
                     }
                     Spacer()
@@ -119,28 +119,29 @@ struct MiniPlayer: View {
                     } label: {
                         Image(systemName: player.current.map { player.likedIds.contains($0.videoId) } == true
                               ? "heart.fill" : "heart")
-                            .font(.system(size: 16))
+                            .font(.system(size: 18))
                             .foregroundStyle(player.current.map { player.likedIds.contains($0.videoId) } == true
                                              ? Theme.accent : Theme.textSecondary)
+                            .frame(width: 40, height: 44)
                     }
                     .buttonStyle(.plain)
                     Button { player.togglePlay() } label: {
                         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 18, weight: .bold))
+                            .font(.system(size: 20, weight: .bold))
                             .foregroundStyle(Theme.textPrimary)
-                            .frame(width: 32, height: 32)
+                            .frame(width: 44, height: 44)
                     }
                     .buttonStyle(.plain)
                     Button { player.next() } label: {
                         Image(systemName: "forward.fill")
-                            .font(.system(size: 15))
+                            .font(.system(size: 17))
                             .foregroundStyle(Theme.textPrimary)
-                            .frame(width: 30, height: 32)
+                            .frame(width: 40, height: 44)
                     }
                     .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 10)
-                .padding(.vertical, 7)
+                .padding(.vertical, 8)
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Rectangle().fill(.white.opacity(0.12)).frame(height: 2)
