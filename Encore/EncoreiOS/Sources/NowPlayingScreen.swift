@@ -36,7 +36,7 @@ struct NowPlayingScreen: View {
                 case .queue: QueuePane()
                 }
             }
-            .padding(.top, 14) // clear the Dynamic Island
+            .padding(.top, 32) // clear the Dynamic Island
             .padding(.bottom, 12)
             .frame(maxWidth: .infinity)
         }
