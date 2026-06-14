@@ -409,11 +409,8 @@ struct LibraryScreen: View {
         TrackSort.cards(cards, filter: filter, sort: cardSort)
     }
     private var sortOptions: [SortMode] {
-        switch tab {
-        case .songs: return [.recent, .title, .artist, .album]
-        case .albums: return [.recent, .title, .artist]
-        default: return [.recent, .title]
-        }
+        // Full options in every Library tab.
+        [.recent, .title, .artist, .album]
     }
 
     var body: some View {

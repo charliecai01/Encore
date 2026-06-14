@@ -133,7 +133,8 @@ struct LibraryView: View {
     }
 
     private var cardSortOptions: [CardSort] {
-        tab == .albums ? CardSort.allCases : [.recent, .title]
+        // Full options in every Library tab.
+        CardSort.allCases
     }
 
     /// On the Artists tab a card's title IS the artist name.
