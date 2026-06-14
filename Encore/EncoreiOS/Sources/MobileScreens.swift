@@ -5,6 +5,9 @@ import EncoreCore
 
 enum SortMode: String, CaseIterable {
     case recent = "Recently Added"
+    /// Playlist pages only: newest-first by playlist position (reverse order).
+    /// Labelled "Recently Added"; `recent` is relabelled "Playlist Order" there.
+    case added = "Added"
     case title = "Title"
     case artist = "Artist"
     case album = "Album"
@@ -25,6 +28,7 @@ enum TrackSort {
         if keepOrder { return result }
         switch sort {
         case .recent: return result
+        case .added: return result.reversed()
         case .title: return result.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
         case .artist: return result.sorted { cmp($0.artistLine, $1.artistLine, $0.title, $1.title) }
         case .album: return result.sorted { cmp($0.album?.name ?? "~", $1.album?.name ?? "~", $0.title, $1.title) }
@@ -44,6 +48,7 @@ enum TrackSort {
         }
         switch sort {
         case .recent: return result
+        case .added: return result.reversed()
         case .title, .artist: return result.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
         case .album: return result.sorted { $0.subtitle.localizedCaseInsensitiveCompare($1.subtitle) == .orderedAscending }
         }
@@ -405,7 +410,7 @@ struct LibraryScreen: View {
     }
     private var sortOptions: [SortMode] {
         switch tab {
-        case .songs: return SortMode.allCases
+        case .songs: return [.recent, .title, .artist, .album]
         case .albums: return [.recent, .title, .artist]
         default: return [.recent, .title]
         }
@@ -598,8 +603,14 @@ struct CollectionScreen: View {
                         }.buttonStyle(.bordered)
                     }.padding(.horizontal, 16)
                     SortFilterBar(filter: $filter, sort: $sort,
-                                  sortOptions: isAlbum ? [] : SortMode.allCases,
-                                  sortLabel: { $0 == .recent ? "Playlist Order" : $0.rawValue })
+                                  sortOptions: isAlbum ? [] : [.recent, .added, .title, .artist, .album],
+                                  sortLabel: {
+                                      switch $0 {
+                                      case .recent: return "Playlist Order"
+                                      case .added: return "Recently Added"
+                                      default: return $0.rawValue
+                                      }
+                                  })
                     LazyVStack(spacing: 0) {
                         ForEach(Array(shown.enumerated()), id: \.offset) { i, t in
                             TrackRowView(track: t,

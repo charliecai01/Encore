@@ -25,5 +25,12 @@ let package = Package(
             dependencies: ["EncoreCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        // Shared-core unit tests. EncoreCore is the brain both the macOS and
+        // iOS apps link, so these cover logic for both platforms. Run: swift test
+        .testTarget(
+            name: "EncoreCoreTests",
+            dependencies: ["EncoreCore"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
     ]
 )

@@ -30,6 +30,7 @@ struct CollectionView: View {
 
     enum CollectionSort: String, CaseIterable {
         case order = "Playlist Order"
+        case added = "Recently Added"
         case title = "Title"
         case artist = "Artist"
         case album = "Album"
@@ -56,6 +57,9 @@ struct CollectionView: View {
         switch sort {
         case .order:
             return result
+        case .added:
+            // No per-track added date from YouTube; newest-first by position.
+            return result.reversed()
         case .title:
             return result.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
         case .artist:
