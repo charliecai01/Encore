@@ -16,6 +16,11 @@ public enum CJK {
     public static func toSimplified(_ s: String) -> String {
         s.applyingTransform(StringTransform("Hant-Hans"), reverse: false) ?? s
     }
+
+    /// True if the string contains any Han (Chinese) characters.
+    public static func hasHan(_ s: String) -> Bool {
+        s.range(of: #"\p{Han}"#, options: .regularExpression) != nil
+    }
 }
 
 public extension String {

@@ -183,8 +183,15 @@ struct ContentRouter: View {
         Group {
             switch nav.current {
             case .home:
-                ShelvesScreen(title: greeting(), loader: { try await YTM.shared.home() },
-                              showsSignInPrompt: true, cacheKey: "home")
+                ShelvesScreen(title: greeting(), loader: {
+                    var shelves = (try? await YTM.shared.home()) ?? []
+                    let discover = await LibraryStore.shared.discover()
+                    if !discover.isEmpty {
+                        shelves.insert(Shelf(title: "Discover · Fresh for you",
+                                             items: discover.map { .card($0.asSongCard) }), at: 0)
+                    }
+                    return shelves
+                }, showsSignInPrompt: true, cacheKey: "home")
                     .id("home")
             case .explore:
                 ShelvesScreen(title: "Explore", loader: { try await YTM.shared.explore() },

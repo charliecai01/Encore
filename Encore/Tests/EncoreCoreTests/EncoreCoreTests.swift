@@ -204,6 +204,34 @@ final class EncoreCoreTests: XCTestCase {
         XCTAssertEqual(PlayedEpisodes.all(), ["b"])
     }
 
+    // MARK: - Discovery
+
+    func testDiscoveryCuratePrefersCrossLanguageAndExcludes() {
+        var pool = (0..<10).map { Track(videoId: "e\($0)", title: "Eng \($0)", artistLine: "Artist") }
+        pool.append(Track(videoId: "c1", title: "小鎮姑娘", artistLine: "陶喆")) // CJK, should be dropped
+        pool.append(Track(videoId: "e0", title: "dup", artistLine: "Artist"))   // duplicate id
+        // Mostly-CJK listener → prefer English; "e1" is already known (excluded).
+        let out = Discovery.curate(candidates: pool, exclude: ["e1"], preferNonCJK: true, limit: 20)
+        XCTAssertFalse(out.contains { $0.videoId == "e1" })            // excluded
+        XCTAssertFalse(out.contains { Discovery.isCJK($0) })           // cross-language
+        XCTAssertEqual(Set(out.map(\.videoId)).count, out.count)       // deduped
+        XCTAssertEqual(out.count, 9)                                   // 10 english − 1 excluded
+    }
+
+    func testDiscoveryFallsBackWhenPreferredTooThin() {
+        let cn = (0..<10).map { Track(videoId: "c\($0)", title: "歌\($0)", artistLine: "歌手") }
+        // Want English but pool is all Chinese → fall back to fresh picks, not empty.
+        let out = Discovery.curate(candidates: cn, exclude: [], preferNonCJK: true, limit: 5)
+        XCTAssertEqual(out.count, 5)
+    }
+
+    func testDiscoveryExcludesEpisodes() {
+        let song = Track(videoId: "s", title: "Song", artistLine: "A")
+        let ep = Track(videoId: "p", title: "Ep", artistLine: "Show", isEpisode: true)
+        let out = Discovery.curate(candidates: [song, ep], exclude: [], preferNonCJK: true, limit: 10)
+        XCTAssertEqual(out.map(\.videoId), ["s"])
+    }
+
     func testCardArrangeFilterThenReverse() {
         let cards = sampleCards()
         XCTAssertEqual(LibrarySort.arrangeCards(cards, query: "beta", order: .source).map(\.title), ["Zebra"])

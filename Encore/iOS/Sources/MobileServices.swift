@@ -242,10 +242,32 @@ final class LibraryStore: ObservableObject {
         return all.filter { seen.insert($0.videoId).inserted }
     }
 
+    private var discoverCache: [Track]?
+
+    /// Client-side "Discover": fresh tracks (excluding everything you already
+    /// know + recent history), biased to the opposite language of your taste.
+    func discover() async -> [Track] {
+        guard AuthManager.shared.isSignedIn else { return [] }
+        if let discoverCache { return discoverCache }
+        let known = await allKnownTracks()
+        guard known.count >= 3 else { return [] }
+        var exclude = Set(known.map(\.videoId))
+        if let history = try? await YTM.shared.history() {
+            exclude.formUnion(history.flatMap(\.tracks).map(\.videoId))
+        }
+        let seeds = Array(known.shuffled().prefix(12)).map(\.videoId)
+        let pool = await YTM.shared.discoverPool(seeds: seeds)
+        let result = Discovery.curate(candidates: pool, exclude: exclude,
+                                      preferNonCJK: Discovery.cjkFraction(known) > 0.5, limit: 40)
+        discoverCache = result
+        return result
+    }
+
     func invalidate() {
         loaded = false; playlists = []
         songsCache = nil; songsTask = nil
         allTracksCache = nil; allTracksTask = nil; allTracksRefreshed = false
+        discoverCache = nil
         PageCache.shared.clear()
         Task { await loadIfNeeded() }
     }

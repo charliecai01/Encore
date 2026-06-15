@@ -229,6 +229,7 @@ struct HomeScreen: View {
     @EnvironmentObject var nav: Nav
     @State private var shelves: [Shelf] = []
     @State private var playlists: [CardItem] = []
+    @State private var discoverShelf: Shelf?
     @State private var loading = true
 
     private let quickCols = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
@@ -258,6 +259,7 @@ struct HomeScreen: View {
                     PlaylistShelf(title: "Your Playlists", playlists: playlists)
                 }
                 if loading { ProgressView().frame(maxWidth: .infinity).padding(.top, 60) }
+                if let discoverShelf { ShelfRow(shelf: discoverShelf) }
                 ForEach(shelves) { ShelfRow(shelf: $0) }
                 Color.clear.frame(height: 80)
             }
@@ -280,6 +282,10 @@ struct HomeScreen: View {
         if auth.isSignedIn {
             playlists = (try? await YTM.shared.libraryPlaylists()) ?? []
             await library.loadIfNeeded()
+            let discover = await library.discover()
+            if !discover.isEmpty {
+                discoverShelf = Shelf(title: "Discover · Fresh for you", items: discover.map { .card($0.asSongCard) })
+            }
         }
     }
 }
@@ -558,6 +564,7 @@ struct CollectionScreen: View {
     @State private var loading = true
     @State private var filter = ""
     @State private var sort: SortMode = .recent
+    @State private var showEdit = false
 
     private var cacheKey: String {
         switch kind {
@@ -566,6 +573,7 @@ struct CollectionScreen: View {
         case .podcast(let id): return "podcast-\(id)"
         }
     }
+    private var playlistId: String? { if case .playlist(let id) = kind { return id }; return nil }
     private var sortStorageKey: String { "sort-\(cacheKey)" }
     private var isAlbum: Bool { if case .album = kind { return true }; return false }
     private var isPlaylist: Bool { if case .playlist = kind { return true }; return false }
@@ -621,6 +629,23 @@ struct CollectionScreen: View {
         }
         .background(Theme.bg)
         .navigationTitle(page?.title ?? "").navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if isPlaylist, page != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showEdit = true } label: { Image(systemName: "pencil") }
+                }
+            }
+        }
+        .sheet(isPresented: $showEdit) {
+            if let id = playlistId, let page {
+                PlaylistEditSheet(playlistId: id, title: page.title, description: page.description ?? "") { newTitle, newDesc in
+                    if var updated = self.page {
+                        updated.title = newTitle; updated.description = newDesc
+                        self.page = updated; PageCache.shared.collections[cacheKey] = updated
+                    }
+                }
+            }
+        }
         .task {
             // Playlists always open sorted by artist.
             if isPlaylist {
@@ -658,6 +683,72 @@ struct CollectionScreen: View {
                 page = updated; PageCache.shared.collections[cacheKey] = updated
                 player.showToast("Removed from playlist")
             } else { player.showToast("Couldn't remove — you can only edit your own playlists") }
+        }
+    }
+}
+
+// MARK: - Playlist edit sheet
+
+struct PlaylistEditSheet: View {
+    let playlistId: String
+    @State var title: String
+    @State var description: String
+    var onSaved: (String, String) -> Void
+
+    @EnvironmentObject var player: PlayerEngine
+    @Environment(\.dismiss) private var dismiss
+    @State private var privacy = "KEEP"
+    @State private var saving = false
+    @State private var error: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Name") {
+                    TextField("Playlist name", text: $title)
+                }
+                Section("Description") {
+                    TextField("Description", text: $description, axis: .vertical).lineLimit(3...6)
+                }
+                Section("Privacy") {
+                    Picker("Privacy", selection: $privacy) {
+                        Text("Keep current").tag("KEEP")
+                        Text("Private").tag("PRIVATE")
+                        Text("Public").tag("PUBLIC")
+                        Text("Unlisted").tag("UNLISTED")
+                    }
+                }
+                if let error { Text(error).foregroundStyle(.red).font(.footnote) }
+                Text("YouTube Music doesn't allow custom artwork for regular playlists — art is auto-generated from the tracks.")
+                    .font(.footnote).foregroundStyle(Theme.textTertiary)
+            }
+            .navigationTitle("Edit Playlist").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }.disabled(saving || title.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func save() {
+        saving = true; error = nil
+        let name = title.trimmingCharacters(in: .whitespaces)
+        Task {
+            let ok = (try? await YTM.shared.editPlaylist(
+                playlistId: playlistId, title: name, description: description,
+                privacy: privacy == "KEEP" ? nil : privacy)) ?? false
+            saving = false
+            if ok {
+                onSaved(name, description)
+                player.showToast("Playlist updated")
+                LibraryStore.shared.invalidate()
+                dismiss()
+            } else {
+                error = "Couldn't save — you can only edit your own playlists."
+            }
         }
     }
 }

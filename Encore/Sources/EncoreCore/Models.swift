@@ -91,6 +91,13 @@ public struct Track: Identifiable, Hashable, Codable {
     }
 }
 
+public extension Track {
+    /// Represent a track as a playable song card (for shelves/carousels).
+    var asSongCard: CardItem {
+        CardItem(kind: .song, title: title, subtitle: artistLine, thumbnailURL: thumbnailURL, videoId: videoId)
+    }
+}
+
 public enum Artwork {
     /// Google-hosted thumbnails encode size in the URL; rewrite for a larger
     /// square. Handles both `=wN-hN-...` and `=sN-...` modifier styles.

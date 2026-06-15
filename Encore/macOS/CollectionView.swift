@@ -27,6 +27,7 @@ struct CollectionView: View {
     @State private var palette = Palette.fallback
     @State private var sort: CollectionSort = .order
     @State private var filterText = ""
+    @State private var showEdit = false
 
     enum CollectionSort: String, CaseIterable {
         case order = "Playlist Order"
@@ -98,6 +99,16 @@ struct CollectionView: View {
             // Don't persist for playlists — they should reopen sorted by artist.
             if !isPlaylist { UserDefaults.standard.set(newSort.rawValue, forKey: sortStorageKey) }
         }
+        .sheet(isPresented: $showEdit) {
+            if case .playlist(let id) = kind, let page {
+                PlaylistEditSheet(playlistId: id, title: page.title, description: page.description ?? "") { newTitle, newDesc in
+                    if var updated = self.page {
+                        updated.title = newTitle; updated.description = newDesc
+                        self.page = updated; PageCache.shared.collections[cacheKey] = updated
+                    }
+                }
+            }
+        }
     }
 
     private func header(_ page: CollectionPage) -> some View {
@@ -139,6 +150,9 @@ struct CollectionView: View {
                         PillButton(title: "Radio", icon: "dot.radiowaves.left.and.right") {
                             player.playRadio(from: first)
                         }
+                    }
+                    if isPlaylist {
+                        PillButton(title: "Edit", icon: "pencil") { showEdit = true }
                     }
                 }
                 .padding(.top, 6)

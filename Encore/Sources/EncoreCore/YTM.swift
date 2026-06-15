@@ -303,6 +303,37 @@ public final class YTM: @unchecked Sendable {
         return r["status"].string?.contains("SUCCEEDED") ?? false
     }
 
+    /// Rename / re-describe / re-scope an owned playlist. Pass nil to leave a
+    /// field unchanged. Privacy is "PUBLIC" | "PRIVATE" | "UNLISTED".
+    public func editPlaylist(playlistId: String, title: String? = nil,
+                             description: String? = nil, privacy: String? = nil) async throws -> Bool {
+        let pid = playlistId.hasPrefix("VL") ? String(playlistId.dropFirst(2)) : playlistId
+        var actions: [[String: Any]] = []
+        if let title { actions.append(["action": "ACTION_SET_PLAYLIST_NAME", "playlistName": title]) }
+        if let description {
+            actions.append(["action": "ACTION_SET_PLAYLIST_DESCRIPTION", "playlistDescription": description])
+        }
+        if let privacy { actions.append(["action": "ACTION_SET_PLAYLIST_PRIVACY", "playlistPrivacy": privacy]) }
+        guard !actions.isEmpty else { return true }
+        let r = try await net.post("browse/edit_playlist", body: ["playlistId": pid, "actions": actions])
+        return r["status"].string?.contains("SUCCEEDED") ?? false
+    }
+
+    // MARK: - Discovery
+
+    /// Flattened radio pools seeded from the given videoIds (deduped by the
+    /// caller). Used to build a client-side "Discover" shelf.
+    public func discoverPool(seeds: [String]) async -> [Track] {
+        var pool: [Track] = []
+        await withTaskGroup(of: [Track].self) { group in
+            for seed in seeds.prefix(12) {
+                group.addTask { (try? await self.radioQueue(for: seed))?.tracks ?? [] }
+            }
+            for await tracks in group { pool.append(contentsOf: tracks) }
+        }
+        return pool
+    }
+
     // MARK: - Continuations
 
     /// Fetch follow-up pages for list responses; supports both the modern
