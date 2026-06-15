@@ -19,37 +19,29 @@ struct NowPlayingScreen: View {
     }
 
     var body: some View {
-        // GeometryReader ignores the safe area so safeAreaInsets.top reports the
-        // real Dynamic Island / notch inset; pad content below it. A fixed
-        // padding can't clear the island reliably across devices.
-        GeometryReader { geo in
-            ZStack {
-                backdrop
-                VStack(spacing: 16) {
-                    Capsule().fill(.white.opacity(0.3)).frame(width: 36, height: 5)
+        // Content respects the safe area (so it sits below the Dynamic Island);
+        // only the blurred backdrop ignores it, as a full-bleed background.
+        VStack(spacing: 16) {
+            Capsule().fill(.white.opacity(0.3)).frame(width: 36, height: 5)
 
-                    Picker("", selection: $tab) {
-                        Text("Song").tag(Tab.song)
-                        Text("Lyrics").tag(Tab.lyrics)
-                        Text("Queue").tag(Tab.queue)
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal, 40)
-
-                    switch tab {
-                    case .song: songPane
-                    case .lyrics: LyricsPane()
-                    case .queue: QueuePane()
-                    }
-                }
-                .padding(.top, geo.safeAreaInsets.top + 12)
-                .padding(.bottom, geo.safeAreaInsets.bottom + 12)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            Picker("", selection: $tab) {
+                Text("Song").tag(Tab.song)
+                Text("Lyrics").tag(Tab.lyrics)
+                Text("Queue").tag(Tab.queue)
             }
-            .frame(width: geo.size.width, height: geo.size.height)
-            .clipped()
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 40)
+
+            switch tab {
+            case .song: songPane
+            case .lyrics: LyricsPane()
+            case .queue: QueuePane()
+            }
         }
-        .ignoresSafeArea()
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(backdrop)
         .preferredColorScheme(.dark)
         .gesture(DragGesture().onEnded { v in if v.translation.height > 90 { dismiss() } })
     }
