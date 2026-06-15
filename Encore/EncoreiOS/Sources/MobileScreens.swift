@@ -619,13 +619,17 @@ struct CollectionScreen: View {
         .background(Theme.bg)
         .navigationTitle(page?.title ?? "").navigationBarTitleDisplayMode(.inline)
         .task {
-            if let saved = UserDefaults.standard.string(forKey: sortStorageKey).flatMap(SortMode.init) {
+            // Playlists always open sorted by artist.
+            if isPlaylist {
+                sort = .artist
+            } else if let saved = UserDefaults.standard.string(forKey: sortStorageKey).flatMap(SortMode.init) {
                 sort = saved
             }
             await load()
         }
         .onChange(of: sort) { _, newSort in
-            UserDefaults.standard.set(newSort.rawValue, forKey: sortStorageKey)
+            // Don't persist for playlists — they should reopen sorted by artist.
+            if !isPlaylist { UserDefaults.standard.set(newSort.rawValue, forKey: sortStorageKey) }
         }
     }
 
