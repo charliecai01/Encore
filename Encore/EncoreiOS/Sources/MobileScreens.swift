@@ -14,43 +14,36 @@ enum SortMode: String, CaseIterable {
 }
 
 enum TrackSort {
-    /// Filter (CJK-aware) then sort tracks. `order` keeps source order.
+    /// Filter (CJK-aware) then sort tracks. `keepOrder` forces source order.
+    /// Delegates to the shared, unit-tested `LibrarySort` so iOS/macOS match.
     static func apply(_ tracks: [Track], filter: String, sort: SortMode, keepOrder: Bool) -> [Track] {
-        var result = tracks
-        let q = filter.trimmingCharacters(in: .whitespaces).matchNormalized
-        if !q.isEmpty {
-            result = result.filter {
-                $0.title.matches(normalizedQuery: q)
-                    || $0.artistLine.matches(normalizedQuery: q)
-                    || ($0.album?.name.matches(normalizedQuery: q) ?? false)
-            }
-        }
-        if keepOrder { return result }
-        switch sort {
-        case .recent: return result
-        case .added: return result.reversed()
-        case .title: return result.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-        case .artist: return result.sorted { cmp($0.artistLine, $1.artistLine, $0.title, $1.title) }
-        case .album: return result.sorted { cmp($0.album?.name ?? "~", $1.album?.name ?? "~", $0.title, $1.title) }
-        }
-    }
-    private static func cmp(_ a: String, _ b: String, _ at: String, _ bt: String) -> Bool {
-        let c = a.localizedCaseInsensitiveCompare(b)
-        if c != .orderedSame { return c == .orderedAscending }
-        return at.localizedCaseInsensitiveCompare(bt) == .orderedAscending
+        let filtered = LibrarySort.filter(tracks, query: filter)
+        if keepOrder { return filtered }
+        return LibrarySort.sort(filtered, by: sort.trackOrder)
     }
 
     static func cards(_ cards: [CardItem], filter: String, sort: SortMode) -> [CardItem] {
-        var result = cards
-        let q = filter.trimmingCharacters(in: .whitespaces).matchNormalized
-        if !q.isEmpty {
-            result = result.filter { $0.title.matches(normalizedQuery: q) || $0.subtitle.matches(normalizedQuery: q) }
+        LibrarySort.arrangeCards(cards, query: filter, order: sort.cardOrder)
+    }
+}
+
+private extension SortMode {
+    var trackOrder: TrackOrder {
+        switch self {
+        case .recent: return .source
+        case .added: return .reversed
+        case .title: return .title
+        case .artist: return .artist
+        case .album: return .album
         }
-        switch sort {
-        case .recent: return result
-        case .added: return result.reversed()
-        case .title, .artist: return result.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-        case .album: return result.sorted { $0.subtitle.localizedCaseInsensitiveCompare($1.subtitle) == .orderedAscending }
+    }
+    /// Cards only carry title + subtitle, so artist/album both key off subtitle.
+    var cardOrder: CardOrder {
+        switch self {
+        case .recent: return .source
+        case .added: return .reversed
+        case .title: return .title
+        case .artist, .album: return .subtitle
         }
     }
 }
@@ -426,7 +419,7 @@ struct LibraryScreen: View {
                     SortFilterBar(filter: $filter,
                                   sort: tab == .songs ? $songSort : $cardSort,
                                   sortOptions: sortOptions,
-                                  sortLabel: { tab == .artists && $0 == .title ? "Artist" : $0.rawValue })
+                                  sortLabel: { tab == .artists && $0 == .title ? "Name" : $0.rawValue })
                 }
 
                 if !auth.isSignedIn {

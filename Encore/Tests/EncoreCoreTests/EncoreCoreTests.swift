@@ -121,4 +121,74 @@ final class EncoreCoreTests: XCTestCase {
         XCTAssertEqual("HELLO".matchNormalized, "hello")
         XCTAssertNil(CJK.toTraditional("hello"))
     }
+
+    // MARK: - LibrarySort: track ordering
+
+    private func sampleTracks() -> [Track] {
+        [
+            Track(videoId: "1", title: "Banana", artistLine: "Zed", album: Ref(name: "Yellow")),
+            Track(videoId: "2", title: "apple", artistLine: "alpha", album: Ref(name: "Box")),
+            Track(videoId: "3", title: "Cherry", artistLine: "Mike", album: nil),
+        ]
+    }
+
+    func testTrackSortSourceAndReversed() {
+        let t = sampleTracks()
+        XCTAssertEqual(LibrarySort.sort(t, by: .source).map(\.videoId), ["1", "2", "3"])
+        XCTAssertEqual(LibrarySort.sort(t, by: .reversed).map(\.videoId), ["3", "2", "1"])
+    }
+
+    func testTrackSortTitleIsCaseInsensitive() {
+        // "apple" must sort before "Banana" despite lowercase.
+        XCTAssertEqual(LibrarySort.sort(sampleTracks(), by: .title).map(\.title),
+                       ["apple", "Banana", "Cherry"])
+    }
+
+    func testTrackSortArtist() {
+        XCTAssertEqual(LibrarySort.sort(sampleTracks(), by: .artist).map(\.artistLine),
+                       ["alpha", "Mike", "Zed"])
+    }
+
+    func testTrackSortAlbumPutsMissingLast() {
+        // nil album ("~") sorts last; "Box" before "Yellow".
+        XCTAssertEqual(LibrarySort.sort(sampleTracks(), by: .album).map(\.videoId),
+                       ["2", "1", "3"])
+    }
+
+    // MARK: - LibrarySort: filtering (CJK-aware)
+
+    func testTrackFilterMatchesTitleArtistAlbum() {
+        let t = sampleTracks()
+        XCTAssertEqual(LibrarySort.filter(t, query: "cherry").map(\.videoId), ["3"])
+        XCTAssertEqual(LibrarySort.filter(t, query: "alpha").map(\.videoId), ["2"])
+        XCTAssertEqual(LibrarySort.filter(t, query: "yellow").map(\.videoId), ["1"])
+        XCTAssertEqual(LibrarySort.filter(t, query: "   ").count, 3) // blank = no filter
+    }
+
+    func testTrackFilterIsScriptInsensitive() {
+        let t = [Track(videoId: "x", title: "愛", artistLine: "歌手")]
+        // Simplified query finds the Traditional title.
+        XCTAssertEqual(LibrarySort.filter(t, query: "爱").count, 1)
+    }
+
+    // MARK: - LibrarySort: cards
+
+    private func sampleCards() -> [CardItem] {
+        [
+            CardItem(kind: .album, title: "Zebra", subtitle: "Beta"),
+            CardItem(kind: .album, title: "apron", subtitle: "Alpha"),
+        ]
+    }
+
+    func testCardSortTitleAndSubtitle() {
+        XCTAssertEqual(LibrarySort.sortCards(sampleCards(), by: .title).map(\.title), ["apron", "Zebra"])
+        // Sort by subtitle (e.g. the Albums tab "Artist" sort) — Alpha before Beta.
+        XCTAssertEqual(LibrarySort.sortCards(sampleCards(), by: .subtitle).map(\.title), ["apron", "Zebra"])
+    }
+
+    func testCardArrangeFilterThenReverse() {
+        let cards = sampleCards()
+        XCTAssertEqual(LibrarySort.arrangeCards(cards, query: "beta", order: .source).map(\.title), ["Zebra"])
+        XCTAssertEqual(LibrarySort.sortCards(cards, by: .reversed).map(\.title), ["apron", "Zebra"])
+    }
 }

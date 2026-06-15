@@ -33,56 +33,24 @@ struct LibraryView: View {
     private let columns = [GridItem(.adaptive(minimum: 170, maximum: 210), spacing: 8)]
 
     private var visibleTracks: [Track] {
-        var result = tracks
-        let q = filterText.trimmingCharacters(in: .whitespaces).matchNormalized
-        if !q.isEmpty {
-            result = result.filter {
-                $0.title.matches(normalizedQuery: q)
-                    || $0.artistLine.matches(normalizedQuery: q)
-                    || ($0.album?.name.matches(normalizedQuery: q) ?? false)
-            }
-        }
+        let order: TrackOrder
         switch songSort {
-        case .recent:
-            return result
-        case .title:
-            return result.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-        case .artist:
-            return result.sorted {
-                let cmp = $0.artistLine.localizedCaseInsensitiveCompare($1.artistLine)
-                if cmp != .orderedSame { return cmp == .orderedAscending }
-                return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
-            }
-        case .album:
-            return result.sorted {
-                let a0 = $0.album?.name ?? "~", a1 = $1.album?.name ?? "~"
-                let cmp = a0.localizedCaseInsensitiveCompare(a1)
-                if cmp != .orderedSame { return cmp == .orderedAscending }
-                return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
-            }
+        case .recent: order = .source
+        case .title: order = .title
+        case .artist: order = .artist
+        case .album: order = .album
         }
+        return LibrarySort.arrange(tracks, query: filterText, order: order)
     }
 
     private var visibleCards: [CardItem] {
-        var result = cards
-        let q = filterText.trimmingCharacters(in: .whitespaces).matchNormalized
-        if !q.isEmpty {
-            result = result.filter {
-                $0.title.matches(normalizedQuery: q) || $0.subtitle.matches(normalizedQuery: q)
-            }
-        }
+        let order: CardOrder
         switch cardSort {
-        case .recent:
-            return result
-        case .title:
-            return result.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-        case .artist:
-            return result.sorted {
-                let cmp = $0.subtitle.localizedCaseInsensitiveCompare($1.subtitle)
-                if cmp != .orderedSame { return cmp == .orderedAscending }
-                return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
-            }
+        case .recent: order = .source
+        case .title: order = .title
+        case .artist: order = .subtitle
         }
+        return LibrarySort.arrangeCards(cards, query: filterText, order: order)
     }
 
     var body: some View {
@@ -139,7 +107,7 @@ struct LibraryView: View {
 
     /// On the Artists tab a card's title IS the artist name.
     private func cardSortLabel(_ sort: CardSort) -> String {
-        tab == .artists && sort == .title ? "Artist" : sort.rawValue
+        tab == .artists && sort == .title ? "Name" : sort.rawValue
     }
 
     /// One card per artist across the entire collection. Prefers YouTube's

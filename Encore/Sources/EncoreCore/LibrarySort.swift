@@ -1,0 +1,94 @@
+import Foundation
+
+/// Shared, pure sort/filter logic for library & collection lists, so the macOS
+/// and iOS apps behave identically (and it's unit-testable without any UI).
+
+public enum TrackOrder: Sendable {
+    case source        // keep as-is (e.g. "Playlist Order" / library's recently-added)
+    case reversed      // reverse of source (e.g. playlist "Recently Added")
+    case title
+    case artist
+    case album
+}
+
+public enum CardOrder: Sendable {
+    case source
+    case reversed
+    case title
+    case subtitle
+}
+
+public enum LibrarySort {
+
+    // MARK: Tracks
+
+    public static func filter(_ tracks: [Track], query: String) -> [Track] {
+        let q = query.trimmingCharacters(in: .whitespaces).matchNormalized
+        guard !q.isEmpty else { return tracks }
+        return tracks.filter {
+            $0.title.matches(normalizedQuery: q)
+                || $0.artistLine.matches(normalizedQuery: q)
+                || ($0.album?.name.matches(normalizedQuery: q) ?? false)
+        }
+    }
+
+    public static func sort(_ tracks: [Track], by order: TrackOrder) -> [Track] {
+        switch order {
+        case .source:
+            return tracks
+        case .reversed:
+            return tracks.reversed()
+        case .title:
+            return tracks.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        case .artist:
+            return tracks.sorted { tieBreak($0.artistLine, $1.artistLine, $0.title, $1.title) }
+        case .album:
+            // Tracks with no album sort last (a "~" sentinel would sort them
+            // FIRST under locale-aware comparison, where symbols precede letters).
+            return tracks.sorted { lhs, rhs in
+                let a = lhs.album?.name ?? "", b = rhs.album?.name ?? ""
+                if a.isEmpty != b.isEmpty { return b.isEmpty }
+                return tieBreak(a, b, lhs.title, rhs.title)
+            }
+        }
+    }
+
+    /// Filter then sort in one call.
+    public static func arrange(_ tracks: [Track], query: String, order: TrackOrder) -> [Track] {
+        sort(filter(tracks, query: query), by: order)
+    }
+
+    // MARK: Cards
+
+    public static func filterCards(_ cards: [CardItem], query: String) -> [CardItem] {
+        let q = query.trimmingCharacters(in: .whitespaces).matchNormalized
+        guard !q.isEmpty else { return cards }
+        return cards.filter { $0.title.matches(normalizedQuery: q) || $0.subtitle.matches(normalizedQuery: q) }
+    }
+
+    public static func sortCards(_ cards: [CardItem], by order: CardOrder) -> [CardItem] {
+        switch order {
+        case .source:
+            return cards
+        case .reversed:
+            return cards.reversed()
+        case .title:
+            return cards.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        case .subtitle:
+            return cards.sorted { tieBreak($0.subtitle, $1.subtitle, $0.title, $1.title) }
+        }
+    }
+
+    public static func arrangeCards(_ cards: [CardItem], query: String, order: CardOrder) -> [CardItem] {
+        sortCards(filterCards(cards, query: query), by: order)
+    }
+
+    // MARK: -
+
+    /// Compare primary keys case-insensitively, breaking ties on a secondary key.
+    private static func tieBreak(_ a: String, _ b: String, _ a2: String, _ b2: String) -> Bool {
+        let c = a.localizedCaseInsensitiveCompare(b)
+        if c != .orderedSame { return c == .orderedAscending }
+        return a2.localizedCaseInsensitiveCompare(b2) == .orderedAscending
+    }
+}

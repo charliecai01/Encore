@@ -45,37 +45,15 @@ struct CollectionView: View {
     }
 
     private func visibleTracks(_ page: CollectionPage) -> [Track] {
-        var result = page.tracks
-        let q = filterText.trimmingCharacters(in: .whitespaces).matchNormalized
-        if !q.isEmpty {
-            result = result.filter {
-                $0.title.matches(normalizedQuery: q)
-                    || $0.artistLine.matches(normalizedQuery: q)
-                    || ($0.album?.name.matches(normalizedQuery: q) ?? false)
-            }
-        }
+        let order: TrackOrder
         switch sort {
-        case .order:
-            return result
-        case .added:
-            // No per-track added date from YouTube; newest-first by position.
-            return result.reversed()
-        case .title:
-            return result.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-        case .artist:
-            return result.sorted {
-                let cmp = $0.artistLine.localizedCaseInsensitiveCompare($1.artistLine)
-                if cmp != .orderedSame { return cmp == .orderedAscending }
-                return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
-            }
-        case .album:
-            return result.sorted {
-                let a0 = $0.album?.name ?? "~", a1 = $1.album?.name ?? "~"
-                let cmp = a0.localizedCaseInsensitiveCompare(a1)
-                if cmp != .orderedSame { return cmp == .orderedAscending }
-                return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
-            }
+        case .order: order = .source
+        case .added: order = .reversed   // no per-track date; newest-first by position
+        case .title: order = .title
+        case .artist: order = .artist
+        case .album: order = .album
         }
+        return LibrarySort.arrange(page.tracks, query: filterText, order: order)
     }
 
     var body: some View {
