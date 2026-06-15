@@ -241,6 +241,10 @@ Both platforms unless stated:
   YT plain → Genius; user-pickable, persisted); Up Next queue; video mode (macOS)
 - Create playlist; right-click/long-press → Add to Playlist / Remove from
   Playlist / Remove from Liked; like/unlike (authoritative state)
+- **Edit playlist** (own playlists): rename / description / privacy via an Edit
+  button → `PlaylistEditSheet` (`YTM.editPlaylist`). No custom art (unsupported).
+- **Discover shelf** on Home (both platforms): cross-language fresh picks
+  excluding known + history (`LibraryStore.discover()` + `EncoreCore.Discovery`)
 - **iOS performance:** library playlists are prefetched into the disk-backed
   `PageCache` on launch (via `allKnownTracks`) so playlists open instantly;
   larger tap targets across rows/mini-player/cards
@@ -311,20 +315,22 @@ expires server-side eventually; refresh by editing the (skip-worktree'd) file.
 
 ---
 
-## 9. Queued features (DO NOT start unless Charlie asks)
+## 9. Queued features
 
-1. **Discovery home recommendations** — cross-language genre recs (e.g. he
-   listens to Chinese R&B → recommend English R&B), excluding songs he already
-   knows. Build a client-side "Discover" shelf: seed radio queues / "fans also
-   like" shelves from his top tracks, filter OUT `allKnownTracks()` + history,
-   split language via the CJK `\p{Han}` detection. Google's server-driven home
-   can't be changed, so this is client-side.
-2. **Edit playlist name / album art / upload metadata** like the YT Music web —
-   playlist rename/description/privacy via `browse/edit_playlist`
-   (ACTION_SET_PLAYLIST_NAME etc.); custom art only exists for **uploads**
-   (regular playlists get auto art even on the website) → likely drive the
-   site's own edit dialog through the hidden WebView, like the macOS
-   `SiteSettingsSheet` does for audio quality.
+Both previously-queued items **shipped 2026-06-15**:
+1. **Discovery** — client-side "Discover · Fresh for you" shelf on Home (both
+   platforms). `LibraryStore.discover()` seeds radios (`YTM.discoverPool`) from a
+   sample of `allKnownTracks()`, excludes known + `FEmusic_history`, and biases
+   to the opposite language of the user's taste via `EncoreCore.Discovery`
+   (`curate` is pure + unit-tested; `CJK.hasHan`). Possible future polish:
+   genre/mood-anchored seeds, a dedicated Discover route, "fans also like" shelves.
+2. **Edit playlist** — rename / description / privacy via `YTM.editPlaylist`
+   (`browse/edit_playlist`), surfaced by an Edit button on the playlist page →
+   `PlaylistEditSheet` (iOS + macOS). Custom playlist art was intentionally
+   **omitted**: YT Music auto-generates it for regular playlists (only uploads
+   have editable art, via a flow ytmusicapi doesn't cover).
+
+No queued features remain.
 
 ---
 
@@ -332,8 +338,8 @@ expires server-side eventually; refresh by editing the (skip-worktree'd) file.
 
 There is an agent memory dir for this project at
 `/Users/charlie/.claude/projects/-Users-charlie-Documents-9-YTMusic/memory/`
-with `MEMORY.md` index + notes (git workflow, project, known risks, the two
-queued feature requests). Keep it updated; it loads each session.
+with `MEMORY.md` index + notes (git workflow, project, known risks, iOS device
+deploy). Keep it updated; it loads each session.
 
 ---
 
