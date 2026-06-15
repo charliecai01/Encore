@@ -4,6 +4,7 @@ build/
 *.swp
 # iOS: build output and the xcodeproj are generated (xcodegen) — not source
 Encore/EncoreiOS/.build_ios/
+Encore/EncoreiOS/.build_device/
 Encore/EncoreiOS/*.xcodeproj
 .swiftpm/
 Encore/EncoreiOS/Info.plist
