@@ -19,31 +19,37 @@ struct NowPlayingScreen: View {
     }
 
     var body: some View {
-        ZStack {
-            backdrop
-            VStack(spacing: 16) {
-                Capsule().fill(.white.opacity(0.3)).frame(width: 36, height: 5).padding(.top, 8)
+        // GeometryReader ignores the safe area so safeAreaInsets.top reports the
+        // real Dynamic Island / notch inset; pad content below it. A fixed
+        // padding can't clear the island reliably across devices.
+        GeometryReader { geo in
+            ZStack {
+                backdrop
+                VStack(spacing: 16) {
+                    Capsule().fill(.white.opacity(0.3)).frame(width: 36, height: 5)
 
-                Picker("", selection: $tab) {
-                    Text("Song").tag(Tab.song)
-                    Text("Lyrics").tag(Tab.lyrics)
-                    Text("Queue").tag(Tab.queue)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 40)
+                    Picker("", selection: $tab) {
+                        Text("Song").tag(Tab.song)
+                        Text("Lyrics").tag(Tab.lyrics)
+                        Text("Queue").tag(Tab.queue)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 40)
 
-                switch tab {
-                case .song: songPane
-                case .lyrics: LyricsPane()
-                case .queue: QueuePane()
+                    switch tab {
+                    case .song: songPane
+                    case .lyrics: LyricsPane()
+                    case .queue: QueuePane()
+                    }
                 }
+                .padding(.top, geo.safeAreaInsets.top + 12)
+                .padding(.bottom, geo.safeAreaInsets.bottom + 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .padding(.top, 32) // clear the Dynamic Island
-            .padding(.bottom, 12)
-            .frame(maxWidth: .infinity)
+            .frame(width: geo.size.width, height: geo.size.height)
+            .clipped()
         }
-        .frame(maxWidth: .infinity)
-        .clipped()
+        .ignoresSafeArea()
         .preferredColorScheme(.dark)
         .gesture(DragGesture().onEnded { v in if v.translation.height > 90 { dismiss() } })
     }
