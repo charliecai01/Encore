@@ -87,7 +87,14 @@ final class AuthManager: ObservableObject {
 
     private init() {}
 
-    func bootstrap() async { await refresh() }
+    func bootstrap() async {
+        await refresh()
+        // Developer convenience: auto-import a baked-in cookie if present and
+        // we're not already signed in (kept out of git — see DevCredentials).
+        if !isSignedIn, !DevCredentials.cookie.isEmpty {
+            _ = await importCookies(DevCredentials.cookie)
+        }
+    }
 
     func refresh() async {
         let cookies = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
