@@ -85,6 +85,9 @@ final class PlayerEngine: NSObject, ObservableObject {
     /// account's last track. Block any site-initiated playback until the user
     /// explicitly presses play.
     private var suppressSiteAutoplay = true
+    /// Whether playback was active when an audio interruption (e.g. a phone
+    /// call) began, so we know whether to resume when it ends.
+    private var wasPlayingBeforeInterruption = false
     private var lastLoadAt = Date.distantPast
     private var mismatchTicks = 0
     private var loadedOnce = false
@@ -108,6 +111,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         config.userContentController.add(BridgeHandler(engine: self), name: "bridge")
         webView.load(URLRequest(url: URL(string: "https://music.youtube.com/")!))
         setupRemoteCommands()
+        setupInterruptionHandling()
         if UserDefaults.standard.object(forKey: "autoplayEnabled") != nil {
             autoplayEnabled = UserDefaults.standard.bool(forKey: "autoplayEnabled")
         }
@@ -567,6 +571,42 @@ final class PlayerEngine: NSObject, ObservableObject {
     // MARK: - System now playing (lock screen + CarPlay)
 
     private var artworkCache: (videoId: String, artwork: MPMediaItemArtwork)?
+
+    // MARK: - Audio interruptions (phone calls, Siri, other apps)
+
+    private func setupInterruptionHandling() {
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification, object: nil, queue: nil
+        ) { [weak self] note in
+            guard let info = note.userInfo,
+                  let raw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+            let shouldResume = (info[AVAudioSessionInterruptionOptionKey] as? UInt)
+                .map { AVAudioSession.InterruptionOptions(rawValue: $0).contains(.shouldResume) } ?? false
+            DispatchQueue.main.async {
+                self?.handleInterruption(began: type == .began, shouldResume: shouldResume)
+            }
+        }
+    }
+
+    private func handleInterruption(began: Bool, shouldResume: Bool) {
+        if began {
+            // The system has already ducked/paused our audio; mirror it in our
+            // state and remember whether to resume afterward.
+            wasPlayingBeforeInterruption = isPlaying
+            if isPlaying {
+                js("window.__encore && __encore.pause()")
+                isPlaying = false
+                updateNowPlayingInfo()
+            }
+        } else {
+            defer { wasPlayingBeforeInterruption = false }
+            guard shouldResume, wasPlayingBeforeInterruption,
+                  !sleepStopActive, current != nil else { return }
+            try? AVAudioSession.sharedInstance().setActive(true)
+            js("window.__encore && __encore.play()")
+        }
+    }
 
     private func setupRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
