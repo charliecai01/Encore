@@ -1,10 +1,11 @@
-# Encore — a better YouTube Music for Mac
+# Encore — a better YouTube Music for Mac & iPhone
 
-A native macOS client for YouTube Music that replaces Google's interface with
-the best ideas from Spotify, Apple Music, and QQ Music/NetEase — powered by
-your own YouTube Music Premium account.
+A native **macOS + iOS** client for YouTube Music that replaces Google's
+interface with the best ideas from Spotify, Apple Music, and QQ Music/NetEase —
+powered by your own YouTube Music Premium account. Both apps share one
+platform-agnostic core (`EncoreCore`).
 
-![platform](https://img.shields.io/badge/platform-macOS%2015%2B-blue) ![swift](https://img.shields.io/badge/Swift-6-orange)
+![platform](https://img.shields.io/badge/platform-macOS%2015%2B%20%7C%20iOS%2017%2B-blue) ![swift](https://img.shields.io/badge/Swift-6-orange)
 
 ## What it borrows, from where
 
@@ -18,44 +19,63 @@ your own YouTube Music Premium account.
 
 ## Running it
 
+**macOS:**
 ```bash
 cd Encore
 ./scripts/build_app.sh
 open build/Encore.app
 ```
+Requires macOS 15+ and the Xcode Command Line Tools (`swift`).
 
-Requires macOS 15+ and the Xcode Command Line Tools (`swift`). No other dependencies.
+**iOS** (needs full Xcode + [XcodeGen](https://github.com/yonaskolb/XcodeGen)):
+```bash
+cd Encore/EncoreiOS
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+xcodegen generate        # regenerate after adding/removing source files
+xcodebuild -project EncoreiOS.xcodeproj -scheme EncoreiOS \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath .build_ios build
+```
+Open `EncoreiOS.xcodeproj` in Xcode and Run to deploy to a device (pick your
+signing team; a free personal Apple ID works — apps then expire after 7 days).
 
-On first launch, click **Sign in** (sidebar or the account icon, top right) and
-log into your Google account in the embedded sheet. That unlocks your home
-feed mixes, library, history, and ad-free Premium playback. You can use search
-and playback without signing in too.
+**Tests:** `cd Encore && swift test` runs the shared-core unit tests.
+
+On first launch, click **Sign in** (sidebar / account icon on macOS, account
+icon on iOS) and log into your Google account in the embedded sheet — or paste a
+`cookie:` header via **Paste Cookies**. That unlocks your home mixes, library,
+history, and ad-free Premium playback. Search and playback work without signing
+in too.
 
 ## Features
 
 - **Home / Explore** — your personalized shelves (Supermixes, quick picks, new releases)
 - **Search** — ⌘K palette with live suggestions, or the top search bar; filter by songs/albums/artists/playlists/videos
-- **Library** — playlists, liked songs, albums, artists, and listening history
-- **Full playback** — queue management (play next / add to queue / reorder-lite), shuffle, repeat one/all, song radio, auto-radio when the queue runs out
-- **Synced lyrics** — YouTube's own timed lyrics when available (fetched via the Android client), falling back to LRCLIB
-- **Now Playing** — blurred-artwork immersive view with synced lyrics or up-next, plus a video mode for music videos
-- **Native niceties** — media keys, menu-bar Now Playing widget, Space to play/pause, ⌘←/⌘→ prev/next, dynamic accent colors from artwork
+- **Library** — playlists, liked songs, albums, artists, listening history, and podcasts; CJK-aware sort + filter, full sort options in every tab
+- **Full playback** — queue management (play next / add to queue / reorder-lite), shuffle, repeat one/all, song radio, auto-radio when the queue runs out, sleep timer, session restore
+- **Podcasts** — Apple-Podcasts-style show pages with episode dates, descriptions, and durations; **variable playback speed (0.8–2×)** and skip 15/30 for episodes (iOS)
+- **Synced lyrics** — YouTube's own timed lyrics when available (fetched via the Android client), falling back to LRCLIB / NetEase / Musixmatch / Genius
+- **Now Playing** — blurred-artwork immersive view with synced lyrics or up-next, plus a video mode for music videos (macOS)
+- **Native niceties** — media keys, system/lock-screen Now Playing widget, **CarPlay** (iOS), **phone-call interruption handling** (iOS), Space to play/pause, ⌘←/⌘→ prev/next, dynamic accent colors from artwork
 
 ## Architecture
 
 ```
 Encore/
-├── Sources/EncoreCore/      # platform-agnostic — shared with the future iOS app
+├── Sources/EncoreCore/      # platform-agnostic core — SHARED by both apps
 │   ├── InnerTube.swift      # YouTube Music internal API client (SAPISID cookie auth)
 │   ├── Parsers.swift        # resilient recursive parsers for InnerTube responses
-│   ├── YTM.swift            # high-level API: search/browse/library/queue/lyrics
+│   ├── YTM.swift            # high-level API: search/browse/library/queue/lyrics/podcasts
+│   ├── LibrarySort.swift    # shared, unit-tested sort/filter for tracks & cards
 │   ├── LRCLib.swift         # synced-lyrics fallback provider
-│   └── Models.swift, JSONValue.swift
+│   └── Models.swift, JSONValue.swift, CJK.swift
 ├── Sources/Encore/          # macOS SwiftUI app
 │   ├── PlayerEngine.swift   # hidden WKWebView driving music.youtube.com's player
 │   ├── AuthManager.swift    # in-app Google sign-in (WKWebView cookie store)
 │   └── …views
-└── Sources/encore-smoke/    # live API smoke test: swift run encore-smoke
+├── Sources/encore-smoke/    # live API smoke test: swift run encore-smoke
+├── Tests/EncoreCoreTests/   # offline unit tests: swift test
+└── EncoreiOS/               # iOS app (separate XcodeGen project, reuses EncoreCore)
+    └── Sources/             # MobilePlayer, MobileScreens, NowPlayingScreen, CarPlay…
 ```
 
 **How playback works:** a hidden WKWebView loads the real music.youtube.com
@@ -71,13 +91,16 @@ restrictions and your plays count toward your recommendations.
 from the in-app sign-in (SAPISID hash), so there's no separate header-pasting
 setup.
 
-## iOS (next)
+## iOS
 
-`EncoreCore` is platform-agnostic by design. The iOS app needs:
-1. Full Xcode installed (the iOS SDK isn't in Command Line Tools)
-2. An iOS app target reusing `EncoreCore` + `PlayerEngine` (WKWebView works the
-   same on iOS; add `allowsInlineMediaPlayback`)
-3. Rebuilt SwiftUI layouts (tab bar instead of sidebar, sheet-style now playing)
+Shipped. The iOS app reuses `EncoreCore` and ports the player engine to UIKit
+(`MobilePlayer.swift`), with a tab-bar layout, sheet-style Now Playing,
+CarPlay, podcast playback speed, and phone-call interruption handling. It's a
+separate Xcode project generated by XcodeGen (`project.yml`) — **re-run
+`xcodegen generate` after adding or removing source files**. CarPlay is built
+and verified in the simulator but disabled in the shipped build so the app can
+sign with a free Apple ID (re-enable via the `project.yml` entitlement +
+scene blocks). See `handoff.md` for the full iOS build/deploy details.
 
 ## Disclaimers
 
