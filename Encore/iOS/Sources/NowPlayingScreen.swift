@@ -4,7 +4,9 @@ import EncoreCore
 struct NowPlayingScreen: View {
     @EnvironmentObject var player: PlayerEngine
     @EnvironmentObject var nav: Nav
-    @ObservedObject private var clock = PlayerClock.shared
+    // NOTE: do NOT observe PlayerClock here — the time tick (4 Hz) would
+    // re-render the whole screen incl. the blurred backdrop. ProgressBar and
+    // LyricsPane observe the clock themselves.
     @Environment(\.dismiss) private var dismiss
 
     enum Tab { case song, lyrics, queue }

@@ -265,7 +265,15 @@ final class PlayerEngine: NSObject, ObservableObject {
             }
             return
         }
-        js(isPlaying ? "window.__encore && __encore.pause()" : "window.__encore && __encore.play()")
+        if isPlaying {
+            js("window.__encore && __encore.pause()")
+        } else {
+            // Resuming: the audio session may have gone inactive while paused/
+            // backgrounded — reactivate it or play() produces no sound (and the
+            // user has to skip to force a reload). This is the resume-lag fix.
+            try? AVAudioSession.sharedInstance().setActive(true)
+            js("window.__encore && __encore.play()")
+        }
     }
 
     func next() {

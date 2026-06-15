@@ -7,7 +7,6 @@ import EncoreCore
 /// underlying YouTube player.
 struct NowPlayingView: View {
     @EnvironmentObject var player: PlayerEngine
-    @ObservedObject private var clock = PlayerClock.shared
     @Binding var expanded: Bool
 
     enum Pane: String, CaseIterable {
@@ -153,18 +152,8 @@ struct NowPlayingView: View {
             .frame(maxWidth: 460)
 
             VStack(spacing: 10) {
-                HStack(spacing: 9) {
-                    Text(Track.format(seconds: Int(clock.currentTime)))
-                        .font(.system(size: 11).monospacedDigit())
-                        .foregroundStyle(.white.opacity(0.55))
-                    SeekBar(progress: clock.progress, accent: palette.accent) { fraction in
-                        player.seek(fraction: fraction)
-                    }
-                    Text(Track.format(seconds: Int(clock.duration)))
-                        .font(.system(size: 11).monospacedDigit())
-                        .foregroundStyle(.white.opacity(0.55))
-                }
-                .frame(maxWidth: 440)
+                NowPlayingSeekRow(accent: palette.accent)
+                    .frame(maxWidth: 440)
 
                 HStack(spacing: 30) {
                     ControlButton(icon: "shuffle", size: 15, active: player.shuffleOn) {
@@ -197,6 +186,28 @@ struct NowPlayingView: View {
             }
 
             Spacer(minLength: 0)
+        }
+    }
+}
+
+/// Time labels + scrubber, isolated so the 4 Hz clock tick only re-renders this
+/// row — not the parent's full-window blurred backdrop (which was the lag).
+private struct NowPlayingSeekRow: View {
+    let accent: Color
+    @EnvironmentObject var player: PlayerEngine
+    @ObservedObject private var clock = PlayerClock.shared
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Text(Track.format(seconds: Int(clock.currentTime)))
+                .font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.55))
+            SeekBar(progress: clock.progress, accent: accent) { fraction in
+                player.seek(fraction: fraction)
+            }
+            Text(Track.format(seconds: Int(clock.duration)))
+                .font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.55))
         }
     }
 }
