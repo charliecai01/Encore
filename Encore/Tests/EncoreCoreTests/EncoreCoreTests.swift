@@ -186,6 +186,24 @@ final class EncoreCoreTests: XCTestCase {
         XCTAssertEqual(LibrarySort.sortCards(sampleCards(), by: .subtitle).map(\.title), ["apron", "Zebra"])
     }
 
+    // MARK: - PlayedEpisodes
+
+    func testPlayedEpisodes() {
+        let suite = UserDefaults(suiteName: "test.played.\(UUID().uuidString)")!
+        let prev = PlayedEpisodes.store
+        PlayedEpisodes.store = suite
+        defer { PlayedEpisodes.store = prev }
+
+        XCTAssertFalse(PlayedEpisodes.isPlayed("a"))
+        PlayedEpisodes.set("a", played: true)
+        XCTAssertTrue(PlayedEpisodes.isPlayed("a"))
+        XCTAssertEqual(PlayedEpisodes.all(), ["a"])
+        PlayedEpisodes.toggle("a")
+        XCTAssertFalse(PlayedEpisodes.isPlayed("a"))
+        PlayedEpisodes.toggle("b")
+        XCTAssertEqual(PlayedEpisodes.all(), ["b"])
+    }
+
     func testCardArrangeFilterThenReverse() {
         let cards = sampleCards()
         XCTAssertEqual(LibrarySort.arrangeCards(cards, query: "beta", order: .source).map(\.title), ["Zebra"])

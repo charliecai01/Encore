@@ -206,7 +206,7 @@ struct ContentRouter: View {
                 ArtistView(browseId: id)
                     .id("artist-\(id)")
             case .podcastShow(let id):
-                CollectionView(kind: .podcast(id))
+                PodcastView(browseId: id)
                     .id("podcast-\(id)")
             case .browse(let id):
                 BrowseScreen(browseId: id)

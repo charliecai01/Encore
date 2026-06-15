@@ -669,6 +669,7 @@ struct PodcastScreen: View {
     @State private var loading = true
     @State private var descExpanded = false
     @State private var newestFirst = true
+    @State private var playedIds: Set<String> = []
 
     private var cacheKey: String { "podcast-\(browseId)" }
     private var sortKey: String { "podsort-\(browseId)" }
@@ -704,7 +705,9 @@ struct PodcastScreen: View {
 
                     ForEach(Array(episodes.enumerated()), id: \.offset) { i, ep in
                         EpisodeRow(episode: ep,
-                                   isCurrent: player.current?.videoId == ep.videoId) {
+                                   isCurrent: player.current?.videoId == ep.videoId,
+                                   isPlayed: playedIds.contains(ep.videoId),
+                                   onTogglePlayed: { togglePlayed(ep) }) {
                             player.playCollection(episodes, startAt: i)
                         }
                         Divider().background(Theme.stroke).padding(.leading, 16)
@@ -719,9 +722,15 @@ struct PodcastScreen: View {
         .navigationTitle(page?.title ?? "").navigationBarTitleDisplayMode(.inline)
         .task {
             newestFirst = UserDefaults.standard.object(forKey: sortKey) as? Bool ?? true
+            playedIds = PlayedEpisodes.all()
             await load()
         }
         .onChange(of: newestFirst) { _, v in UserDefaults.standard.set(v, forKey: sortKey) }
+    }
+
+    private func togglePlayed(_ episode: Track) {
+        PlayedEpisodes.toggle(episode.videoId)
+        playedIds = PlayedEpisodes.all()
     }
 
     private func header(_ page: CollectionPage) -> some View {
@@ -774,16 +783,31 @@ struct EpisodeRow: View {
     @EnvironmentObject var player: PlayerEngine
     let episode: Track
     let isCurrent: Bool
+    let isPlayed: Bool
+    let onTogglePlayed: () -> Void
     let onPlay: () -> Void
+
+    private var titleColor: Color {
+        if isCurrent { return Theme.accent }
+        return isPlayed ? Theme.textTertiary : Theme.textPrimary
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            if let date = episode.dateText, !date.isEmpty {
-                Text(date.uppercased()).font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.textTertiary)
+            HStack(spacing: 6) {
+                if isPlayed {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 11))
+                        .foregroundStyle(Theme.accent)
+                }
+                if let date = episode.dateText, !date.isEmpty {
+                    Text((isPlayed ? "PLAYED · " : "") + date.uppercased())
+                        .font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.textTertiary)
+                } else if isPlayed {
+                    Text("PLAYED").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.textTertiary)
+                }
             }
             Text(episode.title).font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(isCurrent ? Theme.accent : Theme.textPrimary).lineLimit(2)
+                .foregroundStyle(titleColor).lineLimit(2)
             if let details = episode.details, !details.isEmpty {
                 Text(details).font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
                     .lineLimit(2)
@@ -797,17 +821,25 @@ struct EpisodeRow: View {
                             Text(episode.lengthText).font(.system(size: 12, weight: .medium))
                         }
                     }
-                    .foregroundStyle(Theme.textPrimary)
+                    .foregroundStyle(isPlayed && !isCurrent ? Theme.textSecondary : Theme.textPrimary)
                 }
                 .buttonStyle(.plain)
                 Spacer()
+                Button(action: onTogglePlayed) {
+                    Image(systemName: isPlayed ? "checkmark.circle.fill" : "checkmark.circle")
+                        .font(.system(size: 18))
+                        .foregroundStyle(isPlayed ? Theme.accent : Theme.textSecondary)
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.plain)
                 Menu {
                     Button("Play") { onPlay() }
                     Button("Play Next") { player.playNext(episode) }
                     Button("Add to Queue") { player.addToQueue(episode) }
+                    Button(isPlayed ? "Mark as Unplayed" : "Mark as Played") { onTogglePlayed() }
                 } label: {
                     Image(systemName: "ellipsis").font(.system(size: 16)).foregroundStyle(Theme.textSecondary)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 32, height: 36)
                 }
             }
             .padding(.top, 2)
