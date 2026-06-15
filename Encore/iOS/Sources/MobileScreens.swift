@@ -321,13 +321,15 @@ struct SearchScreen: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 18) {
-                HStack(spacing: 8) {
-                    chip("All", filter == nil) { filter = nil; Task { await run() } }
-                    ForEach(YTM.SearchFilter.allCases, id: \.self) { f in
-                        chip(f.title, filter == f) { filter = f; Task { await run() } }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        chip("All", filter == nil) { filter = nil; Task { await run() } }
+                        ForEach(YTM.SearchFilter.allCases, id: \.self) { f in
+                            chip(f.title, filter == f) { filter = f; Task { await run() } }
+                        }
                     }
+                    .padding(.horizontal, 16)
                 }
-                .padding(.horizontal, 16)
 
                 if loading { ProgressView().frame(maxWidth: .infinity).padding(.top, 40) }
                 ForEach(results.shelves) { shelf in
@@ -364,6 +366,7 @@ struct SearchScreen: View {
         Button(action: action) {
             Text(title).font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(selected ? .black : Theme.textPrimary)
+                .lineLimit(1).fixedSize()
                 .padding(.horizontal, 13).padding(.vertical, 6)
                 .background(Capsule().fill(selected ? Color.white : Theme.card))
         }
