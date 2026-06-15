@@ -29,7 +29,7 @@ Requires macOS 15+ and the Xcode Command Line Tools (`swift`).
 
 **iOS** (needs full Xcode + [XcodeGen](https://github.com/yonaskolb/XcodeGen)):
 ```bash
-cd Encore/EncoreiOS
+cd Encore/iOS
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 xcodegen generate        # regenerate after adding/removing source files
 xcodebuild -project EncoreiOS.xcodeproj -scheme EncoreiOS \
@@ -68,13 +68,13 @@ Encore/
 │   ├── LibrarySort.swift    # shared, unit-tested sort/filter for tracks & cards
 │   ├── LRCLib.swift         # synced-lyrics fallback provider
 │   └── Models.swift, JSONValue.swift, CJK.swift
-├── Sources/Encore/          # macOS SwiftUI app
+├── Sources/encore-smoke/    # live API smoke test: swift run encore-smoke
+├── macOS/                   # macOS SwiftUI app (SwiftPM target "Encore")
 │   ├── PlayerEngine.swift   # hidden WKWebView driving music.youtube.com's player
 │   ├── AuthManager.swift    # in-app Google sign-in (WKWebView cookie store)
 │   └── …views
-├── Sources/encore-smoke/    # live API smoke test: swift run encore-smoke
 ├── Tests/EncoreCoreTests/   # offline unit tests: swift test
-└── EncoreiOS/               # iOS app (separate XcodeGen project, reuses EncoreCore)
+└── iOS/                     # iOS app (XcodeGen; project/scheme named EncoreiOS)
     └── Sources/             # MobilePlayer, MobileScreens, NowPlayingScreen, CarPlay…
 ```
 

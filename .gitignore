@@ -3,9 +3,9 @@ build/
 .DS_Store
 *.swp
 # iOS: build output and the xcodeproj are generated (xcodegen) — not source
-Encore/EncoreiOS/.build_ios/
-Encore/EncoreiOS/.build_device/
-Encore/EncoreiOS/*.xcodeproj
+Encore/iOS/.build_ios/
+Encore/iOS/.build_device/
+Encore/iOS/*.xcodeproj
 .swiftpm/
-Encore/EncoreiOS/Info.plist
-Encore/EncoreiOS/Encore.entitlements
+Encore/iOS/Info.plist
+Encore/iOS/Encore.entitlements

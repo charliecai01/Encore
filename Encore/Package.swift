@@ -18,6 +18,7 @@ let package = Package(
         .executableTarget(
             name: "Encore",
             dependencies: ["EncoreCore"],
+            path: "macOS",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .executableTarget(
