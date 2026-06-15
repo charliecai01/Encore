@@ -226,10 +226,12 @@ Both platforms unless stated:
   Order" + "Recently Added" (reverse-of-position; no per-track date exists), and
   **playlists always open sorted by Artist** (forced, not persisted).
 - Album / playlist / artist pages; artist page shows "In your playlists & likes"
-- **Podcasts (iOS): Apple-Podcasts-style `PodcastScreen`** — centered header,
-  expandable description, Recent/Oldest sort, episode rows with date +
-  description + duration + circular play. Episodes carry `isEpisode/dateText/
-  details`. (macOS podcasts still use the generic CollectionView.)
+- **Podcasts: Apple-Podcasts-style pages on BOTH platforms** (iOS
+  `PodcastScreen`, macOS `PodcastView`) — header, expandable description,
+  Recent/Oldest sort, episode rows with date + description + duration + circular
+  play. Episodes carry `isEpisode/dateText/details`. **Mark-as-played** per
+  episode (check toggle + menu); state in `EncoreCore.PlayedEpisodes`
+  (UserDefaults, unit-tested) — played episodes dim + show a PLAYED badge.
 - Playback: queue, shuffle, repeat, song radio, **Autoplay** toggle, auto-radio
   when queue ends, sleep timer, session restore (paused), **playback speed
   0.8–2× + skip 15/30 for podcast episodes** (iOS), **phone-call/Siri audio
