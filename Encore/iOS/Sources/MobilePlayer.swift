@@ -100,6 +100,15 @@ final class PlayerEngine: NSObject, ObservableObject {
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
         config.allowsAirPlayForMediaPlayback = true
+        // Neutralize the site's Media Session BEFORE its JS runs, so iOS uses
+        // our native MPNowPlayingInfoCenter (correct artwork + next/prev) instead
+        // of YouTube's web session (which forces 10s skip buttons and its own,
+        // out-of-sync metadata).
+        config.userContentController.addUserScript(
+            WKUserScript(source: Self.mediaSessionSuppressScript,
+                         injectionTime: .atDocumentStart,
+                         forMainFrameOnly: false)
+        )
         config.userContentController.addUserScript(
             WKUserScript(source: Self.controllerScript,
                          injectionTime: .atDocumentEnd,
@@ -654,6 +663,27 @@ final class PlayerEngine: NSObject, ObservableObject {
             DispatchQueue.main.async { self?.seek(to: event.positionTime) }
             return .success
         }
+        // Podcast-style skip (only surfaced for episodes — see configureRemoteCommands).
+        center.skipForwardCommand.preferredIntervals = [30]
+        center.skipForwardCommand.addTarget { [weak self] _ in
+            DispatchQueue.main.async { self?.skip(30) }
+            return .success
+        }
+        center.skipBackwardCommand.preferredIntervals = [15]
+        center.skipBackwardCommand.addTarget { [weak self] _ in
+            DispatchQueue.main.async { self?.skip(-15) }
+            return .success
+        }
+        configureRemoteCommands(forEpisode: false)
+    }
+
+    /// Songs get next/previous on the lock screen; podcast episodes get skip.
+    private func configureRemoteCommands(forEpisode: Bool) {
+        let c = MPRemoteCommandCenter.shared()
+        c.nextTrackCommand.isEnabled = !forEpisode
+        c.previousTrackCommand.isEnabled = !forEpisode
+        c.skipForwardCommand.isEnabled = forEpisode
+        c.skipBackwardCommand.isEnabled = forEpisode
     }
 
     private func updateNowPlayingInfo() {
@@ -661,12 +691,14 @@ final class PlayerEngine: NSObject, ObservableObject {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             return
         }
+        configureRemoteCommands(forEpisode: track.isEpisode)
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: track.title,
             MPMediaItemPropertyArtist: track.artistLine,
             MPMediaItemPropertyPlaybackDuration: duration,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
         ]
         if let album = track.album?.name {
             info[MPMediaItemPropertyAlbumTitle] = album
@@ -697,7 +729,25 @@ final class PlayerEngine: NSObject, ObservableObject {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
-    // MARK: - Injected controller (same as the Mac app)
+    // MARK: - Injected scripts
+
+    /// Replace navigator.mediaSession with an inert stub so YouTube's web page
+    /// can't claim the iOS now-playing controls (which would force 10s skip
+    /// buttons and its own out-of-sync artwork). Our native MPNowPlayingInfoCenter
+    /// then drives the lock screen. Runs at documentStart, before the site's JS.
+    static let mediaSessionSuppressScript = #"""
+    (function () {
+      try {
+        var noop = function () {};
+        var stub = { setActionHandler: noop, setPositionState: noop, setCameraActive: noop, playbackState: 'none', metadata: null };
+        Object.defineProperty(navigator, 'mediaSession', {
+          configurable: true,
+          get: function () { return stub; },
+          set: function () {}
+        });
+      } catch (e) {}
+    })();
+    """#
 
     static let controllerScript = #"""
     (function () {
