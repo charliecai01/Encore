@@ -291,12 +291,17 @@ struct LyricsPane: View {
 
 struct QueuePane: View {
     @EnvironmentObject var player: PlayerEngine
+    @State private var editMode: EditMode = .inactive
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 12) {
                 Text("Up Next").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
                 Spacer()
+                Button(editMode == .active ? "Done" : "Reorder") {
+                    withAnimation { editMode = editMode == .active ? .inactive : .active }
+                }
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.accent)
                 Image(systemName: "infinity").font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(player.autoplayEnabled ? Theme.accent : .white.opacity(0.3))
                 Toggle("", isOn: $player.autoplayEnabled).labelsHidden().tint(Theme.accent)
@@ -319,12 +324,15 @@ struct QueuePane: View {
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .contentShape(Rectangle())
-                        .onTapGesture { player.jump(to: i) }
+                        .onTapGesture { if editMode != .active { player.jump(to: i) } }
                         .id(i)
                     }
+                    .onMove { from, to in player.moveQueue(from: from, to: to) }
+                    .onDelete { idx in idx.sorted(by: >).forEach { player.removeFromQueue(at: $0) } }
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .environment(\.editMode, $editMode)
                 .onAppear { proxy.scrollTo(player.index, anchor: .top) }
             }
         }

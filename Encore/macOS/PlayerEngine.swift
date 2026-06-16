@@ -261,6 +261,17 @@ final class PlayerEngine: NSObject, ObservableObject {
         persistSnapshot()
     }
 
+    /// Reorder the Up Next list; keep `index` pointing at the playing track.
+    func moveQueue(from source: IndexSet, to destination: Int) {
+        let currentId = current?.videoId
+        queue.move(fromOffsets: source, toOffset: destination)
+        unshuffledQueue = nil // manual order wins; don't let un-shuffle revert it
+        if let currentId, let i = queue.firstIndex(where: { $0.videoId == currentId }) {
+            index = i
+        }
+        persistSnapshot()
+    }
+
     func togglePlay() {
         guard let track = current else { return }
         sleepStopActive = false // explicit user intent overrides the sleep stop

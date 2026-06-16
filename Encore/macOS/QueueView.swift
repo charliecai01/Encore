@@ -69,19 +69,22 @@ struct QueueList: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollViewReader { proxy in
-                ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: 2) {
-                        ForEach(Array(player.queue.enumerated()), id: \.offset) { i, track in
-                            QueueRow(track: track,
-                                     isCurrent: i == player.index,
-                                     position: i) {
-                                player.jump(to: i)
-                            }
-                            .id(i)
+                List {
+                    ForEach(Array(player.queue.enumerated()), id: \.offset) { i, track in
+                        QueueRow(track: track,
+                                 isCurrent: i == player.index,
+                                 position: i) {
+                            player.jump(to: i)
                         }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
+                        .id(i)
                     }
-                    .padding(.vertical, 8)
+                    .onMove { from, to in player.moveQueue(from: from, to: to) }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
                 .onAppear {
                     proxy.scrollTo(player.index, anchor: .center)
                 }
