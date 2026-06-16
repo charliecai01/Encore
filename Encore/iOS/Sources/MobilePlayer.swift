@@ -536,6 +536,14 @@ final class PlayerEngine: NSObject, ObservableObject {
     fileprivate func handleBridge(_ body: [String: Any]) {
         guard let event = body["event"] as? String else { return }
         switch event {
+        case "remote":
+            // Lock-screen / headphone next-prev coming back through the page's
+            // MediaSession handlers (which we hijacked to drive our queue).
+            switch body["action"] as? String {
+            case "next": next()
+            case "prev": previous()
+            default: break
+            }
         case "ready":
             playerReady = true
             if loadedOnce, let track = current {
@@ -731,20 +739,43 @@ final class PlayerEngine: NSObject, ObservableObject {
 
     // MARK: - Injected scripts
 
-    /// Replace navigator.mediaSession with an inert stub so YouTube's web page
-    /// can't claim the iOS now-playing controls (which would force 10s skip
-    /// buttons and its own out-of-sync artwork). Our native MPNowPlayingInfoCenter
-    /// then drives the lock screen. Runs at documentStart, before the site's JS.
+    /// On iOS the WKWebView owns the lock-screen now-playing via the page's
+    /// MediaSession — our native MPNowPlayingInfoCenter is ignored there. So we
+    /// keep the site's metadata (correct title + artwork) but hijack its action
+    /// handlers: drop the web 'seek' actions (which forced 10s-skip buttons) and
+    /// route next/previous to OUR queue. Runs at documentStart so the override is
+    /// in place before the site binds its own handlers.
     static let mediaSessionSuppressScript = #"""
     (function () {
       try {
-        var noop = function () {};
-        var stub = { setActionHandler: noop, setPositionState: noop, setCameraActive: noop, playbackState: 'none', metadata: null };
-        Object.defineProperty(navigator, 'mediaSession', {
-          configurable: true,
-          get: function () { return stub; },
-          set: function () {}
-        });
+        if (!('mediaSession' in navigator)) return;
+        var ms = navigator.mediaSession;
+        if (ms.__encorePatched) return;
+        ms.__encorePatched = true;
+        var orig = ms.setActionHandler.bind(ms);
+        function bridge(action) {
+          return function () {
+            try { window.webkit.messageHandlers.bridge.postMessage({ event: 'remote', action: action }); } catch (e) {}
+          };
+        }
+        function apply() {
+          try {
+            orig('seekforward', null);
+            orig('seekbackward', null);
+            orig('seekto', null);
+            orig('nexttrack', bridge('next'));
+            orig('previoustrack', bridge('prev'));
+          } catch (e) {}
+        }
+        // Ignore the site's seek handlers; force next/prev to ours; pass the rest.
+        ms.setActionHandler = function (action, handler) {
+          if (action === 'seekforward' || action === 'seekbackward' || action === 'seekto') return;
+          if (action === 'nexttrack') return orig('nexttrack', bridge('next'));
+          if (action === 'previoustrack') return orig('previoustrack', bridge('prev'));
+          return orig(action, handler);
+        };
+        apply();
+        setInterval(apply, 2000); // re-assert if the site rebinds on track change
       } catch (e) {}
     })();
     """#
