@@ -12,6 +12,13 @@ struct NowPlayingScreen: View {
     enum Tab { case song, lyrics, queue }
     @State private var tab: Tab = .song
 
+    // Drives the directional slide of the big artwork as the track changes.
+    // `shownTrack` lags `player.current` by one render so the swap happens
+    // inside an animated transaction; direction comes from the index delta.
+    @State private var shownTrack: Track?
+    @State private var slideForward = true
+    @State private var lastIndex = 0
+
     /// Square artwork sized so it never makes the layout wider than the screen.
     private var artSize: CGFloat {
         let b = UIScreen.main.bounds
@@ -66,12 +73,26 @@ struct NowPlayingScreen: View {
     private var songPane: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
-            ArtworkView(url: player.current?.artworkURL, corner: 16)
-                .frame(width: artSize, height: artSize)
-                .shadow(color: .black.opacity(0.5), radius: 24, y: 10)
-                .scaleEffect(player.isPlaying ? 1 : 0.95)
-                .animation(.spring(duration: 0.4), value: player.isPlaying)
-                .trackSwipe(player)
+            ZStack {
+                ArtworkView(url: shownTrack?.artworkURL, corner: 16)
+                    .id(shownTrack?.videoId)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: slideForward ? .trailing : .leading),
+                        removal:   .move(edge: slideForward ? .leading  : .trailing)
+                    ))
+            }
+            .frame(width: artSize, height: artSize)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: .black.opacity(0.5), radius: 24, y: 10)
+            .scaleEffect(player.isPlaying ? 1 : 0.95)
+            .animation(.spring(duration: 0.4), value: player.isPlaying)
+            .trackSwipe(player)
+            .onAppear { shownTrack = player.current; lastIndex = player.index }
+            .onChange(of: player.current?.videoId) { _, _ in
+                slideForward = player.index >= lastIndex
+                lastIndex = player.index
+                withAnimation(.easeInOut(duration: 0.32)) { shownTrack = player.current }
+            }
             Spacer(minLength: 0)
 
             HStack {

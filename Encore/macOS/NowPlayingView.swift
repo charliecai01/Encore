@@ -17,6 +17,13 @@ struct NowPlayingView: View {
     @State private var pane: Pane = .lyrics
     @State private var palette = Palette.fallback
 
+    // Directional slide of the big artwork as the track changes (mirrors the
+    // official app). `shownTrack` lags `player.current` by one render so the
+    // swap runs inside an animated transaction; direction = index delta.
+    @State private var shownTrack: Track?
+    @State private var slideForward = true
+    @State private var lastIndex = 0
+
     var body: some View {
         // Hard-clamp to the window: if any pane's ideal width exceeds it,
         // SwiftUI would otherwise center the overflow and clip both edges.
@@ -132,12 +139,26 @@ struct NowPlayingView: View {
         VStack(spacing: 24) {
             Spacer(minLength: 0)
 
-            ArtworkView(url: player.current?.artworkURL, corner: 14)
-                .aspectRatio(1, contentMode: .fit)
-                .frame(maxWidth: 360, maxHeight: 360)
-                .shadow(color: .black.opacity(0.6), radius: 36, y: 14)
-                .scaleEffect(player.isPlaying ? 1 : 0.94)
-                .animation(.spring(duration: 0.45), value: player.isPlaying)
+            ZStack {
+                ArtworkView(url: shownTrack?.artworkURL, corner: 14)
+                    .id(shownTrack?.videoId)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: slideForward ? .trailing : .leading),
+                        removal:   .move(edge: slideForward ? .leading  : .trailing)
+                    ))
+            }
+            .aspectRatio(1, contentMode: .fit)
+            .frame(maxWidth: 360, maxHeight: 360)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .shadow(color: .black.opacity(0.6), radius: 36, y: 14)
+            .scaleEffect(player.isPlaying ? 1 : 0.94)
+            .animation(.spring(duration: 0.45), value: player.isPlaying)
+            .onAppear { shownTrack = player.current; lastIndex = player.index }
+            .onChange(of: player.current?.videoId) { _, _ in
+                slideForward = player.index >= lastIndex
+                lastIndex = player.index
+                withAnimation(.easeInOut(duration: 0.34)) { shownTrack = player.current }
+            }
 
             VStack(spacing: 5) {
                 Text(player.current?.title ?? "")
