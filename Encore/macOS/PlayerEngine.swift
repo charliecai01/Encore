@@ -272,6 +272,21 @@ final class PlayerEngine: NSObject, ObservableObject {
         persistSnapshot()
     }
 
+    /// Move a single queued track to land at `to` (drag-and-drop reorder).
+    /// macOS rows drive reordering via `.draggable`/`.dropDestination` rather
+    /// than `List.onMove`, so the indices are absolute, not SwiftUI offsets.
+    func moveQueueItem(from: Int, to: Int) {
+        guard from != to, queue.indices.contains(from), queue.indices.contains(to) else { return }
+        let currentId = current?.videoId
+        let item = queue.remove(at: from)
+        queue.insert(item, at: to)
+        unshuffledQueue = nil
+        if let currentId, let i = queue.firstIndex(where: { $0.videoId == currentId }) {
+            index = i
+        }
+        persistSnapshot()
+    }
+
     func togglePlay() {
         guard let track = current else { return }
         sleepStopActive = false // explicit user intent overrides the sleep stop
