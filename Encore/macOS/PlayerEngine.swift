@@ -272,6 +272,13 @@ final class PlayerEngine: NSObject, ObservableObject {
         persistSnapshot()
     }
 
+    /// Jump a queued track to the top of Up Next (i.e. play it right after the
+    /// current track). Used by the queue row's right-click menu.
+    func playNext(from i: Int) {
+        guard queue.indices.contains(i), i != index else { return }
+        moveQueueItem(from: i, to: i > index ? index + 1 : index)
+    }
+
     /// Move a single queued track to land at `to` (drag-and-drop reorder).
     /// macOS rows drive reordering via `.draggable`/`.dropDestination` rather
     /// than `List.onMove`, so the indices are absolute, not SwiftUI offsets.

@@ -1,14 +1,5 @@
 import SwiftUI
-import UniformTypeIdentifiers
 import EncoreCore
-
-/// Payload for drag-to-reorder of the Up Next list: just the source row index.
-struct QueueDragItem: Codable, Transferable {
-    let index: Int
-    static var transferRepresentation: some TransferRepresentation {
-        CodableRepresentation(contentType: .data)
-    }
-}
 
 struct QueuePanel: View {
     @EnvironmentObject var player: PlayerEngine
@@ -89,19 +80,17 @@ struct QueueList: View {
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
                         .id(i)
-                        // Drag-to-reorder. We use explicit drag/drop instead of
-                        // List.onMove because the row's tap-to-play gesture
-                        // swallows onMove's reorder drag on macOS.
-                        .draggable(QueueDragItem(index: i)) {
-                            QueueRow(track: track, isCurrent: false, position: i) {}
-                                .frame(width: 260)
-                                .padding(6)
-                                .background(Theme.bgElevated, in: RoundedRectangle(cornerRadius: 8))
-                        }
-                        .dropDestination(for: QueueDragItem.self) { items, _ in
-                            guard let from = items.first?.index else { return false }
-                            player.moveQueueItem(from: from, to: i)
-                            return true
+                        // Reorder via right-click → Play Next. Drag-to-reorder
+                        // proved unreliable on macOS (the row's tap-to-play
+                        // gesture and NSTableView's drag session fight), so the
+                        // context menu is the reorder path.
+                        .contextMenu {
+                            if i != player.index {
+                                Button("Play Next") { player.playNext(from: i) }
+                                Button("Remove from Queue", role: .destructive) {
+                                    player.removeFromQueue(at: i)
+                                }
+                            }
                         }
                     }
                 }
