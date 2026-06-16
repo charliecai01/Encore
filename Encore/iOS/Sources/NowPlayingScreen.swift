@@ -71,6 +71,7 @@ struct NowPlayingScreen: View {
                 .shadow(color: .black.opacity(0.5), radius: 24, y: 10)
                 .scaleEffect(player.isPlaying ? 1 : 0.95)
                 .animation(.spring(duration: 0.4), value: player.isPlaying)
+                .trackSwipe(player)
             Spacer(minLength: 0)
 
             HStack {
@@ -248,6 +249,8 @@ struct LyricsPane: View {
                     .padding(.vertical, 8)
             }
         }
+        .contentShape(Rectangle())
+        .trackSwipe(player)
     }
 
     @ViewBuilder private var content: some View {
@@ -336,5 +339,21 @@ struct QueuePane: View {
                 .onAppear { proxy.scrollTo(player.index, anchor: .top) }
             }
         }
+    }
+}
+
+extension View {
+    /// Horizontal swipe to change track (left = next, right = previous), like the
+    /// YouTube Music app. Uses simultaneousGesture so vertical lyric scrolling
+    /// still works; only acts when the swipe is clearly horizontal.
+    func trackSwipe(_ player: PlayerEngine) -> some View {
+        simultaneousGesture(
+            DragGesture(minimumDistance: 40)
+                .onEnded { v in
+                    guard abs(v.translation.width) > abs(v.translation.height) else { return }
+                    if v.translation.width < -55 { player.next() }
+                    else if v.translation.width > 55 { player.previous() }
+                }
+        )
     }
 }
