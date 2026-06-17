@@ -30,7 +30,7 @@ struct SidebarView: View {
                                 selected: nav.current == .explore) { nav.go(.explore) }
 
                     SectionLabel("Library")
-                    ForEach(LibraryTab.allCases, id: \.self) { tab in
+                    ForEach(LibraryTab.visible, id: \.self) { tab in
                         SidebarItem(title: tab.rawValue, icon: tab.icon,
                                     selected: nav.current == .library(tab)) {
                             nav.go(.library(tab))

@@ -282,6 +282,11 @@ enum LibraryTab: String, CaseIterable, Hashable {
     case artists = "Artists"
     case podcasts = "Podcasts"
 
+    /// Tabs shown in the UI. Podcasts is hidden — the podcast feature is
+    /// disabled because it's too buggy (see BUGS.md). The case is kept so
+    /// switches stay exhaustive; re-add `.podcasts` here to restore it.
+    static var visible: [LibraryTab] { [.playlists, .songs, .albums, .artists] }
+
     var icon: String {
         switch self {
         case .playlists: return "music.note.list"
@@ -331,7 +336,8 @@ final class Nav: ObservableObject {
     func open(_ item: CardItem) {
         switch item.kind {
         case .album: if let id = item.browseId { go(.album(id)) }
-        case .podcast: if let id = item.browseId { go(.podcastShow(id)) }
+        // Podcast feature disabled (too buggy — see BUGS.md). No-op until reimplemented.
+        case .podcast: break // if let id = item.browseId { go(.podcastShow(id)) }
         case .artist: goArtist(id: item.browseId, name: item.title)
         case .playlist:
             if let id = item.playlistId, id.hasPrefix("RD") {

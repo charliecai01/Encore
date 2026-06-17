@@ -419,7 +419,7 @@ struct LibraryScreen: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Picker("", selection: $tab) {
-                    ForEach(LibraryTab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    ForEach(LibraryTab.visible, id: \.self) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
