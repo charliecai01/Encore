@@ -19,6 +19,9 @@ struct NowPlayingScreen: View {
     @State private var slideForward = true
     @State private var lastIndex = 0
 
+    @State private var showAddToPlaylist = false
+    @State private var showSongInfo = false
+
     /// Square artwork sized so it never makes the layout wider than the screen.
     private var artSize: CGFloat {
         let b = UIScreen.main.bounds
@@ -51,6 +54,14 @@ struct NowPlayingScreen: View {
         .background(backdrop)
         .preferredColorScheme(.dark)
         .gesture(DragGesture().onEnded { v in if v.translation.height > 90 { dismiss() } })
+        .sheet(isPresented: $showAddToPlaylist) {
+            if let t = player.current { AddToPlaylistSheet(track: t) }
+        }
+        .sheet(isPresented: $showSongInfo) {
+            if let t = player.current {
+                SongInfoSheet(track: t, fromPlaylist: currentPlaylistName)
+            }
+        }
     }
 
     private var backdrop: some View {
@@ -87,6 +98,7 @@ struct NowPlayingScreen: View {
             .scaleEffect(player.isPlaying ? 1 : 0.95)
             .animation(.spring(duration: 0.4), value: player.isPlaying)
             .trackSwipe(player)
+            .contextMenu { trackActions }
             .onAppear { shownTrack = player.current; lastIndex = player.index }
             .onChange(of: player.current?.videoId) { _, _ in
                 slideForward = player.index >= lastIndex
@@ -116,20 +128,7 @@ struct NowPlayingScreen: View {
                         .foregroundStyle(player.current.map { player.likedIds.contains($0.videoId) } == true
                                          ? Theme.accent : .white.opacity(0.7))
                 }
-                Menu {
-                    if player.current?.album?.id != nil {
-                        Button { openAlbum() } label: { Label("View Album", systemImage: "square.stack") }
-                    }
-                    if player.current?.artists.first != nil {
-                        Button { openArtist() } label: { Label("View Artist", systemImage: "music.mic") }
-                    }
-                    if player.canRemoveCurrentFromPlaylist {
-                        Divider()
-                        Button(role: .destructive) { player.removeCurrentFromPlaylist() } label: {
-                            Label("Remove from Playlist", systemImage: "minus.circle")
-                        }
-                    }
-                } label: {
+                Menu { trackActions } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.7))
@@ -194,6 +193,44 @@ struct NowPlayingScreen: View {
     private func openArtist() {
         guard let a = player.current?.artists.first else { return }
         dismiss(); nav.goArtist(id: a.id, name: a.name)
+    }
+
+    private var shareURL: URL? {
+        guard let id = player.current?.videoId else { return nil }
+        return URL(string: "https://music.youtube.com/watch?v=\(id)")
+    }
+
+    /// Name of the playlist the queue is playing from, if it's one of the
+    /// user's library playlists (used in the Song Info sheet).
+    private var currentPlaylistName: String? {
+        guard let pid = player.playlistContextId else { return nil }
+        return LibraryStore.shared.playlists.first { $0.playlistId == pid }?.title
+    }
+
+    /// Overflow actions, shared between the ••• menu and the artwork long-press.
+    @ViewBuilder private var trackActions: some View {
+        if player.current?.album?.id != nil {
+            Button { openAlbum() } label: { Label("View Album", systemImage: "square.stack") }
+        }
+        if player.current?.artists.first != nil {
+            Button { openArtist() } label: { Label("View Artist", systemImage: "music.mic") }
+        }
+        if let t = player.current {
+            Button { player.playRadio(from: t) } label: {
+                Label("Start Radio", systemImage: "dot.radiowaves.left.and.right")
+            }
+        }
+        Button { showAddToPlaylist = true } label: { Label("Add to Playlist", systemImage: "text.badge.plus") }
+        if let url = shareURL {
+            ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") }
+        }
+        Button { showSongInfo = true } label: { Label("Song Info", systemImage: "info.circle") }
+        if player.canRemoveCurrentFromPlaylist {
+            Divider()
+            Button(role: .destructive) { player.removeCurrentFromPlaylist() } label: {
+                Label("Remove from Playlist", systemImage: "minus.circle")
+            }
+        }
     }
 
     private var bigPlayButton: some View {
@@ -418,5 +455,102 @@ extension View {
                     else if v.translation.width > 55 { player.previous() }
                 }
         )
+    }
+}
+
+/// Pick one of the user's playlists to add a track to.
+struct AddToPlaylistSheet: View {
+    let track: Track
+    @EnvironmentObject var player: PlayerEngine
+    @ObservedObject private var library = LibraryStore.shared
+    @Environment(\.dismiss) private var dismiss
+
+    private var playlists: [CardItem] { library.playlists.filter { $0.playlistId != nil } }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if playlists.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: "music.note.list").font(.system(size: 34)).foregroundStyle(Theme.textTertiary)
+                        Text("No playlists").foregroundStyle(Theme.textSecondary)
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List(playlists) { pl in
+                        Button { add(pl) } label: {
+                            HStack(spacing: 12) {
+                                ArtworkView(url: pl.thumbnailURL, corner: 5).frame(width: 46, height: 46)
+                                Text(pl.title).font(.system(size: 16)).foregroundStyle(Theme.textPrimary).lineLimit(1)
+                                Spacer()
+                            }
+                        }
+                        .listRowBackground(Color.clear)
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                }
+            }
+            .background(Theme.bg)
+            .navigationTitle("Add to Playlist")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Cancel") { dismiss() } } }
+        }
+        .presentationDetents([.medium, .large])
+        .preferredColorScheme(.dark)
+        .task { await library.loadIfNeeded() }
+    }
+
+    private func add(_ pl: CardItem) {
+        guard let pid = pl.playlistId else { return }
+        dismiss()
+        Task {
+            let ok = (try? await YTM.shared.addToPlaylist(playlistId: pid, videoId: track.videoId)) ?? false
+            player.showToast(ok ? "Added to \(pl.title)" : "Couldn't add — you can only edit your own playlists")
+            if ok { PageCache.shared.collections["playlist-\(pid)"] = nil }
+        }
+    }
+}
+
+/// Read-only details for the current track.
+struct SongInfoSheet: View {
+    let track: Track
+    var fromPlaylist: String?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    ArtworkView(url: track.artworkURL, corner: 12)
+                        .frame(width: 180, height: 180)
+                        .shadow(color: .black.opacity(0.3), radius: 12, y: 6)
+                        .padding(.top, 16)
+                    VStack(spacing: 14) {
+                        infoRow("Title", track.title)
+                        if !track.artistLine.isEmpty { infoRow("Artist", track.artistLine) }
+                        if let al = track.album?.name, !al.isEmpty { infoRow("Album", al) }
+                        if !track.durationText.isEmpty { infoRow("Duration", track.durationText) }
+                        if let fromPlaylist { infoRow("From Playlist", fromPlaylist) }
+                    }
+                    .padding(.horizontal, 22)
+                    Spacer(minLength: 20)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .background(Theme.bg)
+            .navigationTitle("Song Info")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+        }
+        .presentationDetents([.medium, .large])
+        .preferredColorScheme(.dark)
+    }
+
+    private func infoRow(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label.uppercased()).font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.textTertiary)
+            Text(value).font(.system(size: 16)).foregroundStyle(Theme.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
