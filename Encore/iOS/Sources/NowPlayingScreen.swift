@@ -95,17 +95,18 @@ struct NowPlayingScreen: View {
             }
             Spacer(minLength: 0)
 
-            HStack {
+            HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 3) {
+                    // Tap the title to open the album.
                     Text(player.current?.title ?? "").font(.system(size: 22, weight: .bold))
                         .foregroundStyle(.white).lineLimit(1)
+                        .contentShape(Rectangle())
+                        .onTapGesture { openAlbum() }
+                    // Tap the artist to open the artist page.
                     Text(player.current?.artistLine ?? "").font(.system(size: 15))
                         .foregroundStyle(.white.opacity(0.6)).lineLimit(1)
-                        .onTapGesture {
-                            if let a = player.current?.artists.first {
-                                dismiss(); nav.goArtist(id: a.id, name: a.name)
-                            }
-                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture { openArtist() }
                 }
                 Spacer()
                 Button { if let t = player.current { player.toggleLike(t) } } label: {
@@ -114,6 +115,26 @@ struct NowPlayingScreen: View {
                         .font(.system(size: 22))
                         .foregroundStyle(player.current.map { player.likedIds.contains($0.videoId) } == true
                                          ? Theme.accent : .white.opacity(0.7))
+                }
+                Menu {
+                    if player.current?.album?.id != nil {
+                        Button { openAlbum() } label: { Label("View Album", systemImage: "square.stack") }
+                    }
+                    if player.current?.artists.first != nil {
+                        Button { openArtist() } label: { Label("View Artist", systemImage: "music.mic") }
+                    }
+                    if player.canRemoveCurrentFromPlaylist {
+                        Divider()
+                        Button(role: .destructive) { player.removeCurrentFromPlaylist() } label: {
+                            Label("Remove from Playlist", systemImage: "minus.circle")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
                 }
             }
             .padding(.horizontal, 36)
@@ -161,6 +182,18 @@ struct NowPlayingScreen: View {
                 .padding(.top, 18)
             Spacer(minLength: 0)
         }
+    }
+
+    /// Open the current track's album page (dismisses the now-playing screen).
+    private func openAlbum() {
+        guard let id = player.current?.album?.id, !id.isEmpty else { return }
+        dismiss(); nav.go(.album(id))
+    }
+
+    /// Open the current track's (first) artist page.
+    private func openArtist() {
+        guard let a = player.current?.artists.first else { return }
+        dismiss(); nav.goArtist(id: a.id, name: a.name)
     }
 
     private var bigPlayButton: some View {

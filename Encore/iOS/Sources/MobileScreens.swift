@@ -596,10 +596,10 @@ struct CollectionScreen: View {
                     }.frame(maxWidth: .infinity)
                     let shown = shownTracks(page)
                     HStack(spacing: 10) {
-                        Button { player.playCollection(shown, startAt: 0) } label: {
+                        Button { player.playCollection(shown, startAt: 0, playlistId: playlistId) } label: {
                             Label("Play", systemImage: "play.fill").frame(maxWidth: .infinity)
                         }.buttonStyle(.borderedProminent).tint(Theme.accent)
-                        Button { player.playShuffled(shown) } label: {
+                        Button { player.playShuffled(shown, playlistId: playlistId) } label: {
                             Label("Shuffle", systemImage: "shuffle").frame(maxWidth: .infinity)
                         }.buttonStyle(.bordered)
                     }.padding(.horizontal, 16)
@@ -616,7 +616,7 @@ struct CollectionScreen: View {
                         ForEach(Array(shown.enumerated()), id: \.offset) { i, t in
                             TrackRowView(track: t,
                                          onRemoveFromPlaylist: isPlaylist ? { remove(t) } : nil) {
-                                player.playCollection(shown, startAt: i)
+                                player.playCollection(shown, startAt: i, playlistId: playlistId)
                             }
                             .padding(.horizontal, 16)
                         }

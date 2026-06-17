@@ -50,6 +50,10 @@ final class PlayerEngine: NSObject, ObservableObject {
     @Published var current: Track? { didSet { onStateChange?() } }
     @Published var queue: [Track] = []
     @Published var index: Int = 0
+    /// playlistId the current queue was played from, if it's an editable
+    /// playlist. Enables "Remove from playlist" on the now-playing screen.
+    /// nil for albums, radio, library songs, and home-shelf playback.
+    @Published var playlistContextId: String?
     @Published var isPlaying = false { didSet { onStateChange?() } }
     @Published var repeatMode: RepeatMode = .off
     @Published var shuffleOn = false
@@ -181,19 +185,21 @@ final class PlayerEngine: NSObject, ObservableObject {
 
     // MARK: - Public playback API
 
-    func playCollection(_ tracks: [Track], startAt: Int) {
+    func playCollection(_ tracks: [Track], startAt: Int, playlistId: String? = nil) {
         guard !tracks.isEmpty, startAt < tracks.count else { return }
         unshuffledQueue = nil
         shuffleOn = false
+        playlistContextId = playlistId
         queue = tracks
         index = startAt
         load(tracks[startAt])
     }
 
-    func playShuffled(_ tracks: [Track]) {
+    func playShuffled(_ tracks: [Track], playlistId: String? = nil) {
         guard !tracks.isEmpty else { return }
         unshuffledQueue = tracks
         shuffleOn = true
+        playlistContextId = playlistId
         queue = tracks.shuffled()
         index = 0
         load(queue[0])
@@ -202,6 +208,7 @@ final class PlayerEngine: NSObject, ObservableObject {
     func playRadio(from track: Track) {
         unshuffledQueue = nil
         shuffleOn = false
+        playlistContextId = nil
         queue = [track]
         index = 0
         load(track)
@@ -259,6 +266,49 @@ final class PlayerEngine: NSObject, ObservableObject {
         queue.remove(at: i)
         if i < index { index -= 1 }
         persistSnapshot()
+    }
+
+    /// Whether the now-playing track can be removed from the playlist it's
+    /// being played from (requires an editable playlist context).
+    var canRemoveCurrentFromPlaylist: Bool {
+        playlistContextId != nil && current != nil
+    }
+
+    /// Remove the currently-playing track from the playlist it was played from.
+    /// Keeps the song playing, drops any other copies from Up Next, and updates
+    /// the cached playlist page so the list reflects it.
+    func removeCurrentFromPlaylist() {
+        guard let playlistId = playlistContextId, let track = current else { return }
+        Task {
+            let ok = (try? await YTM.shared.removeFromPlaylist(
+                playlistId: playlistId, videoId: track.videoId, setVideoId: track.setVideoId)) ?? false
+            guard ok else {
+                self.showToast("Couldn't remove — you can only edit your own playlists")
+                return
+            }
+            // Update the cached playlist page so the playlist screen updates too.
+            let key = "playlist-\(playlistId)"
+            if var cached = PageCache.shared.collections[key] {
+                cached.tracks.removeAll { $0.videoId == track.videoId && $0.setVideoId == track.setVideoId }
+                PageCache.shared.collections[key] = cached
+            }
+            // Drop other copies from Up Next; keep the one playing right now.
+            let playingIdx = self.index
+            var rebuilt: [Track] = []
+            for (i, t) in self.queue.enumerated() {
+                if i == playingIdx || !(t.videoId == track.videoId && t.setVideoId == track.setVideoId) {
+                    rebuilt.append(t)
+                }
+            }
+            self.queue = rebuilt
+            self.unshuffledQueue = nil
+            if let cur = self.current,
+               let i = rebuilt.firstIndex(where: { $0.videoId == cur.videoId && $0.setVideoId == cur.setVideoId }) {
+                self.index = i
+            }
+            self.persistSnapshot()
+            self.showToast("Removed from playlist")
+        }
     }
 
     /// Reorder the Up Next list; keep `index` pointing at the playing track.
