@@ -171,17 +171,11 @@ final class PlayerEngine: NSObject, ObservableObject {
         repeatMode = RepeatMode(rawValue: snapshot.repeatRaw) ?? .off
         current = queue[index]
 
-        let savedTime = UserDefaults.standard.double(forKey: "playerTime")
+        // Restore the queue and the current track, but always start it from the
+        // beginning on reopen (by design — not from where you left off).
         duration = Double(current?.durationSeconds ?? 0)
-        // Only clamp when the duration is known; clamping against an unknown 0
-        // duration collapsed the resume point to 0:00. Restart if we were within
-        // ~2s of the end last time.
-        if duration > 1, savedTime > duration - 2 {
-            currentTime = 0
-        } else {
-            currentTime = savedTime
-        }
-        restoreSeekTime = currentTime > 1 ? currentTime : nil
+        currentTime = 0
+        restoreSeekTime = nil
         updateNowPlayingInfo()
     }
 
