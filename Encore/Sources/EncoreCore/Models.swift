@@ -89,6 +89,12 @@ public struct Track: Identifiable, Hashable, Codable {
     public var artworkURL: URL? {
         Artwork.upscale(thumbnailURL, to: 544)
     }
+
+    /// Public YouTube Music link to this song — used for sharing / copying.
+    public var shareURL: URL? {
+        guard !videoId.isEmpty else { return nil }
+        return URL(string: "https://music.youtube.com/watch?v=\(videoId)")
+    }
 }
 
 public extension Track {

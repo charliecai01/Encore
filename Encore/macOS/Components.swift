@@ -251,6 +251,12 @@ struct TrackRow: View {
             Button("Add to Queue") { player.addToQueue(track) }
             Divider()
             Button("Start Radio") { player.playRadio(from: track) }
+            if let url = track.shareURL {
+                Button("Copy Link") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(url.absoluteString, forType: .string)
+                }
+            }
             Divider()
             Menu("Add to Playlist") {
                 Button("New Playlist…") {

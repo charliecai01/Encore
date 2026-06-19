@@ -195,10 +195,7 @@ struct NowPlayingScreen: View {
         dismiss(); nav.goArtist(id: a.id, name: a.name)
     }
 
-    private var shareURL: URL? {
-        guard let id = player.current?.videoId else { return nil }
-        return URL(string: "https://music.youtube.com/watch?v=\(id)")
-    }
+    private var shareURL: URL? { player.current?.shareURL }
 
     /// Name of the playlist the queue is playing from, if it's one of the
     /// user's library playlists (used in the Song Info sheet).
@@ -223,6 +220,9 @@ struct NowPlayingScreen: View {
         Button { showAddToPlaylist = true } label: { Label("Add to Playlist", systemImage: "text.badge.plus") }
         if let url = shareURL {
             ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") }
+            Button {
+                UIPasteboard.general.url = url
+            } label: { Label("Copy Link", systemImage: "link") }
         }
         Button { showSongInfo = true } label: { Label("Song Info", systemImage: "info.circle") }
         if player.canRemoveCurrentFromPlaylist {
