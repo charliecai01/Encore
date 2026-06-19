@@ -68,39 +68,37 @@ struct QueueList: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            ScrollViewReader { proxy in
-                List {
-                    ForEach(Array(player.queue.enumerated()), id: \.offset) { i, track in
-                        QueueRow(track: track,
-                                 isCurrent: i == player.index,
-                                 position: i) {
-                            player.jump(to: i)
-                        }
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
-                        .id(i)
-                        // Reorder via right-click → Play Next. Drag-to-reorder
-                        // proved unreliable on macOS (the row's tap-to-play
-                        // gesture and NSTableView's drag session fight), so the
-                        // context menu is the reorder path.
-                        .contextMenu {
-                            if i != player.index {
-                                Button("Play Next") { player.playNext(from: i) }
-                                Button("Remove from Queue", role: .destructive) {
-                                    player.removeFromQueue(at: i)
-                                }
+            List {
+                // Pin the now-playing track to the top and only show what's
+                // coming up — already-played tracks are hidden so the current
+                // song is always the first row.
+                ForEach(Array(player.queue.enumerated().dropFirst(player.index)), id: \.offset) { i, track in
+                    QueueRow(track: track,
+                             isCurrent: i == player.index,
+                             position: i) {
+                        player.jump(to: i)
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
+                    .id(i)
+                    // Reorder via right-click → Play Next. Drag-to-reorder
+                    // proved unreliable on macOS (the row's tap-to-play
+                    // gesture and NSTableView's drag session fight), so the
+                    // context menu is the reorder path.
+                    .contextMenu {
+                        if i != player.index {
+                            Button("Play Next") { player.playNext(from: i) }
+                            Button("Remove from Queue", role: .destructive) {
+                                player.removeFromQueue(at: i)
                             }
                         }
                     }
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .onAppear {
-                    proxy.scrollTo(player.index, anchor: .center)
-                }
-                .clipped()
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .clipped()
         }
     }
 }
