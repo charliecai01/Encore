@@ -178,8 +178,16 @@ final class PlayerEngine: NSObject, ObservableObject {
         current = queue[index]
         let savedTime = UserDefaults.standard.double(forKey: "playerTime")
         duration = Double(current?.durationSeconds ?? 0)
-        currentTime = min(savedTime, max(duration - 1, 0))
-        restoreSeekTime = currentTime
+        // Only clamp when the duration is known; otherwise keep the saved time
+        // verbatim (clamping against an unknown 0 duration collapsed it to 0:00,
+        // which is why restored tracks always restarted). If we were within ~2s
+        // of the end last time, start fresh instead of resuming at the finish.
+        if duration > 1, savedTime > duration - 2 {
+            currentTime = 0
+        } else {
+            currentTime = savedTime
+        }
+        restoreSeekTime = currentTime > 1 ? currentTime : nil
         updateNowPlayingInfo()
     }
 
@@ -327,12 +335,9 @@ final class PlayerEngine: NSObject, ObservableObject {
         sleepStopActive = false
         suppressSiteAutoplay = false // explicit user intent overrides the launch guard
         if !loadedOnce {
-            let resumeAt = restoreSeekTime
-            load(track)
-            if let resumeAt {
-                restoreSeekTime = resumeAt
-                currentTime = resumeAt
-            }
+            // First play after a restored session: start the web player directly
+            // at the saved offset (reliable) instead of seeking after it starts.
+            load(track, startAt: restoreSeekTime ?? 0)
             return
         }
         if isPlaying {
@@ -481,13 +486,14 @@ final class PlayerEngine: NSObject, ObservableObject {
 
     // MARK: - Internals
 
-    private func load(_ track: Track) {
+    private func load(_ track: Track, startAt: Double = 0) {
         loadedOnce = true
-        restoreSeekTime = nil
+        // Carry the resume offset so the ready/state handlers can apply it too.
+        restoreSeekTime = startAt > 0 ? startAt : nil
         sleepStopActive = false
         suppressSiteAutoplay = false
         current = track
-        currentTime = 0
+        currentTime = startAt
         duration = Double(track.durationSeconds ?? 0)
         clock.lyrics = nil
         clock.currentLyricIndex = nil
@@ -496,10 +502,20 @@ final class PlayerEngine: NSObject, ObservableObject {
         persistSnapshot()
         try? AVAudioSession.sharedInstance().setActive(true)
         if playerReady {
-            js("window.__encore && __encore.ensure('\(track.videoId)')")
+            ensureJS(track.videoId, startAt: startAt)
         }
         updateNowPlayingInfo()
         fetchLyrics(for: track)
+    }
+
+    /// Tell the web player to load/resume a video, optionally from `startAt`
+    /// seconds (so a restored session begins where you left off, not at 0:00).
+    private func ensureJS(_ videoId: String, startAt: Double) {
+        if startAt > 0 {
+            js("window.__encore && __encore.ensure('\(videoId)', \(startAt))")
+        } else {
+            js("window.__encore && __encore.ensure('\(videoId)')")
+        }
     }
 
     private func advance(manual: Bool = false) {
@@ -597,7 +613,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         case "ready":
             playerReady = true
             if loadedOnce, let track = current {
-                js("window.__encore && __encore.ensure('\(track.videoId)')")
+                ensureJS(track.videoId, startAt: restoreSeekTime ?? 0)
             }
         case "state":
             let state = body["data"] as? Int ?? -1
@@ -633,7 +649,8 @@ final class PlayerEngine: NSObject, ObservableObject {
                 if mismatchTicks > 8, !suppressSiteAutoplay, let track = current {
                     mismatchTicks = 0
                     lastLoadAt = Date()
-                    js("window.__encore && __encore.ensure('\(track.videoId)')")
+                    // Re-sync at our tracked position, not 0, so a glitch doesn't restart the song.
+                    ensureJS(track.videoId, startAt: currentTime)
                 }
                 return
             }
@@ -839,20 +856,38 @@ final class PlayerEngine: NSObject, ObservableObject {
       function mp() { return document.getElementById('movie_player'); }
 
       window.__encore = {
-        ensure: function (id) {
+        ensure: function (id, start) {
+          start = start || 0;
           var attempt = function (n) {
             var p = mp();
             if (p && p.loadVideoById && p.getVideoData) {
               var cur = p.getVideoData().video_id;
               if (cur !== id) {
-                p.loadVideoById(id);
-              } else if (p.getPlayerState && p.getPlayerState() !== 1) {
-                p.playVideo();
+                if (start > 0) { p.loadVideoById({ videoId: id, startSeconds: start }); }
+                else { p.loadVideoById(id); }
+              } else {
+                if (start > 0 && p.seekTo) { p.seekTo(start, true); }
+                if (p.getPlayerState && p.getPlayerState() !== 1) { p.playVideo(); }
               }
+              // Watchdog: iOS autoplay policy can leave the player CUED (5) or
+              // UNSTARTED (-1) instead of playing, which used to require skipping
+              // a track to recover. Nudge playVideo() until it actually starts.
+              var nudges = 0;
+              var nudge = function () {
+                var q = mp();
+                if (!q || !q.getPlayerState || !q.getVideoData) { return; }
+                if (q.getVideoData().video_id !== id) { return; }
+                var s = q.getPlayerState();
+                if (s === 5 || s === -1) {
+                  q.playVideo();
+                  if (++nudges < 6) { setTimeout(nudge, 350); }
+                }
+              };
+              setTimeout(nudge, 400);
               return;
             }
             if (n <= 0) {
-              location.href = 'https://music.youtube.com/watch?v=' + id;
+              location.href = 'https://music.youtube.com/watch?v=' + id + (start > 0 ? '&t=' + Math.floor(start) : '');
               return;
             }
             setTimeout(function () { attempt(n - 1); }, 300);

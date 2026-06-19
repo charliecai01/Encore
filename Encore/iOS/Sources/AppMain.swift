@@ -35,4 +35,14 @@ final class PhoneSceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.makeKeyAndVisible()
         Task { await AuthManager.shared.bootstrap() }
     }
+
+    // Snapshot playback position when leaving the app so reopening resumes at the
+    // right spot even if iOS terminates us in the background.
+    func sceneWillResignActive(_ scene: UIScene) {
+        PlayerEngine.shared.persistSnapshot()
+    }
+
+    func sceneDidEnterBackground(_ scene: UIScene) {
+        PlayerEngine.shared.persistSnapshot()
+    }
 }

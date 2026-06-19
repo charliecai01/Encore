@@ -173,8 +173,15 @@ final class PlayerEngine: NSObject, ObservableObject {
 
         let savedTime = UserDefaults.standard.double(forKey: "playerTime")
         duration = Double(current?.durationSeconds ?? 0)
-        currentTime = min(savedTime, max(duration - 1, 0))
-        restoreSeekTime = currentTime
+        // Only clamp when the duration is known; clamping against an unknown 0
+        // duration collapsed the resume point to 0:00. Restart if we were within
+        // ~2s of the end last time.
+        if duration > 1, savedTime > duration - 2 {
+            currentTime = 0
+        } else {
+            currentTime = savedTime
+        }
+        restoreSeekTime = currentTime > 1 ? currentTime : nil
         updateNowPlayingInfo()
     }
 
@@ -297,15 +304,10 @@ final class PlayerEngine: NSObject, ObservableObject {
     func togglePlay() {
         guard let track = current else { return }
         sleepStopActive = false // explicit user intent overrides the sleep stop
-        // First play after a restored session: load the saved track, then the
-        // playing-state event seeks back to the saved position.
+        // First play after a restored session: start the web player directly at
+        // the saved offset (reliable) instead of seeking after it begins at 0.
         if !loadedOnce {
-            let resumeAt = restoreSeekTime
-            load(track)
-            if let resumeAt {
-                restoreSeekTime = resumeAt
-                currentTime = resumeAt
-            }
+            load(track, startAt: restoreSeekTime ?? 0)
             return
         }
         js(isPlaying ? "window.__encore && __encore.pause()" : "window.__encore && __encore.play()")
@@ -441,12 +443,13 @@ final class PlayerEngine: NSObject, ObservableObject {
 
     // MARK: - Internals
 
-    private func load(_ track: Track) {
+    private func load(_ track: Track, startAt: Double = 0) {
         loadedOnce = true
-        restoreSeekTime = nil
+        // Carry the resume offset so the ready/state handlers can apply it too.
+        restoreSeekTime = startAt > 0 ? startAt : nil
         sleepStopActive = false
         current = track
-        currentTime = 0
+        currentTime = startAt
         duration = Double(track.durationSeconds ?? 0)
         clock.lyrics = nil
         clock.currentLyricIndex = nil
@@ -455,11 +458,20 @@ final class PlayerEngine: NSObject, ObservableObject {
         persistSnapshot()
 
         if playerReady {
-            js("window.__encore && __encore.ensure('\(track.videoId)')")
+            ensureJS(track.videoId, startAt: startAt)
         }
 
         updateNowPlayingInfo()
         fetchLyrics(for: track)
+    }
+
+    /// Load/resume a video in the web player, optionally from `startAt` seconds.
+    private func ensureJS(_ videoId: String, startAt: Double) {
+        if startAt > 0 {
+            js("window.__encore && __encore.ensure('\(videoId)', \(startAt))")
+        } else {
+            js("window.__encore && __encore.ensure('\(videoId)')")
+        }
     }
 
     private func advance(manual: Bool = false) {
@@ -572,7 +584,7 @@ final class PlayerEngine: NSObject, ObservableObject {
             playerReady = true
             js("window.__encore && __encore.vol(\(Int(volume * 100)))")
             if loadedOnce, let track = current {
-                js("window.__encore && __encore.ensure('\(track.videoId)')")
+                ensureJS(track.videoId, startAt: restoreSeekTime ?? 0)
             }
         case "state":
             let state = body["data"] as? Int ?? -1
@@ -610,7 +622,8 @@ final class PlayerEngine: NSObject, ObservableObject {
                 if mismatchTicks > 8, let track = current {
                     mismatchTicks = 0
                     lastLoadAt = Date()
-                    js("window.__encore && __encore.ensure('\(track.videoId)')")
+                    // Re-sync at our tracked position, not 0, so a glitch doesn't restart the song.
+                    ensureJS(track.videoId, startAt: currentTime)
                 }
                 return
             }
@@ -723,20 +736,37 @@ final class PlayerEngine: NSObject, ObservableObject {
 
       var videoModeStyle = null;
       window.__encore = {
-        ensure: function (id) {
+        ensure: function (id, start) {
+          start = start || 0;
           var attempt = function (n) {
             var p = mp();
             if (p && p.loadVideoById && p.getVideoData) {
               var cur = p.getVideoData().video_id;
               if (cur !== id) {
-                p.loadVideoById(id);
-              } else if (p.getPlayerState && p.getPlayerState() !== 1) {
-                p.playVideo();
+                if (start > 0) { p.loadVideoById({ videoId: id, startSeconds: start }); }
+                else { p.loadVideoById(id); }
+              } else {
+                if (start > 0 && p.seekTo) { p.seekTo(start, true); }
+                if (p.getPlayerState && p.getPlayerState() !== 1) { p.playVideo(); }
               }
+              // Watchdog: nudge playVideo() if the player ends up CUED (5) or
+              // UNSTARTED (-1) instead of playing.
+              var nudges = 0;
+              var nudge = function () {
+                var q = mp();
+                if (!q || !q.getPlayerState || !q.getVideoData) { return; }
+                if (q.getVideoData().video_id !== id) { return; }
+                var s = q.getPlayerState();
+                if (s === 5 || s === -1) {
+                  q.playVideo();
+                  if (++nudges < 6) { setTimeout(nudge, 350); }
+                }
+              };
+              setTimeout(nudge, 400);
               return;
             }
             if (n <= 0) {
-              location.href = 'https://music.youtube.com/watch?v=' + id;
+              location.href = 'https://music.youtube.com/watch?v=' + id + (start > 0 ? '&t=' + Math.floor(start) : '');
               return;
             }
             setTimeout(function () { attempt(n - 1); }, 300);
