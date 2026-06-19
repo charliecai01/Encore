@@ -135,6 +135,11 @@ struct PlayerBar: View {
 
     private var rightControls: some View {
         HStack(spacing: 14) {
+            ControlButton(icon: "square.and.arrow.up", size: 14) {
+                player.copyCurrentLink()
+            }
+            .disabled(player.current == nil)
+            .help("Copy link to song")
             sleepTimerMenu
             ControlButton(icon: "quote.bubble", size: 14,
                           active: nowPlayingExpanded) {

@@ -562,6 +562,15 @@ final class PlayerEngine: NSObject, ObservableObject {
         }
     }
 
+    /// Copy a shareable YouTube Music link for the current track to the
+    /// clipboard, with a toast for feedback.
+    func copyCurrentLink() {
+        guard let url = current?.shareURL else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url.absoluteString, forType: .string)
+        showToast("Link copied")
+    }
+
     private func js(_ script: String) {
         webView.evaluateJavaScript(script, completionHandler: nil)
     }

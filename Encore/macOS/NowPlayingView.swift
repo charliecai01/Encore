@@ -63,6 +63,21 @@ struct NowPlayingView: View {
                         .help("Close (Esc)")
 
                         Spacer()
+
+                        Button {
+                            player.copyCurrentLink()
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.85))
+                                .padding(.horizontal, 13)
+                                .padding(.vertical, 8)
+                                .background(.white.opacity(0.12), in: Capsule())
+                                .overlay(Capsule().strokeBorder(.white.opacity(0.15)))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(player.current == nil)
+                        .help("Copy link to song")
                     }
                 }
                 .padding(.horizontal, 24)
