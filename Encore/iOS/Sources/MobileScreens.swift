@@ -120,6 +120,12 @@ struct TrackRowView: View {
                 Button(player.likedIds.contains(track.videoId) ? "Remove from Liked" : "Add to Liked") {
                     player.toggleLike(track)
                 }
+                if let url = track.shareURL {
+                    ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") }
+                    Button {
+                        UIPasteboard.general.url = url
+                    } label: { Label("Copy Link", systemImage: "link") }
+                }
                 if let onRemoveFromPlaylist {
                     Button("Remove from Playlist", role: .destructive) { onRemoveFromPlaylist() }
                 }
