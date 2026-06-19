@@ -411,33 +411,41 @@ struct QueuePane: View {
                     .scaleEffect(0.8)
             }
             .padding(.horizontal, 24).padding(.bottom, 6)
-            ScrollViewReader { proxy in
-                List {
-                    ForEach(Array(player.queue.enumerated()), id: \.offset) { i, track in
-                        HStack(spacing: 11) {
-                            ArtworkView(url: track.thumbnailURL, corner: 4).frame(width: 44, height: 44)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(track.title).font(.system(size: 14, weight: i == player.index ? .semibold : .regular))
-                                    .foregroundStyle(i == player.index ? Theme.accent : .white).lineLimit(1)
-                                Text(track.artistLine).font(.system(size: 12)).foregroundStyle(.white.opacity(0.5)).lineLimit(1)
-                            }
-                            Spacer()
+            List {
+                // Pin the current track to the top and only show what's coming
+                // up — already-played tracks are hidden so the now-playing song
+                // is always the first row.
+                ForEach(Array(player.queue.enumerated().dropFirst(player.index)), id: \.offset) { i, track in
+                    HStack(spacing: 11) {
+                        ArtworkView(url: track.thumbnailURL, corner: 4).frame(width: 44, height: 44)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(track.title).font(.system(size: 14, weight: i == player.index ? .semibold : .regular))
+                                .foregroundStyle(i == player.index ? Theme.accent : .white).lineLimit(1)
+                            Text(track.artistLine).font(.system(size: 12)).foregroundStyle(.white.opacity(0.5)).lineLimit(1)
                         }
-                        .padding(.vertical, 3)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .contentShape(Rectangle())
-                        .onTapGesture { if editMode != .active { player.jump(to: i) } }
-                        .id(i)
+                        Spacer()
                     }
-                    .onMove { from, to in player.moveQueue(from: from, to: to) }
-                    .onDelete { idx in idx.sorted(by: >).forEach { player.removeFromQueue(at: $0) } }
+                    .padding(.vertical, 3)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .contentShape(Rectangle())
+                    .onTapGesture { if editMode != .active { player.jump(to: i) } }
+                    .id(i)
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .environment(\.editMode, $editMode)
-                .onAppear { proxy.scrollTo(player.index, anchor: .top) }
+                // List offsets are relative to the visible slice; shift them back
+                // to absolute queue indices (the slice starts at player.index).
+                .onMove { from, to in
+                    let base = player.index
+                    player.moveQueue(from: IndexSet(from.map { $0 + base }), to: to + base)
+                }
+                .onDelete { idx in
+                    let base = player.index
+                    idx.map { $0 + base }.sorted(by: >).forEach { player.removeFromQueue(at: $0) }
+                }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .environment(\.editMode, $editMode)
         }
     }
 }
