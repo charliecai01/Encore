@@ -59,6 +59,14 @@ public final class InnerTube: @unchecked Sendable {
     private let lock = NSLock()
     private var _cookieHeader: String?
 
+    /// Total attempts (1 initial + retries) for idempotent requests. A flaky
+    /// connection or a transient 5xx/429 from YouTube shouldn't surface as an
+    /// empty screen, so reads are retried with backoff.
+    public var maxAttempts = 3
+    /// Base delay for exponential backoff between retries (seconds). Set to 0
+    /// in tests to avoid real sleeps.
+    public var retryBaseDelay: TimeInterval = 0.5
+
     public var cookieHeader: String? {
         get { lock.lock(); defer { lock.unlock() }; return _cookieHeader }
         set { lock.lock(); defer { lock.unlock() }; _cookieHeader = newValue }
@@ -76,17 +84,53 @@ public final class InnerTube: @unchecked Sendable {
         return found["SAPISID"] ?? found["__Secure-3PAPISID"]
     }
 
-    private init() {
+    /// Designated initializer. Inject a custom session (e.g. a URLProtocol mock)
+    /// to test the client without hitting the network.
+    public init(session: URLSession) {
+        self.session = session
+    }
+
+    private convenience init() {
         let config = URLSessionConfiguration.ephemeral
         config.httpShouldSetCookies = false
         config.httpCookieAcceptPolicy = .never
         config.timeoutIntervalForRequest = 30
-        session = URLSession(configuration: config)
+        config.timeoutIntervalForResource = 60
+        self.init(session: URLSession(configuration: config))
     }
 
+    /// POST to an InnerTube endpoint. Idempotent reads (the default) are retried
+    /// on transient network errors and retryable HTTP statuses; pass
+    /// `idempotent: false` for mutations so they're never replayed.
     public func post(_ endpoint: String, body: [String: Any],
                      client: YTClient = .webRemix,
-                     query: [String: String] = [:]) async throws -> JSONValue {
+                     query: [String: String] = [:],
+                     idempotent: Bool = true) async throws -> JSONValue {
+        let attempts = idempotent ? max(1, maxAttempts) : 1
+        var attempt = 0
+        while true {
+            attempt += 1
+            do {
+                // Rebuild per attempt so the SAPISIDHASH timestamp stays fresh.
+                let req = try makeRequest(endpoint: endpoint, body: body, client: client, query: query)
+                let (data, response) = try await session.data(for: req)
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                if status == 200 { return JSONValue.parse(data) }
+                if Self.isRetryableStatus(status), attempt < attempts {
+                    try await sleepBeforeRetry(attempt)
+                    continue
+                }
+                let snippet = String(data: data.prefix(300), encoding: .utf8) ?? ""
+                throw InnerTubeError.badStatus(status, snippet)
+            } catch let error as URLError where Self.isTransient(error) && attempt < attempts {
+                try await sleepBeforeRetry(attempt)
+                continue
+            }
+        }
+    }
+
+    private func makeRequest(endpoint: String, body: [String: Any],
+                            client: YTClient, query: [String: String]) throws -> URLRequest {
         var comps = URLComponents(string: "https://music.youtube.com/youtubei/v1/\(endpoint)")!
         var items = [URLQueryItem(name: "prettyPrint", value: "false")]
         for (k, v) in query { items.append(URLQueryItem(name: k, value: v)) }
@@ -112,14 +156,33 @@ public final class InnerTube: @unchecked Sendable {
                 req.setValue("0", forHTTPHeaderField: "X-Goog-AuthUser")
             }
         }
+        return req
+    }
 
-        let (data, response) = try await session.data(for: req)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard status == 200 else {
-            let snippet = String(data: data.prefix(300), encoding: .utf8) ?? ""
-            throw InnerTubeError.badStatus(status, snippet)
+    /// 429 (rate limit) and 5xx (server) are worth retrying; 4xx auth/client
+    /// errors are not (they won't fix themselves on replay).
+    static func isRetryableStatus(_ status: Int) -> Bool {
+        status == 429 || (500...599).contains(status)
+    }
+
+    /// Transport-level errors that a retry can plausibly recover from. Excludes
+    /// "offline" and "cancelled", where retrying just wastes time.
+    static func isTransient(_ error: URLError) -> Bool {
+        switch error.code {
+        case .timedOut, .networkConnectionLost, .cannotConnectToHost,
+             .cannotFindHost, .dnsLookupFailed, .resourceUnavailable,
+             .secureConnectionFailed:
+            return true
+        default:
+            return false
         }
-        return JSONValue.parse(data)
+    }
+
+    private func sleepBeforeRetry(_ attempt: Int) async throws {
+        guard retryBaseDelay > 0 else { return }
+        let delay = retryBaseDelay * pow(2, Double(attempt - 1))
+        let jittered = delay * Double.random(in: 0.8...1.2)
+        try await Task.sleep(nanoseconds: UInt64(jittered * 1_000_000_000))
     }
 
     private func authorization(sapisid: String) -> String {

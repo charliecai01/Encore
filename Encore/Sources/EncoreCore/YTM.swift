@@ -269,7 +269,7 @@ public final class YTM: @unchecked Sendable {
 
     public func setLiked(videoId: String, liked: Bool) async throws {
         let endpoint = liked ? "like/like" : "like/removelike"
-        _ = try await net.post(endpoint, body: ["target": ["videoId": videoId]])
+        _ = try await net.post(endpoint, body: ["target": ["videoId": videoId]], idempotent: false)
     }
 
     // MARK: - Playlist management
@@ -279,7 +279,7 @@ public final class YTM: @unchecked Sendable {
         let r = try await net.post("playlist/create", body: [
             "title": title,
             "privacyStatus": privacy,
-        ])
+        ], idempotent: false)
         return r["playlistId"].string
     }
 
@@ -288,7 +288,7 @@ public final class YTM: @unchecked Sendable {
         let r = try await net.post("browse/edit_playlist", body: [
             "playlistId": pid,
             "actions": [["action": "ACTION_ADD_VIDEO", "addedVideoId": videoId]],
-        ])
+        ], idempotent: false)
         return r["status"].string?.contains("SUCCEEDED") ?? false
     }
 
@@ -299,7 +299,7 @@ public final class YTM: @unchecked Sendable {
         let r = try await net.post("browse/edit_playlist", body: [
             "playlistId": pid,
             "actions": [action],
-        ])
+        ], idempotent: false)
         return r["status"].string?.contains("SUCCEEDED") ?? false
     }
 
@@ -315,7 +315,7 @@ public final class YTM: @unchecked Sendable {
         }
         if let privacy { actions.append(["action": "ACTION_SET_PLAYLIST_PRIVACY", "playlistPrivacy": privacy]) }
         guard !actions.isEmpty else { return true }
-        let r = try await net.post("browse/edit_playlist", body: ["playlistId": pid, "actions": actions])
+        let r = try await net.post("browse/edit_playlist", body: ["playlistId": pid, "actions": actions], idempotent: false)
         return r["status"].string?.contains("SUCCEEDED") ?? false
     }
 

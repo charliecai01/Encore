@@ -268,6 +268,7 @@ struct HomeScreen: View {
         .background(Theme.bg)
         .navigationTitle("Home")
         .toolbar { accountButton }
+        .refreshable { await load() }
         .task(id: auth.isSignedIn) { await load() }
     }
 
@@ -471,6 +472,7 @@ struct LibraryScreen: View {
         .background(Theme.bg)
         .navigationTitle("Library")
         .toolbar { accountButton }
+        .refreshable { await load() }
         .task(id: "\(auth.isSignedIn)-\(tab.rawValue)") { restoreSort(); await load() }
         .onChange(of: songSort) { _, v in UserDefaults.standard.set(v.rawValue, forKey: "sort-lib-songs") }
         .onChange(of: cardSort) { _, v in UserDefaults.standard.set(v.rawValue, forKey: "sort-lib-\(tab.rawValue)") }
@@ -646,6 +648,7 @@ struct CollectionScreen: View {
                 }
             }
         }
+        .refreshable { await load() }
         .task {
             // Playlists always open sorted by artist.
             if isPlaylist {
@@ -983,6 +986,7 @@ struct ArtistScreen: View {
             }
         }
         .background(Theme.bg).ignoresSafeArea(edges: .top)
+        .refreshable { await load() }
         .task { await load() }
     }
 
