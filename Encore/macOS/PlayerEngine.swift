@@ -312,7 +312,9 @@ final class PlayerEngine: NSObject, ObservableObject {
     }
 
     func previous() {
-        if currentTime > 3 || index == 0 {
+        // Always go to the previous track; only restart when there's no
+        // earlier track to go to (we're already at the first one).
+        guard index > 0 else {
             seek(to: 0)
             return
         }
