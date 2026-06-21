@@ -123,8 +123,8 @@ public enum Artwork {
     }
 }
 
-public struct CardItem: Identifiable, Hashable {
-    public enum Kind: Hashable {
+public struct CardItem: Identifiable, Hashable, Codable {
+    public enum Kind: Hashable, Codable {
         case album, playlist, artist, song, video, station, podcast, unknown
     }
 
@@ -150,12 +150,12 @@ public struct CardItem: Identifiable, Hashable {
     }
 }
 
-public enum ShelfItem: Hashable {
+public enum ShelfItem: Hashable, Codable {
     case track(Track)
     case card(CardItem)
 }
 
-public struct Shelf: Identifiable, Hashable {
+public struct Shelf: Identifiable, Hashable, Codable {
     public var id: String
     public var title: String
     public var items: [ShelfItem]

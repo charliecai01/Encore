@@ -280,14 +280,21 @@ struct HomeScreen: View {
 
     private func load() async {
         loading = true
+        // Seed instantly from the disk-backed cache (persists across launches),
+        // then refresh from the network below.
         if let cached = PageCache.shared.shelves["home"], !cached.isEmpty { shelves = cached; loading = false }
+        if playlists.isEmpty, !PageCache.shared.homePlaylists.isEmpty { playlists = PageCache.shared.homePlaylists }
         let fresh = (try? await YTM.shared.home()) ?? []
         if !fresh.isEmpty { shelves = fresh; PageCache.shared.shelves["home"] = fresh }
         loading = false
         // Load the user's saved playlists directly so the grid is independent
         // of shared-store timing.
         if auth.isSignedIn {
-            playlists = (try? await YTM.shared.libraryPlaylists()) ?? []
+            let freshPlaylists = (try? await YTM.shared.libraryPlaylists()) ?? []
+            if !freshPlaylists.isEmpty {
+                playlists = freshPlaylists
+                PageCache.shared.homePlaylists = freshPlaylists
+            }
             await library.loadIfNeeded()
             let discover = await library.discover()
             if !discover.isEmpty {

@@ -43,30 +43,53 @@ enum DiskCache {
 final class PageCache {
     static let shared = PageCache()
 
-    var collections: [String: CollectionPage] = [:] { didSet { persistSoon() } }
+    var collections: [String: CollectionPage] = [:] { didSet { persistCollectionsSoon() } }
     var artists: [String: ArtistPage] = [:]
-    var shelves: [String: [Shelf]] = [:]
+    // Home feed + the quick-access playlist grid, persisted to disk so the Home
+    // tab renders instantly on a cold launch instead of waiting on the network.
+    var shelves: [String: [Shelf]] = [:] { didSet { persistHomeSoon() } }
+    var homePlaylists: [CardItem] = [] { didSet { persistHomeSoon() } }
 
-    private var persistTask: Task<Void, Never>?
+    private var collectionsTask: Task<Void, Never>?
+    private var homeTask: Task<Void, Never>?
+
+    private struct HomeSnapshot: Codable {
+        var shelves: [String: [Shelf]]
+        var playlists: [CardItem]
+    }
 
     private init() {
         if let saved = DiskCache.load([String: CollectionPage].self, from: "collections.json") {
             collections = saved
         }
+        if let home = DiskCache.load(HomeSnapshot.self, from: "home.json") {
+            shelves = home.shelves
+            homePlaylists = home.playlists
+        }
     }
 
-    private func persistSoon() {
-        persistTask?.cancel()
-        persistTask = Task {
+    private func persistCollectionsSoon() {
+        collectionsTask?.cancel()
+        collectionsTask = Task {
             try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled else { return }
             DiskCache.save(self.collections, as: "collections.json")
         }
     }
 
+    private func persistHomeSoon() {
+        homeTask?.cancel()
+        homeTask = Task {
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            DiskCache.save(HomeSnapshot(shelves: self.shelves, playlists: self.homePlaylists), as: "home.json")
+        }
+    }
+
     func clear() {
-        collections.removeAll(); artists.removeAll(); shelves.removeAll()
+        collections.removeAll(); artists.removeAll(); shelves.removeAll(); homePlaylists.removeAll()
         DiskCache.remove("collections.json"); DiskCache.remove("library-tracks.json")
+        DiskCache.remove("home.json")
     }
 }
 
