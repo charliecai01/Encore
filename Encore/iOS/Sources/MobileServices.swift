@@ -360,9 +360,10 @@ final class Nav: ObservableObject {
         case .podcast: if let id = item.browseId { go(.podcastShow(id)) }
         case .artist: goArtist(id: item.browseId, name: item.title)
         case .playlist:
-            if let id = item.playlistId, id.hasPrefix("RD") {
-                PlayerEngine.shared.playStation(playlistId: id, title: item.title)
-            } else if let id = item.playlistId { go(.playlist(id)) }
+            // Open the playlist page (a list). Browsable playlists — including
+            // "RD"-prefixed auto-playlists like "New Episodes" — should list, not
+            // auto-play. True radios arrive as `.station` and play instantly.
+            if let id = item.playlistId { go(.playlist(id)) }
         case .station:
             if let id = item.playlistId { PlayerEngine.shared.playStation(playlistId: id, title: item.title) }
         case .song, .video:
