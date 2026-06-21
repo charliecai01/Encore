@@ -98,6 +98,10 @@ final class PlayerEngine: NSObject, ObservableObject {
     // When the sleep timer fires we must keep playback stopped even though
     // music.youtube.com may try to autoplay the next track on its own.
     private var sleepStopActive = false
+    // On a cold launch the music.youtube.com session can auto-start the account's
+    // last track on its own (the app starts "playing randomly"). Suppress any
+    // site-initiated playback until the user explicitly plays something.
+    private var suppressSiteAutoplay = true
     private var lastLoadAt = Date.distantPast
     private var mismatchTicks = 0
     private var loadedOnce = false
@@ -298,6 +302,7 @@ final class PlayerEngine: NSObject, ObservableObject {
     func togglePlay() {
         guard let track = current else { return }
         sleepStopActive = false // explicit user intent overrides the sleep stop
+        suppressSiteAutoplay = false // …and the launch autoplay guard
         // First play after a restored session: start the web player directly at
         // the saved offset (reliable) instead of seeking after it begins at 0.
         if !loadedOnce {
@@ -444,6 +449,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         // Carry the resume offset so the ready/state handlers can apply it too.
         restoreSeekTime = startAt > 0 ? startAt : nil
         sleepStopActive = false
+        suppressSiteAutoplay = false // explicit user intent overrides the launch guard
         current = track
         currentTime = startAt
         duration = Double(track.durationSeconds ?? 0)
@@ -595,9 +601,9 @@ final class PlayerEngine: NSObject, ObservableObject {
             let state = body["data"] as? Int ?? -1
             switch state {
             case 1:
-                // The sleep timer fired but the site auto-started a track —
-                // force it back to paused.
-                if sleepStopActive {
+                // The sleep timer fired, or the site auto-started a track on
+                // launch before the user pressed play — force it back to paused.
+                if sleepStopActive || suppressSiteAutoplay {
                     js("window.__encore && __encore.pause()")
                     isPlaying = false
                     break
@@ -611,10 +617,15 @@ final class PlayerEngine: NSObject, ObservableObject {
                 isPlaying = false
             case 0:
                 isPlaying = false
-                if reportedMatchesCurrent(body) {
-                    if !sleepTimerConsumedSong() {
-                        advance()
-                    }
+                // Only advance on a *trustworthy* end-of-song. The page can briefly
+                // report ENDED with a missing/blank video id during ads or buffering
+                // glitches — those used to skip the song early. Require either a
+                // confirmed video-id match or that we're genuinely near the end.
+                let endedVid = body["vid"] as? String
+                let confirmedEnd = !(endedVid ?? "").isEmpty && endedVid == current?.videoId
+                let nearEnd = duration > 0 && currentTime >= duration - 6
+                if (confirmedEnd || nearEnd), !sleepTimerConsumedSong() {
+                    advance()
                 }
             default:
                 break
@@ -622,9 +633,11 @@ final class PlayerEngine: NSObject, ObservableObject {
             updateNowPlayingInfo()
         case "time":
             guard reportedMatchesCurrent(body) || Date().timeIntervalSince(lastLoadAt) < 6 else {
-                // The site wandered off (its own autoplay); pull it back.
+                // The site wandered off (its own autoplay); pull it back — but
+                // not while we're suppressing launch autoplay, or we'd start the
+                // restored track ourselves before the user asked to play.
                 mismatchTicks += 1
-                if mismatchTicks > 8, let track = current {
+                if mismatchTicks > 8, !suppressSiteAutoplay, let track = current {
                     mismatchTicks = 0
                     lastLoadAt = Date()
                     // Re-sync at our tracked position, not 0, so a glitch doesn't restart the song.

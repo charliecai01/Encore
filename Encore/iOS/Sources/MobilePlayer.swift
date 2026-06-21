@@ -498,9 +498,26 @@ final class PlayerEngine: NSObject, ObservableObject {
         try? AVAudioSession.sharedInstance().setActive(true)
         if playerReady {
             ensureJS(track.videoId, startAt: startAt)
+            pushMediaSessionMeta()
         }
         updateNowPlayingInfo()
         fetchLyrics(for: track)
+    }
+
+    /// Drive the lock-screen / Control Center metadata through the page's
+    /// MediaSession with OUR current track, so the displayed artwork/title can't
+    /// lag behind the song we loaded via loadVideoById.
+    private func pushMediaSessionMeta() {
+        guard playerReady, let track = current else { return }
+        let meta: [String: Any] = [
+            "title": track.title,
+            "artist": track.artistLine,
+            "album": track.album?.name ?? "",
+            "art": track.artworkURL?.absoluteString ?? "",
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: meta),
+              let json = String(data: data, encoding: .utf8) else { return }
+        js("window.__encore && __encore.setMeta(\(json))")
     }
 
     /// Tell the web player to load/resume a video, optionally from `startAt`
@@ -609,6 +626,7 @@ final class PlayerEngine: NSObject, ObservableObject {
             playerReady = true
             if loadedOnce, let track = current {
                 ensureJS(track.videoId, startAt: restoreSeekTime ?? 0)
+                pushMediaSessionMeta()
             }
         case "state":
             let state = body["data"] as? Int ?? -1
@@ -631,7 +649,14 @@ final class PlayerEngine: NSObject, ObservableObject {
                 isPlaying = false
             case 0:
                 isPlaying = false
-                if reportedMatchesCurrent(body), !sleepTimerConsumedSong() {
+                // Only advance on a *trustworthy* end-of-song. The page can briefly
+                // report ENDED with a missing/blank video id during ads or buffering
+                // glitches — those used to skip the song ~10s in. Require either a
+                // confirmed video-id match or that we're genuinely near the end.
+                let endedVid = body["vid"] as? String
+                let confirmedEnd = !(endedVid ?? "").isEmpty && endedVid == current?.videoId
+                let nearEnd = duration > 0 && currentTime >= duration - 6
+                if (confirmedEnd || nearEnd), !sleepTimerConsumedSong() {
                     advance()
                 }
             default:
@@ -850,6 +875,33 @@ final class PlayerEngine: NSObject, ObservableObject {
       }
       function mp() { return document.getElementById('movie_player'); }
 
+      // Lock-screen / Control Center metadata is driven by the page's
+      // MediaSession. Because we drive playback via loadVideoById, the site's
+      // own metadata can lag the track we loaded (it would show the previous
+      // song's artwork). Assert OUR metadata and re-assert briefly so we win the
+      // race against the site's update on each track change.
+      var __encoreMeta = null;
+      var __encoreMetaTimer = null;
+      function applyEncoreMeta() {
+        if (!__encoreMeta || !('mediaSession' in navigator)) return;
+        try {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: __encoreMeta.title || '',
+            artist: __encoreMeta.artist || '',
+            album: __encoreMeta.album || '',
+            artwork: __encoreMeta.art ? [{ src: __encoreMeta.art, sizes: '544x544', type: 'image/jpeg' }] : []
+          });
+        } catch (e) {}
+      }
+      function reassertEncoreMeta() {
+        if (__encoreMetaTimer) clearInterval(__encoreMetaTimer);
+        var n = 0;
+        __encoreMetaTimer = setInterval(function () {
+          applyEncoreMeta();
+          if (++n >= 10) { clearInterval(__encoreMetaTimer); __encoreMetaTimer = null; }
+        }, 500);
+      }
+
       window.__encore = {
         ensure: function (id, start) {
           start = start || 0;
@@ -896,7 +948,8 @@ final class PlayerEngine: NSObject, ObservableObject {
         vol: function (v) {
           var p = mp();
           if (p) { p.setVolume(v); if (v > 0 && p.isMuted && p.isMuted()) p.unMute(); }
-        }
+        },
+        setMeta: function (m) { __encoreMeta = m; applyEncoreMeta(); reassertEncoreMeta(); }
       };
 
       // Event-driven state reporting: polling alone misses the brief "ended"
