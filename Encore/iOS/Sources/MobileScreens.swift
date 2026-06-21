@@ -159,12 +159,12 @@ struct CardCircleOrSquare: View {
                 ArtworkView(url: Artwork.upscale(item.thumbnailURL, to: 300),
                             corner: item.kind == .artist ? 80 : 8)
                     .aspectRatio(1, contentMode: .fit)
-                Text(item.title).font(.system(size: 14, weight: .semibold))
+                Text(item.title).font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary).lineLimit(1)
                     .multilineTextAlignment(item.kind == .artist ? .center : .leading)
                     .frame(maxWidth: .infinity, alignment: item.kind == .artist ? .center : .leading)
                 if !item.subtitle.isEmpty {
-                    Text(item.subtitle).font(.system(size: 12)).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                    Text(item.subtitle).font(.system(size: 11)).foregroundStyle(Theme.textSecondary).lineLimit(1)
                 }
             }
         }
@@ -183,7 +183,7 @@ struct PlaylistShelf: View {
                 .foregroundStyle(Theme.textPrimary).padding(.horizontal, 16)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) {
-                    ForEach(playlists) { pl in CardCircleOrSquare(item: pl).frame(width: 152) }
+                    ForEach(playlists) { pl in CardCircleOrSquare(item: pl).frame(width: 118) }
                 }
                 .padding(.horizontal, 16)
             }
@@ -205,16 +205,16 @@ struct ShelfRow: View {
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(Array(shelf.items.enumerated()), id: \.offset) { _, item in
                         if case .card(let card) = item {
-                            CardCircleOrSquare(item: card).frame(width: 152)
+                            CardCircleOrSquare(item: card).frame(width: 118)
                         } else if case .track(let track) = item {
                             Button { player.playRadio(from: track) } label: {
                                 VStack(alignment: .leading, spacing: 6) {
                                     ArtworkView(url: Artwork.upscale(track.thumbnailURL, to: 300), corner: 8)
-                                        .frame(width: 152, height: 152)
-                                    Text(track.title).font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(Theme.textPrimary).lineLimit(1).frame(width: 152, alignment: .leading)
-                                    Text(track.artistLine).font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
-                                        .lineLimit(1).frame(width: 152, alignment: .leading)
+                                        .frame(width: 118, height: 118)
+                                    Text(track.title).font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(Theme.textPrimary).lineLimit(1).frame(width: 118, alignment: .leading)
+                                    Text(track.artistLine).font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
+                                        .lineLimit(1).frame(width: 118, alignment: .leading)
                                 }
                             }
                             .buttonStyle(.plain)
@@ -237,30 +237,61 @@ struct HomeScreen: View {
     @State private var playlists: [CardItem] = []
     @State private var discoverShelf: Shelf?
     @State private var loading = true
+    @State private var editingShortcuts = false
+    @State private var shortcutOrder: [String] = UserDefaults.standard.stringArray(forKey: "homeShortcutOrder") ?? []
 
-    private let quickCols = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
+    private let shortcutRowHeight: CGFloat = 76
+
+    /// User's playlists in their saved shortcut order (reordered ones first,
+    /// any new/unseen playlists appended in the server's order).
+    private var orderedPlaylists: [CardItem] {
+        guard !shortcutOrder.isEmpty else { return playlists }
+        let known = Set(shortcutOrder)
+        let ranked = shortcutOrder.compactMap { id in playlists.first { $0.id == id } }
+        let rest = playlists.filter { !known.contains($0.id) }
+        return ranked + rest
+    }
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
-                // Spotify-style quick-access grid of your playlists, up top.
+                // Full-width quick-access shortcuts to your playlists. Tap Edit
+                // to drag them into a custom order (persisted across launches).
                 if !playlists.isEmpty {
-                    LazyVGrid(columns: quickCols, spacing: 8) {
-                        ForEach(playlists.prefix(6)) { pl in
-                            Button { nav.open(pl) } label: {
-                                HStack(spacing: 8) {
-                                    ArtworkView(url: pl.thumbnailURL, corner: 4).frame(width: 52, height: 52)
-                                    Text(pl.title).font(.system(size: 13.5, weight: .semibold))
-                                        .foregroundStyle(Theme.textPrimary).lineLimit(2)
-                                    Spacer(minLength: 0)
-                                }
-                                .padding(.trailing, 8)
-                                .background(Theme.card, in: RoundedRectangle(cornerRadius: 6))
-                            }
-                            .buttonStyle(.plain)
+                    HStack {
+                        Spacer()
+                        Button(editingShortcuts ? "Done" : "Edit") {
+                            withAnimation { editingShortcuts.toggle() }
                         }
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
                     }
                     .padding(.horizontal, 16)
+
+                    if editingShortcuts {
+                        List {
+                            ForEach(orderedPlaylists) { pl in
+                                shortcutRow(pl)
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                            }
+                            .onMove(perform: moveShortcut)
+                        }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                        .scrollDisabled(true)
+                        .environment(\.editMode, .constant(.active))
+                        .frame(height: CGFloat(orderedPlaylists.count) * (shortcutRowHeight + 8) + 8)
+                    } else {
+                        VStack(spacing: 8) {
+                            ForEach(orderedPlaylists) { pl in
+                                Button { nav.open(pl) } label: { shortcutRow(pl) }
+                                    .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
 
                     PlaylistShelf(title: "Your Playlists", playlists: playlists)
                 }
@@ -301,6 +332,26 @@ struct HomeScreen: View {
                 discoverShelf = Shelf(title: "Discover · Fresh for you", items: discover.map { .card($0.asSongCard) })
             }
         }
+    }
+
+    /// One full-width shortcut box (artwork + title).
+    @ViewBuilder private func shortcutRow(_ pl: CardItem) -> some View {
+        HStack(spacing: 12) {
+            ArtworkView(url: pl.thumbnailURL, corner: 6).frame(width: 60, height: 60)
+            Text(pl.title).font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary).lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, minHeight: shortcutRowHeight, maxHeight: shortcutRowHeight, alignment: .leading)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func moveShortcut(from source: IndexSet, to destination: Int) {
+        var items = orderedPlaylists
+        items.move(fromOffsets: source, toOffset: destination)
+        shortcutOrder = items.map(\.id)
+        UserDefaults.standard.set(shortcutOrder, forKey: "homeShortcutOrder")
     }
 }
 
