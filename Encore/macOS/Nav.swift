@@ -9,10 +9,8 @@ enum LibraryTab: String, CaseIterable, Hashable {
     case podcasts = "Podcasts"
     case history = "History"
 
-    /// Tabs shown in the UI. Podcasts is hidden — the podcast feature is
-    /// disabled because it's too buggy (see BUGS.md). The case is kept so
-    /// switches stay exhaustive; re-add `.podcasts` here to restore it.
-    static var visible: [LibraryTab] { [.playlists, .songs, .albums, .artists, .history] }
+    /// Tabs shown in the UI.
+    static var visible: [LibraryTab] { [.playlists, .songs, .albums, .artists, .podcasts, .history] }
 
     var icon: String {
         switch self {
@@ -139,8 +137,7 @@ final class Nav: ObservableObject {
         case "album": return arg.map { .album($0) }
         case "playlist": return arg.map { .playlist($0) }
         case "artist": return arg.map { .artist($0) }
-        // Podcast feature disabled (see BUGS.md): never restore into a show page.
-        case "podcastShow": return nil
+        case "podcastShow": return arg.map { .podcastShow($0) }
         case "browse": return arg.map { .browse($0) }
         default: return nil
         }
@@ -171,10 +168,7 @@ final class Nav: ObservableObject {
                 PlayerEngine.shared.playRadio(from: track)
             }
         case .podcast:
-            // Podcast feature disabled (too buggy — see BUGS.md). Tapping a
-            // podcast card is a no-op until it's reimplemented.
-            // if let id = item.browseId { go(.podcastShow(id)) }
-            break
+            if let id = item.browseId { go(.podcastShow(id)) }
         case .unknown:
             break
         }

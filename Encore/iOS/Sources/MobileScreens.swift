@@ -869,7 +869,13 @@ struct PodcastScreen: View {
                                    isCurrent: player.current?.videoId == ep.videoId,
                                    isPlayed: playedIds.contains(ep.videoId),
                                    onTogglePlayed: { togglePlayed(ep) }) {
-                            player.playCollection(episodes, startAt: i)
+                            // Tapping the current episode toggles play/pause;
+                            // tapping another starts the show from there.
+                            if player.current?.videoId == ep.videoId {
+                                player.togglePlay()
+                            } else {
+                                player.playCollection(episodes, startAt: i)
+                            }
                         }
                         Divider().background(Theme.stroke).padding(.leading, 16)
                     }

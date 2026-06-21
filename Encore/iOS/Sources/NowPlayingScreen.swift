@@ -140,11 +140,8 @@ struct NowPlayingScreen: View {
 
             ProgressBar().padding(.horizontal, 36).padding(.top, 18)
 
-            // Podcast/episode player UI disabled — the podcast feature is too
-            // buggy (see BUGS.md). Episode controls (variable speed, ±15/30s
-            // skip) are kept here, commented, for when it's reimplemented;
-            // playback now always uses the standard transport controls below.
-            /*
+            // Podcast episodes get a dedicated transport (variable speed +
+            // ±15/30s skip); songs get shuffle/prev/next/repeat.
             if player.current?.isEpisode == true {
                 HStack(spacing: 22) {
                     speedButton
@@ -160,7 +157,6 @@ struct NowPlayingScreen: View {
                 }
                 .padding(.top, 18)
             } else {
-            */
                 HStack(spacing: 28) {
                     ctrl("shuffle", active: player.shuffleOn, size: 18) { player.toggleShuffle() }
                     ctrl("backward.fill", size: 26) { player.previous() }
@@ -179,6 +175,7 @@ struct NowPlayingScreen: View {
                     }
                 }
                 .padding(.top, 18)
+            }
             Spacer(minLength: 0)
         }
     }
@@ -244,9 +241,7 @@ struct NowPlayingScreen: View {
         }
     }
 
-    // Playback-speed control — only used by the disabled podcast/episode player
-    // UI (see BUGS.md). Restore alongside the episode controls above.
-    /*
+    // Playback-speed control for podcast episodes.
     private func rateLabel(_ r: Double) -> String {
         let s = r == r.rounded() ? String(Int(r)) : String(format: "%g", r)
         return "\(s)×"
@@ -267,7 +262,6 @@ struct NowPlayingScreen: View {
                 .frame(minWidth: 40)
         }
     }
-    */
 
     private var sleepMenu: some View {
         Menu {

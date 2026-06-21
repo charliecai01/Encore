@@ -1,50 +1,31 @@
 # Known bugs / disabled features
 
-## Podcasts — DISABLED (2026-06-16)
+## Podcasts — RE-ENABLED (2026-06-21)
 
-The podcast feature (browsing podcast shows, episode lists, and episode
-playback) was too buggy to ship, so it is **disabled in both the macOS and iOS
-apps**. The UI entry points are hidden and podcast navigation is a no-op, but
-the underlying code is left in place (commented out or kept unreachable) so it
-can be reimplemented later.
+Podcasts were re-enabled in both apps (they were disabled 2026-06-16 as too
+buggy). The entry points are restored — iOS Library "Podcasts" tab + `Nav.open`,
+macOS sidebar + `Nav.open` + route restore — and the iOS episode player UI
+(variable speed + ±15/30s skip) is back.
 
-### What was disabled
+### Bugs fixed this pass
+- **Episode controls showed for songs / vice versa (incl. lock screen).** Root
+  cause: the shared track parser (`Parsers.track(fromMRLIR:)`, used by
+  `playlist(id:)`) never set `isEpisode`, so episodes inside a playlist (e.g.
+  "New Episodes") parsed as plain songs → song controls in-app and next/prev on
+  the lock screen. Now detected via `musicVideoType` (…_PODCAST_EPISODE) so
+  `isEpisode` is set wherever episodes appear, and `configureRemoteCommands`
+  switches the lock screen to skip-forward/back for episodes.
+- **Episode row play/pause restarted the show.** Tapping the (pause-looking)
+  button on the now-playing episode now toggles play/pause instead of reloading
+  the collection from that episode.
 
-**macOS**
-- `Encore/macOS/Nav.swift`
-  - `LibraryTab.visible` excludes `.podcasts`, so the "Podcasts" item is hidden
-    from the sidebar. The enum `case podcasts` is kept so switches stay
-    exhaustive.
-  - `Nav.open(_:)` — the `.podcast` card case is a no-op (navigation commented out).
-  - `decode(_:)` — a saved `podcastShow` route no longer restores (returns `nil`).
-- `Encore/macOS/SidebarView.swift` — iterates `LibraryTab.visible`.
-- Still present but unreachable: `PodcastView`, `RootView`'s `.podcastShow`
-  route handler, `CollectionView`'s `.podcast` kind, `LibraryView`'s
-  `.podcasts` loader.
-
-**iOS**
-- `Encore/iOS/Sources/MobileServices.swift`
-  - `LibraryTab.visible` excludes `.podcasts` (Library segmented control).
-  - `Nav.open(_:)` — the `.podcast` card case is a no-op.
-- `Encore/iOS/Sources/MobileScreens.swift` — Library picker iterates
-  `LibraryTab.visible`.
-- `Encore/iOS/Sources/NowPlayingScreen.swift` — the episode/podcast player UI
-  (variable speed + ±15/30s skip controls, the "podcast play screen") is
-  commented out; playback always uses the standard song transport. The
-  `speedButton`/`rateLabel` helpers are commented out with it.
-- Still present but unreachable: `PodcastScreen`, `EpisodeRow`,
-  `MobileRoot`'s `.podcastShow` route, episode-specific remote commands in
-  `MobilePlayer.swift`.
-
-### Not touched (intentionally)
-- `EncoreCore` parsing/models (`podcastShow`, `libraryPodcasts`, `Track.isEpisode`,
-  `PlayedEpisodes`, podcast `CardItem` kind) — shared library code, still
-  exercised by tests and needed when the feature returns.
-- Podcast cards may still appear in Home/Explore/search shelves; tapping them
-  is a no-op for now.
-
-### To re-enable
-Re-add `.podcasts` to `LibraryTab.visible` (both apps), restore the `.podcast`
-cases in both `Nav.open(_:)` and the macOS `decode(_:)`, and un-comment the iOS
-episode player UI in `NowPlayingScreen.swift`. Then fix the underlying podcast
-playback/screen bugs.
+### Needs on-device verification (Charlie)
+- **Tapping "New Episodes" / "Episodes for Later" played instantly instead of
+  showing the episode list.** Hypothesis: these auto-playlists come back with a
+  `watchPlaylistEndpoint` (no browse endpoint) → parsed as a `.station` →
+  `Nav.open(.station)` plays immediately. Couldn't confirm the exact card shape
+  without the live response. **Action:** tap each on device; if it still plays
+  instantly, capture what `CardItem.kind`/endpoint it resolves to so the routing
+  can be fixed precisely (likely: route episode stations to a list view).
+- Episode playback through the WKWebView (start/stall/resume), and whether an
+  episode auto-advances into music radio when it ends.

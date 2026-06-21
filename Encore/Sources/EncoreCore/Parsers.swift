@@ -140,9 +140,18 @@ public enum P {
         let thumb = thumbnailURL(in: r["thumbnail"]) ?? fallbackThumb
         let setVideoId = r["playlistItemData"]["playlistSetVideoId"].string
 
+        // Podcast episodes carry a musicVideoType of …_PODCAST_EPISODE. Detect it
+        // so the player shows episode controls (skip/speed) and the lock screen
+        // gets skip — not next/prev — even when the episode lives in a playlist
+        // (e.g. "New Episodes"), which otherwise parses it as a plain song.
+        let isEpisode = r.findAll("musicVideoType").contains {
+            let t = $0.string ?? ""
+            return t.contains("EPISODE") || t.contains("PODCAST")
+        }
+
         return Track(videoId: videoId, title: title, artists: artists, artistLine: artistLine,
                      album: albumRef ?? fallbackAlbum, durationSeconds: duration, thumbnailURL: thumb,
-                     setVideoId: setVideoId)
+                     setVideoId: setVideoId, isEpisode: isEpisode)
     }
 
     static func cardKind(forBrowseId browseId: String, pageType: String?) -> CardItem.Kind {
