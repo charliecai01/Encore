@@ -97,6 +97,7 @@ struct TrackRowView: View {
     let track: Track
     var onRemoveFromPlaylist: (() -> Void)?
     let onPlay: () -> Void
+    @State private var played = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -104,16 +105,35 @@ struct TrackRowView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(track.title)
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(player.current?.videoId == track.videoId ? Theme.accent : Theme.textPrimary)
+                    .foregroundStyle(player.current?.videoId == track.videoId ? Theme.accent
+                                     : (played ? Theme.textTertiary : Theme.textPrimary))
                     .lineLimit(1)
                 Text(track.artistLine).font(.system(size: 13)).foregroundStyle(Theme.textSecondary).lineLimit(1)
             }
             Spacer()
+            if track.isEpisode {
+                Button {
+                    PlayedEpisodes.toggle(track.videoId)
+                    played = PlayedEpisodes.isPlayed(track.videoId)
+                } label: {
+                    Image(systemName: played ? "checkmark.circle.fill" : "checkmark.circle")
+                        .font(.system(size: 18))
+                        .foregroundStyle(played ? Theme.accent : Theme.textSecondary)
+                        .frame(width: 34, height: 52)
+                }
+                .buttonStyle(.plain)
+            }
             Menu {
                 Button("Play") { onPlay() }
                 Button("Play Next") { player.playNext(track) }
                 Button("Add to Queue") { player.addToQueue(track) }
                 Button("Start Radio") { player.playRadio(from: track) }
+                if track.isEpisode {
+                    Button(played ? "Mark as Unplayed" : "Mark as Played") {
+                        PlayedEpisodes.toggle(track.videoId)
+                        played = PlayedEpisodes.isPlayed(track.videoId)
+                    }
+                }
                 if let a = track.artists.first {
                     Button("Go to Artist") { nav.goArtist(id: a.id, name: a.name) }
                 }
@@ -137,6 +157,7 @@ struct TrackRowView: View {
         .padding(.vertical, 5)
         .contentShape(Rectangle())
         .onTapGesture { onPlay() }
+        .onAppear { if track.isEpisode { played = PlayedEpisodes.isPlayed(track.videoId) } }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             if let onRemoveFromPlaylist {
                 Button(role: .destructive) { onRemoveFromPlaylist() } label: { Label("Remove", systemImage: "trash") }
