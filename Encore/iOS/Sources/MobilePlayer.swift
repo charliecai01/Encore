@@ -97,6 +97,10 @@ final class PlayerEngine: NSObject, ObservableObject {
     private var loadedOnce = false
     private var restoreSeekTime: Double?
     private var lastTimePersist = Date.distantPast
+    // Stall watchdog: the furthest playback position we've seen and when, used to
+    // detect a frozen stream (weak cellular) and re-establish it.
+    private var lastProgressT = 0.0
+    private var lastProgressAt = Date.distantPast
 
     override private init() {
         let config = WKWebViewConfiguration()
@@ -494,11 +498,15 @@ final class PlayerEngine: NSObject, ObservableObject {
         clock.currentLyricIndex = nil
         lastLoadAt = Date()
         mismatchTicks = 0
+        lastProgressT = startAt
+        lastProgressAt = Date()
         persistSnapshot()
         try? AVAudioSession.sharedInstance().setActive(true)
         if playerReady {
             ensureJS(track.videoId, startAt: startAt)
             pushMediaSessionMeta()
+            // Episodes keep the chosen speed; songs are forced back to 1×.
+            js("window.__encore && __encore.rate(\(track.isEpisode ? playbackRate : 1.0))")
         }
         updateNowPlayingInfo()
         fetchLyrics(for: track)
@@ -638,9 +646,12 @@ final class PlayerEngine: NSObject, ObservableObject {
                     break
                 }
                 isPlaying = true
-                if playbackRate != 1.0 {
-                    js("window.__encore && __encore.rate(\(playbackRate))")
-                }
+                lastProgressAt = Date() // (re)started — reset the stall watchdog
+                // Playback speed applies to podcast episodes only. Songs always
+                // play at 1× — otherwise the web player carries an episode's rate
+                // onto the next song for a few seconds before resetting.
+                let rate = current?.isEpisode == true ? playbackRate : 1.0
+                js("window.__encore && __encore.rate(\(rate))")
                 if let resumeAt = restoreSeekTime {
                     restoreSeekTime = nil
                     seek(to: resumeAt)
@@ -675,7 +686,25 @@ final class PlayerEngine: NSObject, ObservableObject {
                 return
             }
             mismatchTicks = 0
-            currentTime = body["t"] as? Double ?? 0
+            let t = body["t"] as? Double ?? 0
+            // Stall watchdog: on weak cellular the stream can stop buffering and
+            // playback freezes (position stops advancing) with no ended/pause
+            // event. If we're "playing" but haven't moved for a while, re-establish
+            // the stream at our current spot so it recovers instead of dying.
+            if isPlaying {
+                if abs(t - lastProgressT) > 0.4 {
+                    // Position moved (normal play, or a seek) — not stalled.
+                    lastProgressT = t
+                    lastProgressAt = Date()
+                } else if Date().timeIntervalSince(lastProgressAt) > 12,
+                          Date().timeIntervalSince(lastLoadAt) > 12,
+                          let track = current {
+                    lastProgressAt = Date()
+                    lastLoadAt = Date()
+                    ensureJS(track.videoId, startAt: t)
+                }
+            }
+            currentTime = t
             if let d = body["d"] as? Double, d > 0 { duration = d }
             updateLyricIndex()
             if isPlaying, Date().timeIntervalSince(lastTimePersist) > 10 {
@@ -724,8 +753,12 @@ final class PlayerEngine: NSObject, ObservableObject {
             }
         } else {
             defer { wasPlayingBeforeInterruption = false }
-            guard shouldResume, wasPlayingBeforeInterruption,
-                  !sleepStopActive, current != nil else { return }
+            // Resume whenever we were playing before the interruption. Many
+            // interruptions — notably playing/recording a voice message — don't
+            // set the `shouldResume` hint, but the user still expects the song to
+            // come back, so we don't require it.
+            _ = shouldResume
+            guard wasPlayingBeforeInterruption, !sleepStopActive, current != nil else { return }
             try? AVAudioSession.sharedInstance().setActive(true)
             js("window.__encore && __encore.play()")
         }

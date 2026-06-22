@@ -259,7 +259,9 @@ struct NowPlayingScreen: View {
             Text(rateLabel(player.playbackRate))
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(player.playbackRate != 1.0 ? Theme.accent : .white)
-                .frame(minWidth: 40)
+                // Fixed width so changing the rate (e.g. 1× → 1.2×) doesn't widen
+                // the control and shove the play button sideways.
+                .frame(width: 52)
         }
     }
 

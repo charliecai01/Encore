@@ -96,6 +96,10 @@ public final class InnerTube: @unchecked Sendable {
         config.httpCookieAcceptPolicy = .never
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 60
+        // On flaky cellular, wait for the connection to come back instead of
+        // failing instantly — otherwise a brief blip drops the radio refill and
+        // playback stops. Bounded by timeoutIntervalForResource above.
+        config.waitsForConnectivity = true
         self.init(session: URLSession(configuration: config))
     }
 
