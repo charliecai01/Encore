@@ -106,12 +106,16 @@ public final class YTM: @unchecked Sendable {
         }
         // Some playlists are episode collections (e.g. the "New Episodes"
         // auto-playlist) whose items use the podcast renderer the regular track
-        // parser skips — pull those in too so the list isn't empty.
-        var episodes = P.podcastEpisodes(from: r, showTitle: page.title, showThumb: page.thumbnailURL)
+        // parser skips — pull those in too so the list isn't empty. Gated on the
+        // podcast feature so episodes don't leak into playlists when it's off.
+        var episodes = PodcastFeature.enabled
+            ? P.podcastEpisodes(from: r, showTitle: page.title, showThumb: page.thumbnailURL) : []
         let more = await continuationPages(after: r, maxPages: 40)
         for extra in more {
             page.tracks.append(contentsOf: P.continuationTracks(from: extra))
-            episodes.append(contentsOf: P.podcastEpisodes(from: extra, showTitle: page.title, showThumb: page.thumbnailURL))
+            if PodcastFeature.enabled {
+                episodes.append(contentsOf: P.podcastEpisodes(from: extra, showTitle: page.title, showThumb: page.thumbnailURL))
+            }
         }
         let known = Set(page.tracks.map(\.videoId))
         page.tracks.append(contentsOf: episodes.filter { !known.contains($0.videoId) })

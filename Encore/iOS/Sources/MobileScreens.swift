@@ -111,7 +111,7 @@ struct TrackRowView: View {
                 Text(track.artistLine).font(.system(size: 13)).foregroundStyle(Theme.textSecondary).lineLimit(1)
             }
             Spacer()
-            if track.isEpisode {
+            if PodcastFeature.enabled, track.isEpisode {
                 Button {
                     PlayedEpisodes.toggle(track.videoId)
                     played = PlayedEpisodes.isPlayed(track.videoId)
@@ -128,7 +128,7 @@ struct TrackRowView: View {
                 Button("Play Next") { player.playNext(track) }
                 Button("Add to Queue") { player.addToQueue(track) }
                 Button("Start Radio") { player.playRadio(from: track) }
-                if track.isEpisode {
+                if PodcastFeature.enabled, track.isEpisode {
                     Button(played ? "Mark as Unplayed" : "Mark as Played") {
                         PlayedEpisodes.toggle(track.videoId)
                         played = PlayedEpisodes.isPlayed(track.videoId)
@@ -157,7 +157,7 @@ struct TrackRowView: View {
         .padding(.vertical, 5)
         .contentShape(Rectangle())
         .onTapGesture { onPlay() }
-        .onAppear { if track.isEpisode { played = PlayedEpisodes.isPlayed(track.videoId) } }
+        .onAppear { if PodcastFeature.enabled, track.isEpisode { played = PlayedEpisodes.isPlayed(track.videoId) } }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             if let onRemoveFromPlaylist {
                 Button(role: .destructive) { onRemoveFromPlaylist() } label: { Label("Remove", systemImage: "trash") }

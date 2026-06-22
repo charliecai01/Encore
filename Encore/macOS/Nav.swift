@@ -9,8 +9,14 @@ enum LibraryTab: String, CaseIterable, Hashable {
     case podcasts = "Podcasts"
     case history = "History"
 
-    /// Tabs shown in the UI.
-    static var visible: [LibraryTab] { [.playlists, .songs, .albums, .artists, .podcasts, .history] }
+    /// Tabs shown in the UI. Podcasts appears only when the feature is enabled
+    /// (see PodcastFeature / PODCASTS.md).
+    static var visible: [LibraryTab] {
+        var tabs: [LibraryTab] = [.playlists, .songs, .albums, .artists]
+        if PodcastFeature.enabled { tabs.append(.podcasts) }
+        tabs.append(.history)
+        return tabs
+    }
 
     var icon: String {
         switch self {
@@ -137,7 +143,7 @@ final class Nav: ObservableObject {
         case "album": return arg.map { .album($0) }
         case "playlist": return arg.map { .playlist($0) }
         case "artist": return arg.map { .artist($0) }
-        case "podcastShow": return arg.map { .podcastShow($0) }
+        case "podcastShow": return PodcastFeature.enabled ? arg.map { .podcastShow($0) } : nil
         case "browse": return arg.map { .browse($0) }
         default: return nil
         }
@@ -167,7 +173,7 @@ final class Nav: ObservableObject {
                 PlayerEngine.shared.playRadio(from: track)
             }
         case .podcast:
-            if let id = item.browseId { go(.podcastShow(id)) }
+            if PodcastFeature.enabled, let id = item.browseId { go(.podcastShow(id)) }
         case .unknown:
             break
         }

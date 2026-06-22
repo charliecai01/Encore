@@ -141,8 +141,9 @@ struct NowPlayingScreen: View {
             ProgressBar().padding(.horizontal, 36).padding(.top, 18)
 
             // Podcast episodes get a dedicated transport (variable speed +
-            // ±15/30s skip); songs get shuffle/prev/next/repeat.
-            if player.current?.isEpisode == true {
+            // ±15/30s skip); songs get shuffle/prev/next/repeat. Gated on the
+            // podcast feature flag — when off, episodes use the song transport.
+            if PodcastFeature.enabled, player.current?.isEpisode == true {
                 HStack(spacing: 22) {
                     speedButton
                     ctrl("gobackward.15", size: 28) { player.skip(-15) }

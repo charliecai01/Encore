@@ -305,8 +305,13 @@ enum LibraryTab: String, CaseIterable, Hashable {
     case artists = "Artists"
     case podcasts = "Podcasts"
 
-    /// Tabs shown in the UI.
-    static var visible: [LibraryTab] { [.playlists, .songs, .albums, .artists, .podcasts] }
+    /// Tabs shown in the UI. Podcasts appears only when the feature is enabled
+    /// (see PodcastFeature / PODCASTS.md).
+    static var visible: [LibraryTab] {
+        var tabs: [LibraryTab] = [.playlists, .songs, .albums, .artists]
+        if PodcastFeature.enabled { tabs.append(.podcasts) }
+        return tabs
+    }
 
     var icon: String {
         switch self {
@@ -357,7 +362,7 @@ final class Nav: ObservableObject {
     func open(_ item: CardItem) {
         switch item.kind {
         case .album: if let id = item.browseId { go(.album(id)) }
-        case .podcast: if let id = item.browseId { go(.podcastShow(id)) }
+        case .podcast: if PodcastFeature.enabled, let id = item.browseId { go(.podcastShow(id)) }
         case .artist: goArtist(id: item.browseId, name: item.title)
         case .playlist:
             // Open the playlist page (a list). Browsable playlists — including
