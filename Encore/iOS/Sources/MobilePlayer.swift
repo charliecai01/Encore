@@ -1,6 +1,7 @@
 import SwiftUI
 import WebKit
 import MediaPlayer
+import AVFoundation
 import EncoreCore
 
 enum RepeatMode: Int {
@@ -101,6 +102,9 @@ final class PlayerEngine: NSObject, ObservableObject {
     // detect a frozen stream (weak cellular) and re-establish it.
     private var lastProgressT = 0.0
     private var lastProgressAt = Date.distantPast
+    // Silent looping player that holds the audio session (and the Now Playing
+    // slot) while paused — see the keep-alive section.
+    private var keepAlivePlayer: AVAudioPlayer?
 
     override private init() {
         let config = WKWebViewConfiguration()
@@ -339,10 +343,14 @@ final class PlayerEngine: NSObject, ObservableObject {
         }
         if isPlaying {
             js("window.__encore && __encore.pause()")
+            // Hold the audio session so the Now Playing widget survives a long
+            // background pause (the web player would otherwise give it up).
+            startKeepAlive()
         } else {
             // Resuming: the audio session may have gone inactive while paused/
             // backgrounded — reactivate it or play() produces no sound (and the
             // user has to skip to force a reload). This is the resume-lag fix.
+            stopKeepAlive()
             try? AVAudioSession.sharedInstance().setActive(true)
             js("window.__encore && __encore.play()")
         }
@@ -487,6 +495,7 @@ final class PlayerEngine: NSObject, ObservableObject {
 
     private func load(_ track: Track, startAt: Double = 0) {
         loadedOnce = true
+        stopKeepAlive() // a real track is about to play
         // Carry the resume offset so the ready/state handlers can apply it too.
         restoreSeekTime = startAt > 0 ? startAt : nil
         sleepStopActive = false
@@ -646,6 +655,7 @@ final class PlayerEngine: NSObject, ObservableObject {
                     break
                 }
                 isPlaying = true
+                stopKeepAlive() // real audio is playing now
                 lastProgressAt = Date() // (re)started — reset the stall watchdog
                 // Playback speed applies to podcast episodes only. Songs always
                 // play at 1× — otherwise the web player carries an episode's rate
@@ -744,7 +754,9 @@ final class PlayerEngine: NSObject, ObservableObject {
     private func handleInterruption(began: Bool, shouldResume: Bool) {
         if began {
             // The system has already ducked/paused our audio; mirror it in our
-            // state and remember whether to resume afterward.
+            // state and remember whether to resume afterward. Release the
+            // keep-alive too so we don't fight the interrupter for the session.
+            stopKeepAlive()
             wasPlayingBeforeInterruption = isPlaying
             if isPlaying {
                 js("window.__encore && __encore.pause()")
@@ -758,11 +770,61 @@ final class PlayerEngine: NSObject, ObservableObject {
             // set the `shouldResume` hint, but the user still expects the song to
             // come back, so we don't require it.
             _ = shouldResume
-            guard wasPlayingBeforeInterruption, !sleepStopActive, current != nil else { return }
+            guard wasPlayingBeforeInterruption, !sleepStopActive, current != nil else {
+                // We weren't playing — but if a track is loaded and paused, keep
+                // the Now Playing widget alive so the user can still resume.
+                if current != nil, !isPlaying, !sleepStopActive { startKeepAlive() }
+                return
+            }
+            stopKeepAlive()
             try? AVAudioSession.sharedInstance().setActive(true)
             js("window.__encore && __encore.play()")
         }
     }
+
+    // MARK: - Background keep-alive
+    //
+    // Playback runs in a WKWebView, which relinquishes the Now Playing slot when
+    // its media element pauses — so after a paused stretch in the background iOS
+    // drops the lock-screen / Control Center widget. To hold the slot the way a
+    // native player does, we play looping silent audio while paused: the audio
+    // session stays active, the widget stays, and the user can resume from it.
+
+    private func startKeepAlive() {
+        guard current != nil else { return }
+        if keepAlivePlayer == nil {
+            keepAlivePlayer = try? AVAudioPlayer(data: Self.silentLoopWAV)
+            keepAlivePlayer?.numberOfLoops = -1
+            keepAlivePlayer?.prepareToPlay()
+        }
+        guard let player = keepAlivePlayer, !player.isPlaying else { return }
+        try? AVAudioSession.sharedInstance().setActive(true)
+        player.play()
+    }
+
+    private func stopKeepAlive() {
+        guard let player = keepAlivePlayer, player.isPlaying else { return }
+        player.pause()
+    }
+
+    /// One second of 16-bit PCM silence in a WAV container, looped to hold the
+    /// audio session active while paused.
+    private static let silentLoopWAV: Data = {
+        let sampleRate = 8000, seconds = 1, channels = 1, bitsPerSample = 16
+        let dataSize = sampleRate * seconds * channels * bitsPerSample / 8
+        let byteRate = sampleRate * channels * bitsPerSample / 8
+        let blockAlign = channels * bitsPerSample / 8
+        var d = Data()
+        func str(_ s: String) { d.append(contentsOf: Array(s.utf8)) }
+        func u32(_ v: Int) { var x = UInt32(v).littleEndian; withUnsafeBytes(of: &x) { d.append(contentsOf: $0) } }
+        func u16(_ v: Int) { var x = UInt16(v).littleEndian; withUnsafeBytes(of: &x) { d.append(contentsOf: $0) } }
+        str("RIFF"); u32(36 + dataSize); str("WAVE")
+        str("fmt "); u32(16); u16(1); u16(channels)
+        u32(sampleRate); u32(byteRate); u16(blockAlign); u16(bitsPerSample)
+        str("data"); u32(dataSize)
+        d.append(Data(count: dataSize)) // zero samples = silence
+        return d
+    }()
 
     private func setupRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
