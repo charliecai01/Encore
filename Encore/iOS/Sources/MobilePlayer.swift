@@ -777,8 +777,23 @@ final class PlayerEngine: NSObject, ObservableObject {
                 return
             }
             stopKeepAlive()
-            try? AVAudioSession.sharedInstance().setActive(true)
-            js("window.__encore && __encore.play()")
+            forceResumePlayback()
+        }
+    }
+
+    /// Resume the web player after an interruption. A plain `play()` often fails
+    /// to restart the WKWebView's media element once the system has suspended it
+    /// (notably after Siri) — so if playback hasn't picked up shortly, reload at
+    /// the current position to force it back.
+    private func forceResumePlayback() {
+        try? AVAudioSession.sharedInstance().setActive(true)
+        js("window.__encore && __encore.play()")
+        let vid = current?.videoId
+        let pos = currentTime
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            guard let self, !self.isPlaying, let vid,
+                  self.current?.videoId == vid, !self.sleepStopActive else { return }
+            self.ensureJS(vid, startAt: pos)
         }
     }
 
