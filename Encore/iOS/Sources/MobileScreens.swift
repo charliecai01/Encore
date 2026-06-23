@@ -108,7 +108,8 @@ struct TrackRowView: View {
                     .foregroundStyle(player.current?.videoId == track.videoId ? Theme.accent
                                      : (played ? Theme.textTertiary : Theme.textPrimary))
                     .lineLimit(1)
-                Text(track.artistLine).font(.system(size: 13)).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                Text(track.playsText.map { "\(track.artistLine) · \($0)" } ?? track.artistLine)
+                    .font(.system(size: 13)).foregroundStyle(Theme.textSecondary).lineLimit(1)
             }
             Spacer()
             if PodcastFeature.enabled, track.isEpisode {
@@ -254,7 +255,7 @@ struct ShelfRow: View {
                                         .frame(width: 118, height: 118)
                                     Text(track.title).font(.system(size: 13, weight: .semibold))
                                         .foregroundStyle(Theme.textPrimary).lineLimit(1).frame(width: 118, alignment: .leading)
-                                    Text(track.artistLine).font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
+                                    Text(track.playsText ?? track.artistLine).font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
                                         .lineLimit(1).frame(width: 118, alignment: .leading)
                                 }
                             }

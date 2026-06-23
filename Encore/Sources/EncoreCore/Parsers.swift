@@ -149,9 +149,15 @@ public enum P {
             return t.contains("EPISODE") || t.contains("PODCAST")
         }
 
+        // Global play count ("102M plays") when present — artist Top songs and
+        // song-search rows carry it as a subtitle run, not a standard column.
+        let playsText = r.findAll("text").compactMap(\.runsText).first {
+            $0.range(of: #"^[\d][\d.,]*\s*[KMBkmb]?\s*plays?$"#, options: .regularExpression) != nil
+        }
+
         return Track(videoId: videoId, title: title, artists: artists, artistLine: artistLine,
                      album: albumRef ?? fallbackAlbum, durationSeconds: duration, thumbnailURL: thumb,
-                     setVideoId: setVideoId, isEpisode: isEpisode)
+                     setVideoId: setVideoId, isEpisode: isEpisode, playsText: playsText)
     }
 
     static func cardKind(forBrowseId browseId: String, pageType: String?) -> CardItem.Kind {

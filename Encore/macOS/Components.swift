@@ -216,6 +216,14 @@ struct TrackRow: View {
                     .foregroundStyle(Theme.fallbackAccent.opacity(0.8))
             }
 
+            if let plays = track.playsText {
+                Text(plays)
+                    .font(.system(size: 11.5).monospacedDigit())
+                    .foregroundStyle(Theme.textTertiary)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+
             Text(track.durationText)
                 .font(.system(size: 12).monospacedDigit())
                 .foregroundStyle(Theme.textTertiary)

@@ -28,13 +28,16 @@ public struct Track: Identifiable, Hashable, Codable {
     public var dateText: String?
     /// Episode description / show notes.
     public var details: String?
+    /// Global play-count label from YouTube, e.g. "102M plays" (nil when the
+    /// source — artist Top songs, song search — doesn't provide one).
+    public var playsText: String?
 
     public var id: String { videoId }
 
     public init(videoId: String, title: String, artists: [Ref] = [], artistLine: String = "",
                 album: Ref? = nil, durationSeconds: Int? = nil, thumbnailURL: URL? = nil,
                 setVideoId: String? = nil, isEpisode: Bool = false,
-                dateText: String? = nil, details: String? = nil) {
+                dateText: String? = nil, details: String? = nil, playsText: String? = nil) {
         self.videoId = videoId
         self.title = title
         self.artists = artists
@@ -46,6 +49,7 @@ public struct Track: Identifiable, Hashable, Codable {
         self.isEpisode = isEpisode
         self.dateText = dateText
         self.details = details
+        self.playsText = playsText
     }
 
     // Tolerant decoder so older cached payloads (without the episode fields)
@@ -63,6 +67,7 @@ public struct Track: Identifiable, Hashable, Codable {
         isEpisode = (try? c.decode(Bool.self, forKey: .isEpisode)) ?? false
         dateText = try? c.decode(String.self, forKey: .dateText)
         details = try? c.decode(String.self, forKey: .details)
+        playsText = try? c.decode(String.self, forKey: .playsText)
     }
 
     public var durationText: String {
