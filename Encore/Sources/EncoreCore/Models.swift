@@ -70,6 +70,18 @@ public struct Track: Identifiable, Hashable, Codable {
         playsText = try? c.decode(String.self, forKey: .playsText)
     }
 
+    /// `playsText` parsed to a number, for ranking (e.g. "1.1M plays" → 1_100_000).
+    public var playCountValue: Int? {
+        guard let text = playsText?.lowercased(),
+              let r = text.range(of: #"[\d][\d.,]*"#, options: .regularExpression),
+              let base = Double(String(text[r]).replacingOccurrences(of: ",", with: "")) else { return nil }
+        let suffix = String(text[r.upperBound...])
+        let mult: Double = suffix.contains("k") ? 1_000
+            : suffix.contains("m") ? 1_000_000
+            : suffix.contains("b") ? 1_000_000_000 : 1
+        return Int(base * mult)
+    }
+
     public var durationText: String {
         guard let s = durationSeconds else { return "" }
         return Track.format(seconds: s)

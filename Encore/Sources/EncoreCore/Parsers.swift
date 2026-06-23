@@ -466,7 +466,23 @@ public enum P {
             page.radioPlaylistId = radio["playlistId"].string
         }
 
-        page.shelves = shelves(from: root)
+        // Order track shelves (e.g. "Top songs") by global play count, high → low.
+        // YouTube's own order mixes in trending/recency, which isn't a strict
+        // play-count ranking.
+        func playCount(_ item: ShelfItem) -> Int {
+            if case .track(let t) = item { return t.playCountValue ?? -1 }
+            return -1
+        }
+        page.shelves = shelves(from: root).map { shelf in
+            guard shelf.items.contains(where: { playCount($0) >= 0 }) else { return shelf }
+            var s = shelf
+            s.items = shelf.items.enumerated()
+                .sorted { playCount($0.element) != playCount($1.element)
+                    ? playCount($0.element) > playCount($1.element)
+                    : $0.offset < $1.offset }
+                .map(\.element)
+            return s
+        }
         return page
     }
 
