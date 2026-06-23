@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 let lyricsBrowserUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
 
@@ -57,16 +58,13 @@ public enum NetEase {
 /// uses). Token fetch is rate-limited and occasionally captcha'd; failures
 /// just mean falling through to the next provider.
 public enum Musixmatch {
-    private static var token: String?
-    private static var tokenFetchedAt = Date.distantPast
-    private static let lock = NSLock()
+    // Cached token + when it was fetched, behind an async-safe scoped lock.
+    private static let tokenCache = OSAllocatedUnfairLock<(token: String?, fetchedAt: Date)>(
+        initialState: (nil, .distantPast))
 
     private static func getToken() async -> String? {
-        lock.lock()
-        let cached = token
-        let age = Date().timeIntervalSince(tokenFetchedAt)
-        lock.unlock()
-        if let cached, age < 540 { return cached }
+        let (cached, fetchedAt) = tokenCache.withLock { $0 }
+        if let cached, Date().timeIntervalSince(fetchedAt) < 540 { return cached }
 
         var comps = URLComponents(string: "https://apic-desktop.musixmatch.com/ws/1.1/token.get")!
         comps.queryItems = [URLQueryItem(name: "app_id", value: "web-desktop-app-v1.0")]
@@ -77,10 +75,7 @@ public enum Musixmatch {
         guard let (data, _) = try? await URLSession.shared.data(for: req) else { return nil }
         let fresh = JSONValue.parse(data)["message"]["body"]["user_token"].string
         guard let fresh, !fresh.isEmpty, !fresh.contains("UpgradeOnly") else { return nil }
-        lock.lock()
-        token = fresh
-        tokenFetchedAt = Date()
-        lock.unlock()
+        tokenCache.withLock { $0 = (fresh, Date()) }
         return fresh
     }
 
