@@ -102,6 +102,7 @@ final class PlayerEngine: NSObject, ObservableObject {
     // detect a frozen stream (weak cellular) and re-establish it.
     private var lastProgressT = 0.0
     private var lastProgressAt = Date.distantPast
+    private var stallNudged = false
     // Silent looping player that holds the audio session (and the Now Playing
     // slot) while paused — see the keep-alive section.
     private var keepAlivePlayer: AVAudioPlayer?
@@ -516,6 +517,7 @@ final class PlayerEngine: NSObject, ObservableObject {
             pushMediaSessionMeta()
             // Episodes keep the chosen speed; songs are forced back to 1×.
             js("window.__encore && __encore.rate(\(track.isEpisode ? playbackRate : 1.0))")
+            js("window.__encore && __encore.lowData()")
         }
         updateNowPlayingInfo()
         fetchLyrics(for: track)
@@ -706,12 +708,20 @@ final class PlayerEngine: NSObject, ObservableObject {
                     // Position moved (normal play, or a seek) — not stalled.
                     lastProgressT = t
                     lastProgressAt = Date()
-                } else if Date().timeIntervalSince(lastProgressAt) > 12,
-                          Date().timeIntervalSince(lastLoadAt) > 12,
-                          let track = current {
-                    lastProgressAt = Date()
-                    lastLoadAt = Date()
-                    ensureJS(track.videoId, startAt: t)
+                    stallNudged = false
+                } else if Date().timeIntervalSince(lastLoadAt) > 5, let track = current {
+                    let frozen = Date().timeIntervalSince(lastProgressAt)
+                    if frozen > 9 {
+                        // Still stuck — re-establish the stream at our position.
+                        lastProgressAt = Date()
+                        lastLoadAt = Date()
+                        stallNudged = false
+                        ensureJS(track.videoId, startAt: t)
+                    } else if frozen > 4, !stallNudged {
+                        // A buffer stall often just needs a kick before a full reload.
+                        stallNudged = true
+                        js("window.__encore && __encore.play()")
+                    }
                 }
             }
             currentTime = t
@@ -1053,6 +1063,16 @@ final class PlayerEngine: NSObject, ObservableObject {
         },
         play: function () { var p = mp(); if (p) p.playVideo(); },
         pause: function () { var p = mp(); if (p) p.pauseVideo(); },
+        // The video is never shown, so pin it to the lowest resolution — saves
+        // bandwidth for music-video tracks on weak cellular (audio streams
+        // separately, so audio quality is unaffected). Best-effort: modern YT
+        // may ignore quality hints, but it can't hurt.
+        lowData: function () {
+          var p = mp();
+          if (!p) return;
+          try { if (p.setPlaybackQualityRange) p.setPlaybackQualityRange('tiny', 'tiny'); } catch (e) {}
+          try { if (p.setPlaybackQuality) p.setPlaybackQuality('tiny'); } catch (e) {}
+        },
         seek: function (s) { var p = mp(); if (p) p.seekTo(s, true); },
         rate: function (r) { var p = mp(); if (p && p.setPlaybackRate) { try { p.setPlaybackRate(r); } catch (e) {} } },
         vol: function (v) {
