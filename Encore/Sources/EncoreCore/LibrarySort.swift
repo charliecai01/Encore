@@ -9,6 +9,7 @@ public enum TrackOrder: Sendable {
     case title
     case artist
     case album
+    case plays         // global play count, high → low (tracks without counts last)
 }
 
 public enum CardOrder: Sendable {
@@ -50,7 +51,19 @@ public enum LibrarySort {
                 if a.isEmpty != b.isEmpty { return b.isEmpty }
                 return tieBreak(a, b, lhs.title, rhs.title)
             }
+        case .plays:
+            return tracks.sorted { lhs, rhs in
+                let a = lhs.playCountValue ?? -1, b = rhs.playCountValue ?? -1
+                if a != b { return a > b }
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
         }
+    }
+
+    /// Whether a list is play-count-ranked (e.g. an artist's "Top songs"), used
+    /// to default those lists to the Plays sort.
+    public static func hasPlayCounts(_ tracks: [Track]) -> Bool {
+        tracks.contains { $0.playCountValue != nil }
     }
 
     /// Filter then sort in one call.

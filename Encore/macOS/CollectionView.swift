@@ -28,6 +28,21 @@ struct CollectionView: View {
     @State private var sort: CollectionSort = .order
     @State private var filterText = ""
     @State private var showEdit = false
+    @State private var appliedDefaultSort = false
+
+    /// "Plays" only makes sense on play-count-ranked lists (e.g. Top songs).
+    private var availableSorts: [CollectionSort] {
+        let hasPlays = page.map { LibrarySort.hasPlayCounts($0.tracks) } ?? false
+        return CollectionSort.allCases.filter { $0 != .plays || hasPlays }
+    }
+
+    /// Default a play-count-ranked playlist (artist Top songs) to the Plays sort,
+    /// once, so it opens highest → lowest without overriding later user choices.
+    private func applyDefaultSort(_ tracks: [Track]) {
+        guard isPlaylist, !appliedDefaultSort, !tracks.isEmpty else { return }
+        appliedDefaultSort = true
+        if LibrarySort.hasPlayCounts(tracks) { sort = .plays }
+    }
 
     enum CollectionSort: String, CaseIterable {
         case order = "Playlist Order"
@@ -35,6 +50,7 @@ struct CollectionView: View {
         case title = "Title"
         case artist = "Artist"
         case album = "Album"
+        case plays = "Plays"
     }
 
     private var sortStorageKey: String {
@@ -53,6 +69,7 @@ struct CollectionView: View {
         case .title: order = .title
         case .artist: order = .artist
         case .album: order = .album
+        case .plays: order = .plays
         }
         return LibrarySort.arrange(page.tracks, query: filterText, order: order)
     }
@@ -191,7 +208,7 @@ struct CollectionView: View {
 
             if !isAlbum {
                 Menu {
-                    ForEach(CollectionSort.allCases, id: \.self) { option in
+                    ForEach(availableSorts, id: \.self) { option in
                         Button {
                             sort = option
                         } label: {
@@ -277,10 +294,12 @@ struct CollectionView: View {
         // Serve from the session cache instantly, then refresh silently.
         if let cached = PageCache.shared.collections[cacheKey] {
             page = cached
+            applyDefaultSort(cached.tracks)
             loading = false
             palette = await ArtworkPalette.shared.palette(for: Artwork.upscale(cached.thumbnailURL, to: 336))
             if let fresh = try? await fetchPage() {
                 page = fresh
+                applyDefaultSort(fresh.tracks)
                 PageCache.shared.collections[cacheKey] = fresh
             }
             return
@@ -290,6 +309,7 @@ struct CollectionView: View {
         do {
             let result = try await fetchPage()
             page = result
+            applyDefaultSort(result.tracks)
             PageCache.shared.collections[cacheKey] = result
             loading = false
             palette = await ArtworkPalette.shared.palette(for: Artwork.upscale(result.thumbnailURL, to: 336))

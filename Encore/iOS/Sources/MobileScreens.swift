@@ -11,6 +11,7 @@ enum SortMode: String, CaseIterable {
     case title = "Title"
     case artist = "Artist"
     case album = "Album"
+    case plays = "Plays"
 }
 
 enum TrackSort {
@@ -35,6 +36,7 @@ private extension SortMode {
         case .title: return .title
         case .artist: return .artist
         case .album: return .album
+        case .plays: return .plays
         }
     }
     /// Cards only carry title + subtitle, so artist/album both key off subtitle.
@@ -44,6 +46,7 @@ private extension SortMode {
         case .added: return .reversed
         case .title: return .title
         case .artist, .album: return .subtitle
+        case .plays: return .source
         }
     }
 }
@@ -689,6 +692,7 @@ struct CollectionScreen: View {
     @State private var filter = ""
     @State private var sort: SortMode = .recent
     @State private var showEdit = false
+    @State private var appliedDefaultSort = false
 
     private var cacheKey: String {
         switch kind {
@@ -703,6 +707,19 @@ struct CollectionScreen: View {
     private var isPlaylist: Bool { if case .playlist = kind { return true }; return false }
     private func shownTracks(_ page: CollectionPage) -> [Track] {
         TrackSort.apply(page.tracks, filter: filter, sort: sort, keepOrder: sort == .recent)
+    }
+    /// "Plays" only for play-count-ranked lists (e.g. an artist's Top songs).
+    private var sortOptions: [SortMode] {
+        if isAlbum { return [] }
+        var opts: [SortMode] = [.recent, .added, .title, .artist, .album]
+        if let page, LibrarySort.hasPlayCounts(page.tracks) { opts.append(.plays) }
+        return opts
+    }
+    /// Default a play-count-ranked playlist to the Plays sort, once.
+    private func applyDefaultSort(_ tracks: [Track]) {
+        guard isPlaylist, !appliedDefaultSort, !tracks.isEmpty else { return }
+        appliedDefaultSort = true
+        if LibrarySort.hasPlayCounts(tracks) { sort = .plays }
     }
 
     var body: some View {
@@ -728,7 +745,7 @@ struct CollectionScreen: View {
                         }.buttonStyle(.bordered)
                     }.padding(.horizontal, 16)
                     SortFilterBar(filter: $filter, sort: $sort,
-                                  sortOptions: isAlbum ? [] : [.recent, .added, .title, .artist, .album],
+                                  sortOptions: sortOptions,
                                   sortLabel: {
                                       switch $0 {
                                       case .recent: return "Playlist Order"
@@ -787,14 +804,14 @@ struct CollectionScreen: View {
     }
 
     private func load() async {
-        if let cached = PageCache.shared.collections[cacheKey] { page = cached; loading = false }
+        if let cached = PageCache.shared.collections[cacheKey] { page = cached; applyDefaultSort(cached.tracks); loading = false }
         let fresh: CollectionPage?
         switch kind {
         case .album(let id): fresh = try? await YTM.shared.album(browseId: id)
         case .playlist(let id): fresh = try? await YTM.shared.playlist(id: id)
         case .podcast(let id): fresh = try? await YTM.shared.podcastShow(browseId: id)
         }
-        if let fresh { page = fresh; PageCache.shared.collections[cacheKey] = fresh }
+        if let fresh { page = fresh; applyDefaultSort(fresh.tracks); PageCache.shared.collections[cacheKey] = fresh }
         loading = false
     }
 
