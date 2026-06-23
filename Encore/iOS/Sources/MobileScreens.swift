@@ -525,7 +525,7 @@ struct LibraryScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if auth.isSignedIn {
+                if auth.isSignedIn, PlayCountsFeature.enabled {
                     Button { nav.go(.mostPlayed) } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "chart.bar.fill").font(.system(size: 15))
