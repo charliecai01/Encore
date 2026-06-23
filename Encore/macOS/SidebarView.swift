@@ -36,6 +36,8 @@ struct SidebarView: View {
                             nav.go(.library(tab))
                         }
                     }
+                    SidebarItem(title: "Most Played", icon: "chart.bar.fill",
+                                selected: nav.current == .mostPlayed) { nav.go(.mostPlayed) }
 
                     if auth.isSignedIn {
                         HStack {

@@ -218,6 +218,9 @@ struct ContentRouter: View {
             case .browse(let id):
                 BrowseScreen(browseId: id)
                     .id("browse-\(id)")
+            case .mostPlayed:
+                MostPlayedView()
+                    .id("mostPlayed")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

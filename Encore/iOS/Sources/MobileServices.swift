@@ -331,6 +331,7 @@ enum Route: Hashable {
     case podcastShow(String)
     case browse(String)
     case search(String, YTM.SearchFilter?)
+    case mostPlayed
 }
 
 @MainActor

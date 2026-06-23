@@ -40,6 +40,7 @@ enum Route: Hashable {
     case artist(String)
     case podcastShow(String)
     case browse(String)
+    case mostPlayed
 }
 
 @MainActor
@@ -128,6 +129,7 @@ final class Nav: ObservableObject {
         case .artist(let id): return "artist|\(id)"
         case .podcastShow(let id): return "podcastShow|\(id)"
         case .browse(let id): return "browse|\(id)"
+        case .mostPlayed: return "mostPlayed"
         case .search: return nil
         }
     }
@@ -143,6 +145,7 @@ final class Nav: ObservableObject {
         case "album": return arg.map { .album($0) }
         case "playlist": return arg.map { .playlist($0) }
         case "artist": return arg.map { .artist($0) }
+        case "mostPlayed": return .mostPlayed
         case "podcastShow": return PodcastFeature.enabled ? arg.map { .podcastShow($0) } : nil
         case "browse": return arg.map { .browse($0) }
         default: return nil

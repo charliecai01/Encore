@@ -104,6 +104,8 @@ final class PlayerEngine: NSObject, ObservableObject {
     private var suppressSiteAutoplay = true
     private var lastLoadAt = Date.distantPast
     private var mismatchTicks = 0
+    /// Guards one play-count increment per track load (recorded after a threshold).
+    private var playCountRecorded = false
     private var loadedOnce = false
     private var restoreSeekTime: Double?
     private var lastTimePersist = Date.distantPast
@@ -457,6 +459,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         clock.currentLyricIndex = nil
         lastLoadAt = Date()
         mismatchTicks = 0
+        playCountRecorded = false
         persistSnapshot()
 
         if playerReady {
@@ -650,6 +653,15 @@ final class PlayerEngine: NSObject, ObservableObject {
             let d = body["d"] as? Double ?? 0
             currentTime = t
             if d > 0 { duration = d }
+            // Count a personal play once the song has played past a threshold
+            // (~30s, or 90% for short songs), once per load.
+            if isPlaying, !playCountRecorded, let track = current, !track.isEpisode {
+                let threshold = duration > 0 ? min(30, duration * 0.9) : 30
+                if t >= threshold {
+                    playCountRecorded = true
+                    PlayCounts.record(track)
+                }
+            }
             updateLyricIndex()
             if isPlaying, Date().timeIntervalSince(lastTimePersist) > 10 {
                 persistTime()

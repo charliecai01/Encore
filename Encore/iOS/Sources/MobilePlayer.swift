@@ -106,6 +106,8 @@ final class PlayerEngine: NSObject, ObservableObject {
     private var lastProgressT = 0.0
     private var lastProgressAt = Date.distantPast
     private var stallNudged = false
+    /// Guards one play-count increment per track load (recorded after a threshold).
+    private var playCountRecorded = false
     // Silent looping player that holds the audio session (and the Now Playing
     // slot) while paused — see the keep-alive section.
     private var keepAlivePlayer: AVAudioPlayer?
@@ -517,6 +519,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         mismatchTicks = 0
         lastProgressT = startAt
         lastProgressAt = Date()
+        playCountRecorded = false
         persistSnapshot()
         try? AVAudioSession.sharedInstance().setActive(true)
         if playerReady {
@@ -733,6 +736,15 @@ final class PlayerEngine: NSObject, ObservableObject {
             }
             currentTime = t
             if let d = body["d"] as? Double, d > 0 { duration = d }
+            // Count a personal play once the song has played past a threshold
+            // (~30s, or 90% for short songs), once per load.
+            if isPlaying, !playCountRecorded, let track = current, !track.isEpisode {
+                let threshold = duration > 0 ? min(30, duration * 0.9) : 30
+                if t >= threshold {
+                    playCountRecorded = true
+                    PlayCounts.record(track)
+                }
+            }
             updateLyricIndex()
             if isPlaying, Date().timeIntervalSince(lastTimePersist) > 10 {
                 persistTime()

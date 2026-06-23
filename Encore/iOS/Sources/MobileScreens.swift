@@ -215,12 +215,32 @@ struct PlaylistShelf: View {
 struct ShelfRow: View {
     let shelf: Shelf
     @EnvironmentObject var player: PlayerEngine
+    @EnvironmentObject var nav: Nav
+
+    /// Playlist behind the shelf's "more" link (e.g. an artist's full Top songs,
+    /// ranked by plays). Only for track shelves that link to a playlist.
+    private var allSongsPlaylistId: String? {
+        guard shelf.isTrackShelf, let id = shelf.moreBrowseId, id.hasPrefix("VL") else { return nil }
+        return String(id.dropFirst(2))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !shelf.title.isEmpty {
-                Text(shelf.title).font(.system(size: 19, weight: .bold))
-                    .foregroundStyle(Theme.textPrimary).padding(.horizontal, 16)
+                HStack {
+                    Text(shelf.title).font(.system(size: 19, weight: .bold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Spacer()
+                    if let plId = allSongsPlaylistId {
+                        Button { nav.go(.playlist(plId)) } label: {
+                            HStack(spacing: 2) {
+                                Text("Show all").font(.system(size: 13, weight: .semibold))
+                                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                            }.foregroundStyle(Theme.textSecondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) {
@@ -504,6 +524,22 @@ struct LibraryScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if auth.isSignedIn {
+                    Button { nav.go(.mostPlayed) } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "chart.bar.fill").font(.system(size: 15))
+                                .foregroundStyle(Theme.accent).frame(width: 26)
+                            Text("Most Played").font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Theme.textPrimary)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Theme.textSecondary)
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 4)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
                 Picker("", selection: $tab) {
                     ForEach(LibraryTab.visible, id: \.self) { Text($0.rawValue).tag($0) }
                 }
@@ -1115,5 +1151,68 @@ struct BrowseScreen: View {
             if let p = try? await YTM.shared.browsePage(browseId: browseId) { title = p.title; shelves = p.shelves }
             loading = false
         }
+    }
+}
+
+// MARK: - Most Played
+
+struct MostPlayedScreen: View {
+    @EnvironmentObject var player: PlayerEngine
+    @State private var records: [PlayRecord] = []
+
+    private var tracks: [Track] { records.map(\.track) }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                if records.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: "chart.bar").font(.system(size: 36)).foregroundStyle(Theme.textTertiary)
+                        Text("No plays yet").font(.system(size: 16, weight: .semibold)).foregroundStyle(Theme.textSecondary)
+                        Text("Songs you play are ranked here by how many times you've listened.")
+                            .font(.system(size: 13)).foregroundStyle(Theme.textTertiary)
+                            .multilineTextAlignment(.center).padding(.horizontal, 40)
+                    }.frame(maxWidth: .infinity).padding(.top, 80)
+                } else {
+                    if tracks.count > 1 {
+                        HStack(spacing: 10) {
+                            Button { player.playCollection(tracks, startAt: 0) } label: {
+                                Label("Play", systemImage: "play.fill").frame(maxWidth: .infinity)
+                            }.buttonStyle(.borderedProminent).tint(Theme.accent)
+                            Button { player.playShuffled(tracks) } label: {
+                                Label("Shuffle", systemImage: "shuffle").frame(maxWidth: .infinity)
+                            }.buttonStyle(.bordered)
+                        }.padding(16)
+                    }
+                    ForEach(Array(records.enumerated()), id: \.offset) { i, rec in
+                        Button { player.playCollection(tracks, startAt: i) } label: {
+                            HStack(spacing: 12) {
+                                Text("\(i + 1)").font(.system(size: 14, weight: .semibold).monospacedDigit())
+                                    .foregroundStyle(Theme.textTertiary).frame(width: 24, alignment: .trailing)
+                                ArtworkView(url: rec.track.thumbnailURL, corner: 5).frame(width: 48, height: 48)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(rec.track.title).font(.system(size: 15, weight: .medium))
+                                        .foregroundStyle(player.current?.videoId == rec.track.videoId ? Theme.accent : Theme.textPrimary)
+                                        .lineLimit(1)
+                                    Text(rec.track.artistLine).font(.system(size: 12.5))
+                                        .foregroundStyle(Theme.textSecondary).lineLimit(1)
+                                }
+                                Spacer()
+                                Text("\(rec.count) play\(rec.count == 1 ? "" : "s")")
+                                    .font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.textSecondary)
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 6)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                Color.clear.frame(height: 80)
+            }
+            .padding(.top, 8)
+        }
+        .background(Theme.bg)
+        .navigationTitle("Most Played").navigationBarTitleDisplayMode(.inline)
+        .task { records = PlayCounts.mostPlayed() }
     }
 }

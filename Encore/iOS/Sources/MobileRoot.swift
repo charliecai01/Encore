@@ -75,6 +75,7 @@ extension View {
             case .podcastShow(let id): PodcastScreen(browseId: id)
             case .browse(let id): BrowseScreen(browseId: id)
             case .search(let q, let f): SearchScreen(initialQuery: q, initialFilter: f)
+            case .mostPlayed: MostPlayedScreen()
             }
         }
     }
