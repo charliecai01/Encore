@@ -90,9 +90,12 @@ final class PlayerEngine: NSObject, ObservableObject {
     /// account's last track. Block any site-initiated playback until the user
     /// explicitly presses play.
     private var suppressSiteAutoplay = true
-    /// Whether playback was active when an audio interruption (e.g. a phone
-    /// call) began, so we know whether to resume when it ends.
-    private var wasPlayingBeforeInterruption = false
+    /// The user's playback intent — true while they want music playing. Unlike
+    /// the momentary `isPlaying`, this survives interruptions (a phone call, a
+    /// loud Instagram Reel), so we resume when each interruption ends — even
+    /// through rapid back-to-back interruptions where `isPlaying` is briefly
+    /// false mid-recovery.
+    private var userWantsPlayback = false
     private var lastLoadAt = Date.distantPast
     private var mismatchTicks = 0
     private var loadedOnce = false
@@ -343,6 +346,7 @@ final class PlayerEngine: NSObject, ObservableObject {
             return
         }
         if isPlaying {
+            userWantsPlayback = false
             js("window.__encore && __encore.pause()")
             // Hold the audio session so the Now Playing widget survives a long
             // background pause (the web player would otherwise give it up).
@@ -351,6 +355,7 @@ final class PlayerEngine: NSObject, ObservableObject {
             // Resuming: the audio session may have gone inactive while paused/
             // backgrounded — reactivate it or play() produces no sound (and the
             // user has to skip to force a reload). This is the resume-lag fix.
+            userWantsPlayback = true
             stopKeepAlive()
             try? AVAudioSession.sharedInstance().setActive(true)
             js("window.__encore && __encore.play()")
@@ -476,6 +481,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         sleepTask?.cancel()
         sleepTimer = .off
         sleepStopActive = true
+        userWantsPlayback = false
         js("window.__encore && __encore.pause()")
         isPlaying = false
         updateNowPlayingInfo()
@@ -496,6 +502,7 @@ final class PlayerEngine: NSObject, ObservableObject {
 
     private func load(_ track: Track, startAt: Double = 0) {
         loadedOnce = true
+        userWantsPlayback = true // loading a track is an intent to play
         stopKeepAlive() // a real track is about to play
         // Carry the resume offset so the ready/state handlers can apply it too.
         restoreSeekTime = startAt > 0 ? startAt : nil
@@ -759,30 +766,40 @@ final class PlayerEngine: NSObject, ObservableObject {
                 self?.handleInterruption(began: type == .began, shouldResume: shouldResume)
             }
         }
+        // Safety net: some apps end an interruption without sending the `.ended`
+        // event, leaving us paused. If the user still wants playback, recover
+        // when they come back to Encore.
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            DispatchQueue.main.async { self?.resumeIfIntended() }
+        }
+    }
+
+    private func resumeIfIntended() {
+        guard userWantsPlayback, !isPlaying, !sleepStopActive, current != nil else { return }
+        forceResumePlayback()
     }
 
     private func handleInterruption(began: Bool, shouldResume: Bool) {
         if began {
-            // The system has already ducked/paused our audio; mirror it in our
-            // state and remember whether to resume afterward. Release the
-            // keep-alive too so we don't fight the interrupter for the session.
+            // The system has paused our audio; mirror it in our state but DON'T
+            // clear the playback intent — we still want to resume afterward.
+            // Release the keep-alive so we don't fight the interrupter.
             stopKeepAlive()
-            wasPlayingBeforeInterruption = isPlaying
             if isPlaying {
                 js("window.__encore && __encore.pause()")
                 isPlaying = false
                 updateNowPlayingInfo()
             }
         } else {
-            defer { wasPlayingBeforeInterruption = false }
-            // Resume whenever we were playing before the interruption. Many
-            // interruptions — notably playing/recording a voice message — don't
-            // set the `shouldResume` hint, but the user still expects the song to
-            // come back, so we don't require it.
+            // Resume if the user still wants playback. Keying off intent (not the
+            // momentary paused state) means rapid back-to-back interruptions —
+            // e.g. scrolling past several sound-on Reels — still resume each time.
+            // We also ignore `shouldResume`, which many interruptions don't set.
             _ = shouldResume
-            guard wasPlayingBeforeInterruption, !sleepStopActive, current != nil else {
-                // We weren't playing — but if a track is loaded and paused, keep
-                // the Now Playing widget alive so the user can still resume.
+            guard userWantsPlayback, !sleepStopActive, current != nil else {
+                // User-paused: keep the Now Playing widget alive so they can resume.
                 if current != nil, !isPlaying, !sleepStopActive { startKeepAlive() }
                 return
             }
