@@ -798,12 +798,22 @@ final class PlayerEngine: NSObject, ObservableObject {
     private func forceResumePlayback() {
         try? AVAudioSession.sharedInstance().setActive(true)
         js("window.__encore && __encore.play()")
+        resumeRetry(2)
+    }
+
+    /// After an interruption a plain `play()` often doesn't restart the web
+    /// player's media element (notably after Siri). If we're still not playing
+    /// shortly, fully reload the video at our position — which reliably restarts
+    /// audio — and retry a couple of times in case the first reload doesn't take.
+    private func resumeRetry(_ attemptsLeft: Int) {
         let vid = current?.videoId
         let pos = currentTime
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { [weak self] in
             guard let self, !self.isPlaying, let vid,
                   self.current?.videoId == vid, !self.sleepStopActive else { return }
-            self.ensureJS(vid, startAt: pos)
+            try? AVAudioSession.sharedInstance().setActive(true)
+            self.js("window.__encore && __encore.reload('\(vid)', \(pos))")
+            if attemptsLeft > 1 { self.resumeRetry(attemptsLeft - 1) }
         }
     }
 
@@ -1063,6 +1073,14 @@ final class PlayerEngine: NSObject, ObservableObject {
         },
         play: function () { var p = mp(); if (p) p.playVideo(); },
         pause: function () { var p = mp(); if (p) p.pauseVideo(); },
+        // Force a fresh media load at `start` — playVideo() alone often won't
+        // restart audio after a system interruption (e.g. Siri).
+        reload: function (id, start) {
+          var p = mp();
+          if (!p || !p.loadVideoById) return;
+          if (start > 0) { p.loadVideoById({ videoId: id, startSeconds: start }); }
+          else { p.loadVideoById(id); }
+        },
         // The video is never shown, so pin it to the lowest resolution — saves
         // bandwidth for music-video tracks on weak cellular (audio streams
         // separately, so audio quality is unaffected). Best-effort: modern YT
