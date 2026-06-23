@@ -380,9 +380,17 @@ struct NowPlayingBars: View {
 
 struct ShelfView: View {
     @EnvironmentObject var player: PlayerEngine
+    @EnvironmentObject var nav: Nav
     let shelf: Shelf
 
     @State private var availableWidth: CGFloat = 0
+
+    /// Playlist behind the shelf's "more" link (e.g. an artist's full Top songs,
+    /// ranked by plays). Only surfaced for track shelves that link to a playlist.
+    private var allSongsPlaylistId: String? {
+        guard shelf.isTrackShelf, let id = shelf.moreBrowseId, id.hasPrefix("VL") else { return nil }
+        return String(id.dropFirst(2))
+    }
 
     private let cardSpacing: CGFloat = 12
     private let edgeInset: CGFloat = 16
@@ -401,10 +409,24 @@ struct ShelfView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if !shelf.title.isEmpty {
-                Text(shelf.title)
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(Theme.textPrimary)
-                    .padding(.horizontal, 24)
+                HStack(alignment: .firstTextBaseline) {
+                    Text(shelf.title)
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Spacer()
+                    if let plId = allSongsPlaylistId {
+                        Button { nav.go(.playlist(plId)) } label: {
+                            HStack(spacing: 3) {
+                                Text("Show all")
+                                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                            }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.textSecondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 24)
             }
             if shelf.isTrackShelf {
                 LazyVStack(spacing: 0) {

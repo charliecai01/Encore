@@ -258,11 +258,16 @@ public enum P {
         var out: [Shelf] = []
         for (key, r) in collectRenderers(root) {
             var title = ""
+            var moreBrowseId: String?
             switch key {
             case "musicCarouselShelfRenderer":
                 title = r["header"].findFirst("title")?.runsText ?? ""
             case "musicShelfRenderer":
                 title = r["title"].runsText ?? ""
+                // The "more" link (e.g. an artist's full Top songs list) is the
+                // shelf's bottomEndpoint, mirrored on the title's navigation.
+                moreBrowseId = r["bottomEndpoint"]["browseEndpoint"]["browseId"].string
+                    ?? r["title"].runs.first?["navigationEndpoint"]["browseEndpoint"]["browseId"].string
             case "gridRenderer":
                 title = r["header"]["gridHeaderRenderer"]["title"].runsText ?? ""
             default:
@@ -270,7 +275,7 @@ public enum P {
             }
             let items = shelfItems(fromContents: r["contents"].array ?? r["items"].array ?? [])
             if !items.isEmpty {
-                out.append(Shelf(title: title, items: items))
+                out.append(Shelf(title: title, items: items, moreBrowseId: moreBrowseId))
             }
         }
         return out

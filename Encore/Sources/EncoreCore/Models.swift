@@ -159,11 +159,15 @@ public struct Shelf: Identifiable, Hashable, Codable {
     public var id: String
     public var title: String
     public var items: [ShelfItem]
+    /// browseId of the shelf's "more" link (e.g. an artist's full "Top songs"
+    /// playlist), used to show a "Show all" button. nil when there's no more.
+    public var moreBrowseId: String?
 
-    public init(title: String, items: [ShelfItem]) {
+    public init(title: String, items: [ShelfItem], moreBrowseId: String? = nil) {
         self.id = UUID().uuidString
         self.title = title
         self.items = items
+        self.moreBrowseId = moreBrowseId
     }
 
     public var isTrackShelf: Bool {
