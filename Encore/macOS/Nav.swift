@@ -50,6 +50,9 @@ final class Nav: ObservableObject {
     @Published private(set) var current: Route = .home
     @Published var paletteShown = false
     @Published var showNewPlaylist = false
+    /// Bumped by `reload()`; folded into ContentRouter's identity so the
+    /// current page tears down and re-runs its loader.
+    @Published private(set) var reloadToken = 0
     /// Song to drop into the playlist created by the new-playlist sheet.
     var pendingPlaylistTrack: Track?
 
@@ -87,6 +90,24 @@ final class Nav: ObservableObject {
         backStack.append(current)
         current = route
         persist()
+    }
+
+    /// Reload the current page (⌘R). Drops any cached copy so the page
+    /// re-fetches from the network with a loading state; the rest reload on
+    /// rebuild. Bumping `reloadToken` rebuilds the routed view either way.
+    func reload() {
+        let cache = PageCache.shared
+        switch current {
+        case .home:                cache.shelves["home"] = nil
+        case .explore:             cache.shelves["explore"] = nil
+        case .album(let id):       cache.collections["album-\(id)"] = nil
+        case .playlist(let id):    cache.collections["playlist-\(id)"] = nil
+        case .podcastShow(let id): cache.collections["podcast-\(id)"] = nil
+        case .artist(let id):      cache.artists[id] = nil
+        case .browse, .search, .library, .mostPlayed:
+            break   // these fetch fresh on rebuild
+        }
+        reloadToken &+= 1
     }
 
     /// Route an artist reference to whatever can actually display it: real

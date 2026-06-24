@@ -224,6 +224,9 @@ struct ContentRouter: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // ⌘R bumps reloadToken, changing this identity so the current page
+        // tears down and re-runs its loader.
+        .id(nav.reloadToken)
     }
 
     private func greeting() -> String {

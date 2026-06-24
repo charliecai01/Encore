@@ -37,6 +37,9 @@ struct EncoreApp: App {
                     .keyboardShortcut("r", modifiers: [.command, .shift])
             }
             CommandMenu("Go") {
+                Button("Reload") { nav.reload() }
+                    .keyboardShortcut("r", modifiers: [.command])
+                Divider()
                 Button("Quick Search…") { nav.paletteShown.toggle() }
                     .keyboardShortcut("k", modifiers: [.command])
                 Divider()
