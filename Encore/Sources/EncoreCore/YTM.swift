@@ -257,6 +257,21 @@ public final class YTM: @unchecked Sendable {
         try await queue(videoId: videoId, playlistId: "RDAMVM" + videoId)
     }
 
+    /// The audio-only ("song") counterpart videoId for a music video, when
+    /// YouTube provides one — the watch response pairs a video with its audio
+    /// track. Returns nil if there's no counterpart. Used on iOS to keep music
+    /// videos playing when the screen locks (WKWebView video is suspended in the
+    /// background) and to save data, since the video is never shown there.
+    public func audioCounterpart(for videoId: String) async -> String? {
+        guard let r = try? await net.post("next", body: [
+            "enablePersistentPlaylistPanel": true,
+            "isAudioOnly": true,
+            "tunerSettingValue": "AUTOMIX_SETTING_NORMAL",
+            "videoId": videoId,
+        ]) else { return nil }
+        return P.audioCounterpartId(from: r, for: videoId)
+    }
+
     // MARK: - Lyrics
 
     public func lyricsBrowseId(for track: Track) async -> String? {

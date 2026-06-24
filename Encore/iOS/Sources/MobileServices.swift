@@ -375,7 +375,8 @@ final class Nav: ObservableObject {
         case .song, .video:
             if let videoId = item.videoId {
                 PlayerEngine.shared.playRadio(from: Track(videoId: videoId, title: item.title,
-                                                          artistLine: item.subtitle, thumbnailURL: item.thumbnailURL))
+                                                          artistLine: item.subtitle, thumbnailURL: item.thumbnailURL,
+                                                          isVideo: item.kind == .video))
             }
         case .unknown: break
         }

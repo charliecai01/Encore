@@ -24,6 +24,10 @@ public struct Track: Identifiable, Hashable, Codable {
     public var setVideoId: String?
     /// Podcast episode metadata (nil for music tracks).
     public var isEpisode: Bool
+    /// True for music videos (OMV/UGC/official-source) rather than audio "art
+    /// tracks" (ATV). iOS suspends WKWebView video in the background, so the
+    /// player swaps these for their audio counterpart to keep playing on lock.
+    public var isVideo: Bool
     /// Published/relative date text for episodes, e.g. "6d ago".
     public var dateText: String?
     /// Episode description / show notes.
@@ -36,7 +40,7 @@ public struct Track: Identifiable, Hashable, Codable {
 
     public init(videoId: String, title: String, artists: [Ref] = [], artistLine: String = "",
                 album: Ref? = nil, durationSeconds: Int? = nil, thumbnailURL: URL? = nil,
-                setVideoId: String? = nil, isEpisode: Bool = false,
+                setVideoId: String? = nil, isEpisode: Bool = false, isVideo: Bool = false,
                 dateText: String? = nil, details: String? = nil, playsText: String? = nil) {
         self.videoId = videoId
         self.title = title
@@ -47,6 +51,7 @@ public struct Track: Identifiable, Hashable, Codable {
         self.thumbnailURL = thumbnailURL
         self.setVideoId = setVideoId
         self.isEpisode = isEpisode
+        self.isVideo = isVideo
         self.dateText = dateText
         self.details = details
         self.playsText = playsText
@@ -65,6 +70,7 @@ public struct Track: Identifiable, Hashable, Codable {
         thumbnailURL = try? c.decode(URL.self, forKey: .thumbnailURL)
         setVideoId = try? c.decode(String.self, forKey: .setVideoId)
         isEpisode = (try? c.decode(Bool.self, forKey: .isEpisode)) ?? false
+        isVideo = (try? c.decode(Bool.self, forKey: .isVideo)) ?? false
         dateText = try? c.decode(String.self, forKey: .dateText)
         details = try? c.decode(String.self, forKey: .details)
         playsText = try? c.decode(String.self, forKey: .playsText)

@@ -101,6 +101,14 @@ final class PlayerEngine: NSObject, ObservableObject {
     private var loadedOnce = false
     private var restoreSeekTime: Double?
     private var lastTimePersist = Date.distantPast
+    /// The videoId actually loaded in the web player. Equals the current track's
+    /// id for songs/episodes; for a music video it's the audio counterpart we
+    /// swap in (iOS suspends WKWebView video in the background, so we play audio).
+    /// Site state/time reports are matched against this, not the track's own id.
+    private var playingVideoId: String?
+    /// Cache of resolved playback ids (audio counterpart, or the id itself when
+    /// there's none) so replaying a music video skips the lookup.
+    private var resolvedPlaybackId: [String: String] = [:]
     // Stall watchdog: the furthest playback position we've seen and when, used to
     // detect a frozen stream (weak cellular) and re-establish it.
     private var lastProgressT = 0.0
@@ -523,14 +531,53 @@ final class PlayerEngine: NSObject, ObservableObject {
         persistSnapshot()
         try? AVAudioSession.sharedInstance().setActive(true)
         if playerReady {
-            ensureJS(track.videoId, startAt: startAt)
-            pushMediaSessionMeta()
-            // Episodes keep the chosen speed; songs are forced back to 1×.
-            js("window.__encore && __encore.rate(\(track.isEpisode ? playbackRate : 1.0))")
-            js("window.__encore && __encore.lowData()")
+            startPlayback(track, startAt: startAt)
         }
         updateNowPlayingInfo()
         fetchLyrics(for: track)
+    }
+
+    /// Start `track` in the web player. Music videos are swapped for their
+    /// audio counterpart first: iOS suspends WKWebView video the moment the
+    /// screen locks, so playing the audio track keeps lock-screen playback alive
+    /// (the video is never shown on iOS anyway) and uses less data. Falls back to
+    /// the video itself when there's no counterpart.
+    private func startPlayback(_ track: Track, startAt: Double) {
+        let canonicalId = track.videoId
+        // Songs and episodes play directly.
+        guard track.isVideo, !track.isEpisode else {
+            playingVideoId = canonicalId
+            engageJS(canonicalId, track: track, startAt: startAt)
+            return
+        }
+        // Resolved before — reuse it (audio counterpart, or the id itself).
+        if let resolved = resolvedPlaybackId[canonicalId] {
+            playingVideoId = resolved
+            engageJS(resolved, track: track, startAt: startAt)
+            return
+        }
+        // Hold off engaging the video element until we know the audio id, so a
+        // video-backed element never actually starts (and never gets suspended
+        // on lock). Site reports in the meantime are ignored by the 6s post-load
+        // grace in the `time` handler.
+        playingVideoId = canonicalId
+        Task {
+            let audioId = await YTM.shared.audioCounterpart(for: canonicalId)
+            let idToPlay = audioId ?? canonicalId
+            self.resolvedPlaybackId[canonicalId] = idToPlay
+            guard self.current?.videoId == canonicalId else { return }
+            self.playingVideoId = idToPlay
+            self.engageJS(idToPlay, track: track, startAt: startAt)
+        }
+    }
+
+    /// Load a videoId into the web player and apply per-track playback settings.
+    private func engageJS(_ videoId: String, track: Track, startAt: Double) {
+        ensureJS(videoId, startAt: startAt)
+        pushMediaSessionMeta()
+        // Episodes keep the chosen speed; songs are forced back to 1×.
+        js("window.__encore && __encore.rate(\(track.isEpisode ? playbackRate : 1.0))")
+        js("window.__encore && __encore.lowData()")
     }
 
     /// Drive the lock-screen / Control Center metadata through the page's
@@ -654,8 +701,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         case "ready":
             playerReady = true
             if loadedOnce, let track = current {
-                ensureJS(track.videoId, startAt: restoreSeekTime ?? 0)
-                pushMediaSessionMeta()
+                startPlayback(track, startAt: restoreSeekTime ?? 0)
             }
         case "state":
             let state = body["data"] as? Int ?? -1
@@ -687,7 +733,7 @@ final class PlayerEngine: NSObject, ObservableObject {
                 // glitches — those used to skip the song ~10s in. Require either a
                 // confirmed video-id match or that we're genuinely near the end.
                 let endedVid = body["vid"] as? String
-                let confirmedEnd = !(endedVid ?? "").isEmpty && endedVid == current?.videoId
+                let confirmedEnd = !(endedVid ?? "").isEmpty && endedVid == activePlaybackId
                 let nearEnd = duration > 0 && currentTime >= duration - 6
                 if (confirmedEnd || nearEnd), !sleepTimerConsumedSong() {
                     advance()
@@ -699,11 +745,11 @@ final class PlayerEngine: NSObject, ObservableObject {
         case "time":
             guard reportedMatchesCurrent(body) || Date().timeIntervalSince(lastLoadAt) < 6 else {
                 mismatchTicks += 1
-                if mismatchTicks > 8, !suppressSiteAutoplay, let track = current {
+                if mismatchTicks > 8, !suppressSiteAutoplay, let playId = activePlaybackId {
                     mismatchTicks = 0
                     lastLoadAt = Date()
                     // Re-sync at our tracked position, not 0, so a glitch doesn't restart the song.
-                    ensureJS(track.videoId, startAt: currentTime)
+                    ensureJS(playId, startAt: currentTime)
                 }
                 return
             }
@@ -719,14 +765,14 @@ final class PlayerEngine: NSObject, ObservableObject {
                     lastProgressT = t
                     lastProgressAt = Date()
                     stallNudged = false
-                } else if Date().timeIntervalSince(lastLoadAt) > 5, let track = current {
+                } else if Date().timeIntervalSince(lastLoadAt) > 5, let playId = activePlaybackId {
                     let frozen = Date().timeIntervalSince(lastProgressAt)
                     if frozen > 9 {
                         // Still stuck — re-establish the stream at our position.
                         lastProgressAt = Date()
                         lastLoadAt = Date()
                         stallNudged = false
-                        ensureJS(track.videoId, startAt: t)
+                        ensureJS(playId, startAt: t)
                     } else if frozen > 4, !stallNudged {
                         // A buffer stall often just needs a kick before a full reload.
                         stallNudged = true
@@ -756,8 +802,12 @@ final class PlayerEngine: NSObject, ObservableObject {
 
     private func reportedMatchesCurrent(_ body: [String: Any]) -> Bool {
         guard let vid = body["vid"] as? String, !vid.isEmpty else { return true }
-        return vid == current?.videoId
+        return vid == activePlaybackId
     }
+
+    /// The videoId actually loaded in the web player — the audio counterpart for
+    /// a music video, otherwise the current track's own id.
+    private var activePlaybackId: String? { playingVideoId ?? current?.videoId }
 
     // MARK: - System now playing (lock screen + CarPlay)
 
@@ -835,13 +885,14 @@ final class PlayerEngine: NSObject, ObservableObject {
     /// shortly, fully reload the video at our position — which reliably restarts
     /// audio — and retry a couple of times in case the first reload doesn't take.
     private func resumeRetry(_ attemptsLeft: Int) {
-        let vid = current?.videoId
+        let canonicalId = current?.videoId
+        let playId = activePlaybackId
         let pos = currentTime
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { [weak self] in
-            guard let self, !self.isPlaying, let vid,
-                  self.current?.videoId == vid, !self.sleepStopActive else { return }
+            guard let self, !self.isPlaying, let canonicalId, let playId,
+                  self.current?.videoId == canonicalId, !self.sleepStopActive else { return }
             try? AVAudioSession.sharedInstance().setActive(true)
-            self.js("window.__encore && __encore.reload('\(vid)', \(pos))")
+            self.js("window.__encore && __encore.reload('\(playId)', \(pos))")
             if attemptsLeft > 1 { self.resumeRetry(attemptsLeft - 1) }
         }
     }

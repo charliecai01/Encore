@@ -144,9 +144,13 @@ public enum P {
         // so the player shows episode controls (skip/speed) and the lock screen
         // gets skip — not next/prev — even when the episode lives in a playlist
         // (e.g. "New Episodes"), which otherwise parses it as a plain song.
-        let isEpisode = r.findAll("musicVideoType").contains {
-            let t = $0.string ?? ""
-            return t.contains("EPISODE") || t.contains("PODCAST")
+        let mvTypes = r.findAll("musicVideoType").compactMap { $0.string }
+        let isEpisode = mvTypes.contains { $0.contains("EPISODE") || $0.contains("PODCAST") }
+        // Anything with a non-ATV musicVideoType (OMV/UGC/official-source) is a
+        // real music video; the iOS player swaps these for their audio
+        // counterpart so they keep playing on lock. ATV "art tracks" are audio.
+        let isVideo = !isEpisode && mvTypes.contains {
+            $0.contains("MUSIC_VIDEO_TYPE") && !$0.contains("ATV")
         }
 
         // Global play count ("102M plays") when present — artist Top songs and
@@ -157,7 +161,7 @@ public enum P {
 
         return Track(videoId: videoId, title: title, artists: artists, artistLine: artistLine,
                      album: albumRef ?? fallbackAlbum, durationSeconds: duration, thumbnailURL: thumb,
-                     setVideoId: setVideoId, isEpisode: isEpisode, playsText: playsText)
+                     setVideoId: setVideoId, isEpisode: isEpisode, isVideo: isVideo, playsText: playsText)
     }
 
     static func cardKind(forBrowseId browseId: String, pageType: String?) -> CardItem.Kind {
@@ -534,6 +538,21 @@ public enum P {
             }
         }
         return result
+    }
+
+    /// The audio ("song") counterpart videoId for a music video, from a watch
+    /// (`next`) response. YouTube pairs a music video with its audio track in a
+    /// `playlistPanelVideoWrapperRenderer`; find the wrapper holding `videoId`
+    /// and return the other id in it. nil when there's no counterpart.
+    public static func audioCounterpartId(from root: JSONValue, for videoId: String) -> String? {
+        for wrapper in root.findAll("playlistPanelVideoWrapperRenderer") {
+            let ids = wrapper.findAll("playlistPanelVideoRenderer").compactMap { $0["videoId"].string }
+            guard ids.contains(videoId) else { continue }
+            if let alt = ids.first(where: { $0 != videoId && !$0.isEmpty }) {
+                return alt
+            }
+        }
+        return nil
     }
 
     public static func timedLyrics(from root: JSONValue) -> [LyricLine]? {
