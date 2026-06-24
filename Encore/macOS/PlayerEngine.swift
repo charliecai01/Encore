@@ -682,12 +682,24 @@ final class PlayerEngine: NSObject, ObservableObject {
 
     private func setupRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
+        // Play/pause must set an explicit state, not toggle: macOS fires
+        // pauseCommand whenever another app grabs "now playing" or the audio
+        // route changes (AirPods connect/disconnect, an earbud removed, a
+        // browser video starts). Routed through togglePlay(), a pause arriving
+        // while already paused flipped Encore into *playing* — the app
+        // "randomly" starting on its own. Only act toward the requested state.
         center.playCommand.addTarget { [weak self] _ in
-            DispatchQueue.main.async { self?.togglePlay() }
+            DispatchQueue.main.async {
+                guard let self, !self.isPlaying else { return }
+                self.togglePlay()
+            }
             return .success
         }
         center.pauseCommand.addTarget { [weak self] _ in
-            DispatchQueue.main.async { self?.togglePlay() }
+            DispatchQueue.main.async {
+                guard let self, self.isPlaying else { return }
+                self.togglePlay()
+            }
             return .success
         }
         center.togglePlayPauseCommand.addTarget { [weak self] _ in
