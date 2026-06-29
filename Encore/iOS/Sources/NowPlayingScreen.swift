@@ -22,6 +22,9 @@ struct NowPlayingScreen: View {
     @State private var showAddToPlaylist = false
     @State private var showSongInfo = false
 
+    /// Live offset while the card is being dragged down to dismiss.
+    @State private var dragOffset: CGFloat = 0
+
     /// Square artwork sized so it never makes the layout wider than the screen.
     private var artSize: CGFloat {
         let b = UIScreen.main.bounds
@@ -32,7 +35,23 @@ struct NowPlayingScreen: View {
         // Content respects the safe area (so it sits below the Dynamic Island);
         // only the blurred backdrop ignores it, as a full-bleed background.
         VStack(spacing: 16) {
+            // Grab handle — drag it down (from any tab) to close the card.
             Capsule().fill(.white.opacity(0.3)).frame(width: 36, height: 5)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+                .gesture(dismissDrag)
+
+            // The active pane fills the space; the Song / Lyrics / Queue switcher
+            // now sits at the bottom, just above the home indicator.
+            Group {
+                switch tab {
+                case .song: songPane.simultaneousGesture(dismissDrag)
+                case .lyrics: LyricsPane()
+                case .queue: QueuePane()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Picker("", selection: $tab) {
                 Text("Song").tag(Tab.song)
@@ -41,19 +60,13 @@ struct NowPlayingScreen: View {
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 40)
-
-            switch tab {
-            case .song: songPane
-            case .lyrics: LyricsPane()
-            case .queue: QueuePane()
-            }
         }
         .padding(.top, 8)
-        .padding(.bottom, 12)
+        .padding(.bottom, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(backdrop)
         .preferredColorScheme(.dark)
-        .gesture(DragGesture().onEnded { v in if v.translation.height > 90 { dismiss() } })
+        .offset(y: dragOffset)
         .sheet(isPresented: $showAddToPlaylist) {
             if let t = player.current { AddToPlaylistSheet(track: t) }
         }
@@ -62,6 +75,25 @@ struct NowPlayingScreen: View {
                 SongInfoSheet(track: t, fromPlaylist: currentPlaylistName)
             }
         }
+    }
+
+    /// Interactive drag-to-dismiss: the card tracks a downward drag and closes if
+    /// pulled or flicked far enough, otherwise springs back. Direction-guarded so
+    /// it never fights the horizontal track-swipe or vertical list scrolling
+    /// (attached only to the handle and the non-scrolling Song pane).
+    private var dismissDrag: some Gesture {
+        DragGesture(minimumDistance: 10)
+            .onChanged { v in
+                let dy = v.translation.height
+                if dy > 0, dy > abs(v.translation.width) { dragOffset = dy }
+            }
+            .onEnded { v in
+                if v.translation.height > 120 || v.predictedEndTranslation.height > 500 {
+                    player.showNowPlaying = false
+                } else {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) { dragOffset = 0 }
+                }
+            }
     }
 
     private var backdrop: some View {
