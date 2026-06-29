@@ -257,6 +257,19 @@ public final class YTM: @unchecked Sendable {
         try await queue(videoId: videoId, playlistId: "RDAMVM" + videoId)
     }
 
+    /// Fetch the next page of an in-progress radio/queue via its continuation
+    /// token (the endless-autoplay cursor). Returns the new tracks plus the
+    /// following cursor in `continuation`.
+    public func queueContinuation(_ token: String) async throws -> QueueResult {
+        let r = try await net.post("next", body: [
+            "enablePersistentPlaylistPanel": true,
+            "isAudioOnly": true,
+            "tunerSettingValue": "AUTOMIX_SETTING_NORMAL",
+            "continuation": token,
+        ])
+        return P.queueResult(from: r)
+    }
+
     /// The audio-only ("song") counterpart videoId for a music video, when
     /// YouTube provides one — the watch response pairs a video with its audio
     /// track. Returns nil if there's no counterpart. Used on iOS to keep music

@@ -83,6 +83,10 @@ final class PlayerEngine: NSObject, ObservableObject {
     private var unshuffledQueue: [Track]?
     private var lyricsRequestId = 0
     private var fetchingMoreRadio = false
+    /// Endless-radio cursor from the active radio. Autoplay continues the radio
+    /// with this instead of re-seeding `RDAMVM…`, which returns the same songs
+    /// each time and dead-ends after dedup. nil for finite, non-radio queues.
+    private var radioContinuation: String?
     private var toastTask: Task<Void, Never>?
     private var sleepTask: Task<Void, Never>?
     private var sleepStopActive = false
@@ -213,6 +217,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         unshuffledQueue = nil
         shuffleOn = false
         playlistContextId = playlistId
+        radioContinuation = nil // finite context; radio is seeded fresh when it ends
         queue = tracks
         index = startAt
         load(tracks[startAt])
@@ -223,6 +228,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         unshuffledQueue = tracks
         shuffleOn = true
         playlistContextId = playlistId
+        radioContinuation = nil
         queue = tracks.shuffled()
         index = 0
         load(queue[0])
@@ -232,6 +238,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         unshuffledQueue = nil
         shuffleOn = false
         playlistContextId = nil
+        radioContinuation = nil
         queue = [track]
         index = 0
         load(track)
@@ -243,6 +250,7 @@ final class PlayerEngine: NSObject, ObservableObject {
             merged.append(contentsOf: result.tracks.filter { $0.videoId != track.videoId })
             self.queue = merged
             self.index = 0
+            self.radioContinuation = result.continuation
         }
     }
 
@@ -255,6 +263,7 @@ final class PlayerEngine: NSObject, ObservableObject {
                 return
             }
             self.playCollection(result.tracks, startAt: result.currentIndex)
+            self.radioContinuation = result.continuation // playCollection cleared it
         }
     }
 
@@ -622,27 +631,44 @@ final class PlayerEngine: NSObject, ObservableObject {
             load(queue[0])
             return
         }
-        guard autoplayEnabled, let last = queue.last, !fetchingMoreRadio else {
+        guard autoplayEnabled, !queue.isEmpty, !fetchingMoreRadio else {
             isPlaying = false
             return
         }
         fetchingMoreRadio = true
         Task {
             defer { self.fetchingMoreRadio = false }
-            guard let result = try? await YTM.shared.radioQueue(for: last.videoId) else {
+            if await self.extendQueueWithRadio() {
+                self.index += 1
+                self.load(self.queue[self.index])
+            } else {
                 self.isPlaying = false
-                return
             }
-            let existing = Set(self.queue.map(\.videoId))
-            let fresh = result.tracks.filter { !existing.contains($0.videoId) }
-            guard !fresh.isEmpty else {
-                self.isPlaying = false
-                return
-            }
-            self.queue.append(contentsOf: fresh)
-            self.index += 1
-            self.load(self.queue[self.index])
         }
+    }
+
+    /// Pull more autoplay tracks when the queue runs out. Continues the active
+    /// radio via its continuation cursor (genuinely new songs); if there's no
+    /// cursor or it returns nothing new, seeds a fresh radio from the last track.
+    /// Returns whether any new tracks were appended.
+    private func extendQueueWithRadio() async -> Bool {
+        guard let last = queue.last else { return false }
+        func merge(_ result: QueueResult?) -> Bool {
+            guard let result else { return false }
+            // Advance the cursor even when a page is all dupes, so the next
+            // attempt pulls the following page instead of repeating this one.
+            if let token = result.continuation { radioContinuation = token }
+            let existing = Set(queue.map(\.videoId))
+            let fresh = result.tracks.filter { !existing.contains($0.videoId) }
+            guard !fresh.isEmpty else { return false }
+            queue.append(contentsOf: fresh)
+            return true
+        }
+        if let token = radioContinuation,
+           merge(try? await YTM.shared.queueContinuation(token)) {
+            return true
+        }
+        return merge(try? await YTM.shared.radioQueue(for: last.videoId))
     }
 
     private func fetchLyrics(for track: Track) {

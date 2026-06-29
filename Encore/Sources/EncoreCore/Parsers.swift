@@ -492,7 +492,10 @@ public enum P {
 
     public static func queueResult(from root: JSONValue) -> QueueResult {
         var result = QueueResult()
-        guard let panel = root.findFirst("playlistPanelRenderer") else { return result }
+        // Initial radio responses carry a `playlistPanelRenderer`; continuation
+        // pages carry a `playlistPanelContinuation` with the same `contents`.
+        guard let panel = root.findFirst("playlistPanelRenderer")
+            ?? root.findFirst("playlistPanelContinuation") else { return result }
 
         var tracks: [Track] = []
         var currentIndex = 0
@@ -529,6 +532,12 @@ public enum P {
         }
         result.tracks = tracks
         result.currentIndex = currentIndex
+
+        // Endless-radio cursor — present on the initial panel and on each
+        // continuation page. `nextRadioContinuationData` is the radio-specific
+        // token; fall back to the generic queue continuation.
+        result.continuation = root.findFirst("nextRadioContinuationData")?["continuation"].string
+            ?? root.findFirst("nextContinuationData")?["continuation"].string
 
         for tab in root.findAll("tabRenderer") {
             if let browseId = tab["endpoint"]["browseEndpoint"]["browseId"].string,

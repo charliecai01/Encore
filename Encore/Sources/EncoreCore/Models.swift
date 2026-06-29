@@ -315,12 +315,17 @@ public struct QueueResult {
     /// "LIKE" / "DISLIKE" / "INDIFFERENT" for the selected track, as reported
     /// by YouTube — the authoritative heart state.
     public var currentLikeStatus: String?
+    /// Cursor for pulling the next page of an in-progress radio/queue. Drives
+    /// endless autoplay — continuing the radio yields genuinely new tracks,
+    /// unlike re-seeding it, which repeats the same head of the list.
+    public var continuation: String?
 
     public init(tracks: [Track] = [], currentIndex: Int = 0, lyricsBrowseId: String? = nil,
-                currentLikeStatus: String? = nil) {
+                currentLikeStatus: String? = nil, continuation: String? = nil) {
         self.tracks = tracks
         self.currentIndex = currentIndex
         self.lyricsBrowseId = lyricsBrowseId
         self.currentLikeStatus = currentLikeStatus
+        self.continuation = continuation
     }
 }
