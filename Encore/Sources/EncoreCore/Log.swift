@@ -21,16 +21,20 @@ public struct LogCategory {
     public func notice(_ message: @autoclosure () -> String) {
         let m = message()
         logger.notice("\(m, privacy: .public)")
-        #if DEBUG
-        print("[\(tag)] \(m)")
-        #endif
+        emit("[\(tag)] \(m)")
     }
 
     public func error(_ message: @autoclosure () -> String) {
         let m = message()
         logger.error("\(m, privacy: .public)")
+        emit("[\(tag)] ERROR: \(m)")
+    }
+
+    /// Mirror to stderr (unbuffered, unlike stdout under a pipe) so live captures
+    /// via `devicectl … --console` and the Xcode console see it immediately.
+    private func emit(_ line: String) {
         #if DEBUG
-        print("[\(tag)] ERROR: \(m)")
+        FileHandle.standardError.write(Data((line + "\n").utf8))
         #endif
     }
 }
