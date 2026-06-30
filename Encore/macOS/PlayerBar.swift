@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import AVKit
 import EncoreCore
 
 struct PlayerBar: View {
@@ -148,6 +150,9 @@ struct PlayerBar: View {
             ControlButton(icon: "list.bullet", size: 14, active: queueShown) {
                 queueShown.toggle()
             }
+            RoutePickerButton()
+                .frame(width: 20, height: 16)
+                .help("AirPlay / output device")
             HStack(spacing: 7) {
                 Image(systemName: volumeIcon)
                     .font(.system(size: 12))
@@ -227,6 +232,19 @@ struct ControlButton: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
     }
+}
+
+/// Native output-route picker (AirPlay). Routes the app's audio output; the
+/// hidden web player's audio follows the selected device.
+struct RoutePickerButton: NSViewRepresentable {
+    func makeNSView(context: Context) -> AVRoutePickerView {
+        let picker = AVRoutePickerView()
+        picker.isRoutePickerButtonBordered = false
+        picker.setRoutePickerButtonColor(NSColor(Theme.textSecondary), for: .normal)
+        picker.setRoutePickerButtonColor(NSColor(Theme.fallbackAccent), for: .active)
+        return picker
+    }
+    func updateNSView(_ nsView: AVRoutePickerView, context: Context) {}
 }
 
 /// Custom slider used for seek and volume — thin capsule that grows a knob on hover.
