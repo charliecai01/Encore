@@ -103,6 +103,11 @@ final class PlayerEngine: NSObject, ObservableObject {
     private var lastLoadAt = Date.distantPast
     private var mismatchTicks = 0
     private var loadedOnce = false
+    /// Force the next web-player engage to do a clean loadVideoById rather than
+    /// resuming whatever the site auto-loaded. Set for the first play after a
+    /// restored session, so we don't inherit the site's auto-resumed track and
+    /// its radio "Up Next" (which would override our restored queue).
+    private var forceReloadOnEngage = false
     private var restoreSeekTime: Double?
     private var lastTimePersist = Date.distantPast
     /// The videoId actually loaded in the web player. Equals the current track's
@@ -361,6 +366,9 @@ final class PlayerEngine: NSObject, ObservableObject {
         if !loadedOnce {
             // First play after a restored session: start the web player directly
             // at the saved offset (reliable) instead of seeking after it starts.
+            // Force a clean load so we replace the site's auto-resumed session
+            // (often the same track, carrying its own radio queue) with ours.
+            forceReloadOnEngage = true
             load(track, startAt: restoreSeekTime ?? 0)
             return
         }
@@ -608,10 +616,16 @@ final class PlayerEngine: NSObject, ObservableObject {
     /// Tell the web player to load/resume a video, optionally from `startAt`
     /// seconds (so a restored session begins where you left off, not at 0:00).
     private func ensureJS(_ videoId: String, startAt: Double) {
+        // Consume the one-shot force flag: the first engage after a restored
+        // session does a clean loadVideoById so it doesn't inherit the site's
+        // auto-resumed radio. Later engages (stalls, re-syncs) resume in place.
+        let force = forceReloadOnEngage
+        forceReloadOnEngage = false
+        let f = force ? "true" : "false"
         if startAt > 0 {
-            js("window.__encore && __encore.ensure('\(videoId)', \(startAt))")
+            js("window.__encore && __encore.ensure('\(videoId)', \(startAt), \(f))")
         } else {
-            js("window.__encore && __encore.ensure('\(videoId)')")
+            js("window.__encore && __encore.ensure('\(videoId)', 0, \(f))")
         }
     }
 
@@ -1139,13 +1153,13 @@ final class PlayerEngine: NSObject, ObservableObject {
       }
 
       window.__encore = {
-        ensure: function (id, start) {
+        ensure: function (id, start, force) {
           start = start || 0;
           var attempt = function (n) {
             var p = mp();
             if (p && p.loadVideoById && p.getVideoData) {
               var cur = p.getVideoData().video_id;
-              if (cur !== id) {
+              if (force || cur !== id) {
                 if (start > 0) { p.loadVideoById({ videoId: id, startSeconds: start }); }
                 else { p.loadVideoById(id); }
               } else {
