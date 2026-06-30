@@ -212,7 +212,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         duration = Double(current?.durationSeconds ?? 0)
         currentTime = 0
         restoreSeekTime = nil
-        Log.player.notice("restore: \(snapshot.queue.count) tracks, index=\(self.index), current=\(self.current?.videoId ?? "nil", privacy: .public) '\(self.current?.title ?? "", privacy: .public)'")
+        Log.player.notice("restore: \(snapshot.queue.count) tracks, index=\(self.index), current=\(self.current?.videoId ?? "nil") '\(self.current?.title ?? "")'")
         updateNowPlayingInfo()
     }
 
@@ -369,7 +369,7 @@ final class PlayerEngine: NSObject, ObservableObject {
             // at the saved offset (reliable) instead of seeking after it starts.
             // Force a clean load so we replace the site's auto-resumed session
             // (often the same track, carrying its own radio queue) with ours.
-            Log.player.notice("firstPlay(restored): current=\(track.videoId, privacy: .public) '\(track.title, privacy: .public)', forcing clean load")
+            Log.player.notice("firstPlay(restored): current=\(track.videoId) '\(track.title)', forcing clean load")
             forceReloadOnEngage = true
             load(track, startAt: restoreSeekTime ?? 0)
             return
@@ -659,7 +659,7 @@ final class PlayerEngine: NSObject, ObservableObject {
             if await self.extendQueueWithRadio() {
                 self.index += 1
                 self.load(self.queue[self.index])
-                Log.player.notice("advance: radio extended -> index=\(self.index) '\(self.queue[self.index].title, privacy: .public)'")
+                Log.player.notice("advance: radio extended -> index=\(self.index) '\(self.queue[self.index].title)'")
             } else {
                 self.isPlaying = false
                 Log.player.notice("advance: radio extend found nothing new; stopping")
@@ -746,7 +746,7 @@ final class PlayerEngine: NSObject, ObservableObject {
             }
         case "ready":
             playerReady = true
-            Log.player.notice("ready: loadedOnce=\(self.loadedOnce) current=\(self.current?.videoId ?? "nil", privacy: .public)")
+            Log.player.notice("ready: loadedOnce=\(self.loadedOnce) current=\(self.current?.videoId ?? "nil")")
             if loadedOnce, let track = current {
                 startPlayback(track, startAt: restoreSeekTime ?? 0)
             }
@@ -754,10 +754,10 @@ final class PlayerEngine: NSObject, ObservableObject {
             // Diagnostic: what the web player already had loaded (the site's
             // auto-resumed session) vs. the track we asked for, and whether we
             // forced a clean load. This is the smoking gun for restore-then-play.
-            Log.player.notice("engage: site cur=\(body["cur"] as? String ?? "nil", privacy: .public) want=\(body["id"] as? String ?? "nil", privacy: .public) force=\(body["force"] as? Bool ?? false) -> \(body["action"] as? String ?? "?", privacy: .public)")
+            Log.player.notice("engage: site cur=\(body["cur"] as? String ?? "nil") want=\(body["id"] as? String ?? "nil") force=\(body["force"] as? Bool ?? false) -> \(body["action"] as? String ?? "?")")
         case "state":
             let state = body["data"] as? Int ?? -1
-            Log.player.notice("state=\(state) vid=\(body["vid"] as? String ?? "nil", privacy: .public) current=\(self.current?.videoId ?? "nil", privacy: .public) suppress=\(self.suppressSiteAutoplay)")
+            Log.player.notice("state=\(state) vid=\(body["vid"] as? String ?? "nil") current=\(self.current?.videoId ?? "nil") suppress=\(self.suppressSiteAutoplay)")
             switch state {
             case 1:
                 if sleepStopActive || suppressSiteAutoplay {
