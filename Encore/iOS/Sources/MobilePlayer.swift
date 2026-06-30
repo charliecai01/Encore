@@ -212,6 +212,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         duration = Double(current?.durationSeconds ?? 0)
         currentTime = 0
         restoreSeekTime = nil
+        Log.player.notice("restore: \(snapshot.queue.count) tracks, index=\(self.index), current=\(self.current?.videoId ?? "nil", privacy: .public) '\(self.current?.title ?? "", privacy: .public)'")
         updateNowPlayingInfo()
     }
 
@@ -368,6 +369,7 @@ final class PlayerEngine: NSObject, ObservableObject {
             // at the saved offset (reliable) instead of seeking after it starts.
             // Force a clean load so we replace the site's auto-resumed session
             // (often the same track, carrying its own radio queue) with ours.
+            Log.player.notice("firstPlay(restored): current=\(track.videoId, privacy: .public) '\(track.title, privacy: .public)', forcing clean load")
             forceReloadOnEngage = true
             load(track, startAt: restoreSeekTime ?? 0)
             return
@@ -630,6 +632,7 @@ final class PlayerEngine: NSObject, ObservableObject {
     }
 
     private func advance(manual: Bool = false) {
+        Log.player.notice("advance(manual:\(manual)): index=\(self.index)/\(self.queue.count) repeat=\(self.repeatMode.rawValue)")
         if !manual && repeatMode == .one {
             seek(to: 0)
             js("window.__encore && __encore.play()")
@@ -650,13 +653,16 @@ final class PlayerEngine: NSObject, ObservableObject {
             return
         }
         fetchingMoreRadio = true
+        Log.player.notice("advance: queue exhausted, extending radio (hasContinuation=\(self.radioContinuation != nil))")
         Task {
             defer { self.fetchingMoreRadio = false }
             if await self.extendQueueWithRadio() {
                 self.index += 1
                 self.load(self.queue[self.index])
+                Log.player.notice("advance: radio extended -> index=\(self.index) '\(self.queue[self.index].title, privacy: .public)'")
             } else {
                 self.isPlaying = false
+                Log.player.notice("advance: radio extend found nothing new; stopping")
             }
         }
     }
@@ -740,11 +746,18 @@ final class PlayerEngine: NSObject, ObservableObject {
             }
         case "ready":
             playerReady = true
+            Log.player.notice("ready: loadedOnce=\(self.loadedOnce) current=\(self.current?.videoId ?? "nil", privacy: .public)")
             if loadedOnce, let track = current {
                 startPlayback(track, startAt: restoreSeekTime ?? 0)
             }
+        case "engage":
+            // Diagnostic: what the web player already had loaded (the site's
+            // auto-resumed session) vs. the track we asked for, and whether we
+            // forced a clean load. This is the smoking gun for restore-then-play.
+            Log.player.notice("engage: site cur=\(body["cur"] as? String ?? "nil", privacy: .public) want=\(body["id"] as? String ?? "nil", privacy: .public) force=\(body["force"] as? Bool ?? false) -> \(body["action"] as? String ?? "?", privacy: .public)")
         case "state":
             let state = body["data"] as? Int ?? -1
+            Log.player.notice("state=\(state) vid=\(body["vid"] as? String ?? "nil", privacy: .public) current=\(self.current?.videoId ?? "nil", privacy: .public) suppress=\(self.suppressSiteAutoplay)")
             switch state {
             case 1:
                 if sleepStopActive || suppressSiteAutoplay {
@@ -1159,7 +1172,9 @@ final class PlayerEngine: NSObject, ObservableObject {
             var p = mp();
             if (p && p.loadVideoById && p.getVideoData) {
               var cur = p.getVideoData().video_id;
-              if (force || cur !== id) {
+              var willLoad = (force || cur !== id);
+              send({ event: 'engage', cur: cur || '', id: id, force: !!force, action: willLoad ? 'load' : 'resume' });
+              if (willLoad) {
                 if (start > 0) { p.loadVideoById({ videoId: id, startSeconds: start }); }
                 else { p.loadVideoById(id); }
               } else {
