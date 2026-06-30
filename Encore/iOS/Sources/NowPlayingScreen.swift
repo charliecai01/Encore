@@ -1,4 +1,5 @@
 import SwiftUI
+import AVKit
 import EncoreCore
 
 struct NowPlayingScreen: View {
@@ -184,9 +185,12 @@ struct NowPlayingScreen: View {
                     sleepMenu
                 }
                 .padding(.top, 22)
-                Button { player.showNowPlaying = false } label: {
-                    Image(systemName: "chevron.down").font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.6))
+                HStack(spacing: 36) {
+                    RoutePickerButton().frame(width: 26, height: 26)
+                    Button { player.showNowPlaying = false } label: {
+                        Image(systemName: "chevron.down").font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
                 }
                 .padding(.top, 18)
             } else {
@@ -202,6 +206,7 @@ struct NowPlayingScreen: View {
 
                 HStack(spacing: 36) {
                     sleepMenu
+                    RoutePickerButton().frame(width: 26, height: 26)
                     Button { player.showNowPlaying = false } label: {
                         Image(systemName: "chevron.down").font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.6))
@@ -320,6 +325,21 @@ struct NowPlayingScreen: View {
                 .foregroundStyle(active ? Theme.accent : .white)
         }
     }
+}
+
+/// Native output-route picker (AirPlay, Bluetooth, HomePod, built-in speaker).
+/// It routes the app's audio session, which the hidden web player's inline audio
+/// plays into — so picking a device here moves the music to it.
+struct RoutePickerButton: UIViewRepresentable {
+    func makeUIView(context: Context) -> AVRoutePickerView {
+        let picker = AVRoutePickerView()
+        picker.tintColor = UIColor.white.withAlphaComponent(0.6)
+        picker.activeTintColor = UIColor(Theme.accent)
+        picker.prioritizesVideoDevices = false
+        picker.backgroundColor = .clear
+        return picker
+    }
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
 }
 
 struct ProgressBar: View {
