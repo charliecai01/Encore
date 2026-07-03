@@ -61,10 +61,17 @@ if [ -d "/Applications/Encore.app" ] || [ -w "/Applications" ]; then
     WAS_RUNNING=0
     pgrep -f "/Applications/Encore.app/Contents/MacOS/Encore" >/dev/null && WAS_RUNNING=1
     pkill -f "/Applications/Encore.app/Contents/MacOS/Encore" 2>/dev/null || true
+    # Wait for the old instance to fully exit before replacing and relaunching —
+    # `open` too early fails with Launch Services error -600 and the relaunch
+    # silently doesn't happen, leaving the OLD binary running.
+    for _ in $(seq 1 50); do
+        pgrep -f "/Applications/Encore.app/Contents/MacOS/Encore" >/dev/null || break
+        sleep 0.1
+    done
     rm -rf /Applications/Encore.app
     ditto "$APP" /Applications/Encore.app
     echo "Installed /Applications/Encore.app"
     if [ "$WAS_RUNNING" = "1" ]; then
-        open /Applications/Encore.app
+        open /Applications/Encore.app || { sleep 1; open /Applications/Encore.app; }
     fi
 fi

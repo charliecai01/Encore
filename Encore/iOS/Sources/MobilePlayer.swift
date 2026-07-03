@@ -68,7 +68,7 @@ final class PlayerEngine: NSObject, ObservableObject {
             // Mirror the site's toggle: ON populates the queue tail right
             // away; OFF strips the not-yet-played autoplay tracks so the
             // queue returns to just your own songs.
-            if autoplayEnabled && !oldValue { prefetchAutoplayTail() }
+            if autoplayEnabled && !oldValue { prefetchAutoplayTail(explicit: true) }
             if !autoplayEnabled && oldValue { removeAutoplayTail() }
         }
     }
@@ -713,10 +713,21 @@ final class PlayerEngine: NSObject, ObservableObject {
     /// when the toggle turns on and when playback reaches the last queued
     /// track — so the queue shows what's next. Append-only; never changes
     /// what's playing.
-    private func prefetchAutoplayTail() {
-        guard autoplayEnabled, repeatMode == .off, !queue.isEmpty else { return }
-        Log.player.notice("autoplay: prefetching radio tail (hasContinuation=\(self.radioContinuation != nil))")
-        ensureRadioFetch()
+    /// `explicit` = the user just flipped the toggle: fetch even under repeat,
+    /// and toast the outcome — appended songs land at the queue's END, which is
+    /// below the fold on a long queue, so the change needs an acknowledgment.
+    private func prefetchAutoplayTail(explicit: Bool = false) {
+        guard autoplayEnabled, !queue.isEmpty, explicit || repeatMode == .off else { return }
+        Log.player.notice("autoplay: prefetching radio tail (explicit=\(explicit), hasContinuation=\(self.radioContinuation != nil))")
+        let fetch = ensureRadioFetch()
+        guard explicit else { return }
+        Task {
+            let before = self.queue.count
+            _ = await fetch.value
+            let added = self.queue.count - before
+            self.showToast(added > 0 ? "Autoplay: added \(added) songs to the queue"
+                                     : "Autoplay: no new songs found")
+        }
     }
 
     /// Strip not-yet-played autoplay tracks from the queue — the site's
@@ -736,6 +747,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         guard kept.count != before else { return }
         queue = kept
         Log.player.notice("autoplay off: removed \(before - kept.count) autoplay tracks -> \(kept.count) in queue")
+        showToast("Removed \(before - kept.count) autoplay songs")
         persistSnapshot()
     }
 
