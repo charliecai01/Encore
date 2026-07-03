@@ -52,7 +52,7 @@ in too.
 - **Search** — ⌘K palette with live suggestions, or the top search bar; filter by songs/albums/artists/playlists/videos
 - **Library** — playlists, liked songs, albums, artists, and listening history; CJK-aware sort + filter, full sort options in every tab
 - **Full playback** — queue management (play next / add to queue / reorder-lite), shuffle, repeat one/all, song radio, endless Autoplay radio when the queue runs out, sleep timer, session restore
-- **Play counts** — global play counts on artist top songs and search, with a "Plays" sort; a personal Most Played view exists but is flag-gated pending cross-device sync (see [BUGS.md](BUGS.md))
+- **Play counts** — global play counts on artist top songs and search, with a "Plays" sort; plus a personal **Most Played** view (per-device counts — no cross-device sync yet)
 - **Podcasts** *(currently disabled behind `PodcastFeature.enabled` — see [PODCASTS.md](PODCASTS.md))* — Apple-Podcasts-style show pages with episode dates, descriptions, and durations; variable playback speed (0.8–2×) and skip 15/30 for episodes (iOS)
 - **Synced lyrics** — YouTube's own timed lyrics when available (fetched via the Android client), falling back to LRCLIB / NetEase / Musixmatch / Genius
 - **Now Playing** — blurred-artwork immersive view with synced lyrics or up-next, plus a video mode for music videos (macOS)

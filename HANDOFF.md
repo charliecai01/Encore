@@ -20,7 +20,7 @@ picking up the work without the original chat history.
 /Users/charlie/Documents/9.YTMusic/            ← git root (remote: charliecai01/Encore, branch main)
 ├── HANDOFF.md                                 ← this file
 ├── README.md
-├── BUGS.md                                    ← known bugs + flag-disabled features (podcasts, Most Played)
+├── BUGS.md                                    ← known bugs + feature-flag states (podcasts OFF, Most Played ON/per-device)
 ├── PODCASTS.md                                ← podcast feature guide + one-line re-enable steps
 ├── .gitignore                                 ← ignores .build/, build/, iOS/.build_ios/, iOS/.build_device/, generated xcodeproj/Info.plist/entitlements
 └── Encore/
@@ -45,7 +45,7 @@ picking up the work without the original chat history.
     │   │   ├── CJK.swift                      ← Simplified↔Traditional Chinese normalization (ICU transform)
     │   │   ├── Discovery.swift                ← Discover-shelf curation (pure, unit-tested)
     │   │   ├── Log.swift                      ← os.Logger facade, subsystem dev.charlie.encore (DEBUG also → stderr)
-    │   │   ├── PlayCounts.swift, PlayCountsFeature.swift ← personal play counts + UI flag (OFF — see BUGS.md)
+    │   │   ├── PlayCounts.swift, PlayCountsFeature.swift ← personal play counts + UI flag (ON/per-device — see BUGS.md)
     │   │   ├── PodcastFeature.swift           ← podcast UI flag (OFF — see PODCASTS.md)
     │   │   └── PlayedEpisodes.swift           ← episode played-state store (UserDefaults)
     │   └── encore-smoke/                      ← CLI: `swift run encore-smoke` hits the LIVE API unauthenticated
@@ -295,9 +295,10 @@ Both platforms unless stated:
   now-playing button (iOS)
 - **Play counts:** global plays ("102M plays") on artist Top songs + search,
   with a "Plays" sort (default on play-count lists). Personal **Most Played**
-  views exist on both platforms but the UI is gated OFF behind
-  `PlayCountsFeature.enabled` until cross-device sync; play RECORDING stays on
-  (see BUGS.md).
+  views (macOS sidebar + iOS Library entry) are **ON** as of 2026-07-02
+  (`PlayCountsFeature.enabled = true`) with **per-device** counts — no
+  cross-device sync yet, accepted as-is. Play RECORDING runs regardless of the
+  flag (see BUGS.md).
 - **iOS music videos play as audio** (counterpart swap) so playback survives
   lock (see §5)
 - iOS Now Playing: drag-to-dismiss, Song/Lyrics/Queue tabs at bottom; artwork

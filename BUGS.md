@@ -6,12 +6,14 @@ The podcast feature is disabled again, now behind a single flag
 (`PodcastFeature.enabled`). See **[PODCASTS.md](PODCASTS.md)** for the full
 feature guide and the one-line re-enable steps.
 
-## Most Played (personal play counts) — UI DISABLED (2026-06-23)
+## Most Played (personal play counts) — ENABLED, per-device (2026-07-02)
 
-The "Most Played" view (personal per-song play counts) is hidden behind
-`PlayCountsFeature.enabled` (default `false`) — flip to `true` and rebuild to
-restore the iOS Library entry + macOS sidebar item. It's off because the counts
-are per-device and there's no cross-device sync yet (iCloud needs a paid Apple
-Developer account). Play **recording keeps running** while it's off, so the
-history is ready on re-enable. The *global* play count shown on artist Top songs
-/ search (`Track.playsText`) is a separate feature and stays on.
+The "Most Played" view (personal per-song play counts) is on
+(`PlayCountsFeature.enabled = true`): iOS Library entry + macOS sidebar item.
+Counts are **per-device** — there's still no cross-device sync (iCloud needs a
+paid Apple Developer account), and that's accepted as the current behavior; each
+install tallies its own plays. Play **recording runs regardless of the flag**,
+so history accumulates either way. The *global* play count shown on artist Top
+songs / search (`Track.playsText`) is a separate always-on feature.
+
+Set the flag back to `false` and rebuild to hide the UI again.
