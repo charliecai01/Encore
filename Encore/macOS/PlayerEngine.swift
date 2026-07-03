@@ -66,9 +66,11 @@ final class PlayerEngine: NSObject, ObservableObject {
     @Published var autoplayEnabled = true {
         didSet {
             UserDefaults.standard.set(autoplayEnabled, forKey: "autoplayEnabled")
-            // Turning it ON populates the queue tail right away, like the
-            // site's Autoplay section — don't wait for the last track to end.
+            // Mirror the site's toggle: ON populates the queue tail right
+            // away; OFF strips the not-yet-played autoplay tracks so the
+            // queue returns to just your own songs.
             if autoplayEnabled && !oldValue { prefetchAutoplayTail() }
+            if !autoplayEnabled && oldValue { removeAutoplayTail() }
         }
     }
     @Published var toast: String?
@@ -101,6 +103,9 @@ final class PlayerEngine: NSObject, ObservableObject {
     /// end-of-queue advance never race — advance awaits the same fetch.
     private var radioFetchTask: Task<Bool, Never>?
     private var advancingViaRadio = false
+    /// videoIds appended by autoplay extensions — the removable tail when the
+    /// Autoplay toggle turns off. User-queued songs are never in here.
+    private var autoplayTailIds: Set<String> = []
     /// Endless-radio cursor from the active radio. Autoplay continues the radio
     /// with this instead of re-seeding `RDAMVM…`, which returns the same songs
     /// each time and dead-ends after dedup. nil for finite, non-radio queues.
@@ -210,6 +215,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         unshuffledQueue = nil
         shuffleOn = false
         radioContinuation = nil // finite context; radio is seeded fresh when it ends
+        autoplayTailIds = []
         queue = tracks
         index = startAt
         load(tracks[startAt])
@@ -220,6 +226,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         unshuffledQueue = tracks
         shuffleOn = true
         radioContinuation = nil
+        autoplayTailIds = []
         queue = tracks.shuffled()
         index = 0
         load(queue[0])
@@ -230,6 +237,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         unshuffledQueue = nil
         shuffleOn = false
         radioContinuation = nil
+        autoplayTailIds = []
         queue = [track]
         index = 0
         load(track)
@@ -263,6 +271,7 @@ final class PlayerEngine: NSObject, ObservableObject {
             playRadio(from: track)
             return
         }
+        autoplayTailIds.remove(track.videoId) // explicitly queued = user's own
         queue.insert(track, at: min(index + 1, queue.count))
         showToast("Playing next: \(track.title)")
         persistSnapshot()
@@ -273,7 +282,14 @@ final class PlayerEngine: NSObject, ObservableObject {
             playRadio(from: track)
             return
         }
-        queue.append(track)
+        autoplayTailIds.remove(track.videoId) // explicitly queued = user's own
+        // Land after the user's own queue but before the autoplay tail, like
+        // the site — the tail stays at the very end.
+        var insertAt = queue.count
+        while insertAt > index + 1, autoplayTailIds.contains(queue[insertAt - 1].videoId) {
+            insertAt -= 1
+        }
+        queue.insert(track, at: insertAt)
         showToast("Added to queue: \(track.title)")
         persistSnapshot()
     }
@@ -578,6 +594,26 @@ final class PlayerEngine: NSObject, ObservableObject {
         ensureRadioFetch()
     }
 
+    /// Strip not-yet-played autoplay tracks from the queue — the site's
+    /// behavior when the Autoplay toggle turns off. Rows at or before the
+    /// current index stay (already played / playing); the user's own songs
+    /// are never touched.
+    private func removeAutoplayTail() {
+        guard !autoplayTailIds.isEmpty, !queue.isEmpty else { return }
+        let before = queue.count
+        let keepThrough = index
+        var kept: [Track] = []
+        kept.reserveCapacity(queue.count)
+        for (i, t) in queue.enumerated() {
+            if i > keepThrough && autoplayTailIds.contains(t.videoId) { continue }
+            kept.append(t)
+        }
+        guard kept.count != before else { return }
+        queue = kept
+        Log.player.notice("autoplay off: removed \(before - kept.count) autoplay tracks -> \(kept.count) in queue")
+        persistSnapshot()
+    }
+
     /// Pull more autoplay tracks when the queue runs out. Continues the active
     /// radio via its continuation cursor (genuinely new songs); if there's no
     /// cursor or it returns nothing new, seeds a fresh radio from the last track.
@@ -585,7 +621,9 @@ final class PlayerEngine: NSObject, ObservableObject {
     private func extendQueueWithRadio() async -> Bool {
         guard let last = queue.last else { return false }
         func merge(_ result: QueueResult?) -> Bool {
-            guard let result else { return false }
+            // Re-check the toggle at append time — it may have been switched
+            // off while the fetch was in flight.
+            guard let result, autoplayEnabled else { return false }
             // Advance the cursor even when a page is all dupes, so the next
             // attempt pulls the following page instead of repeating this one.
             if let token = result.continuation { radioContinuation = token }
@@ -593,6 +631,7 @@ final class PlayerEngine: NSObject, ObservableObject {
             let fresh = result.tracks.filter { !existing.contains($0.videoId) }
             guard !fresh.isEmpty else { return false }
             queue.append(contentsOf: fresh)
+            autoplayTailIds.formUnion(fresh.map(\.videoId))
             return true
         }
         if let token = radioContinuation,
