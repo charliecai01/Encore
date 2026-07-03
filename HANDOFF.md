@@ -130,6 +130,16 @@ both platforms. Add tests here when you touch shared logic. The suite also
 includes `LiveConnectionTests` — unauthenticated live-API parser checks that
 skip (not fail) without network; set `ENCORE_SKIP_LIVE=1` to skip explicitly.
 
+**`AuthenticatedLiveTests`** covers the SIGNED-IN response shapes: library
+playlists, liked songs, personalized home + history, watch-queue parse (with
+the like-status canary), and continuation accumulation (liked songs paginate
+at 25/page, playlists at 100/page — counts above those prove the continuation
+scoping works). The cookie is resolved at runtime — `ENCORE_TEST_COOKIE` env
+var, else the local skip-worktree'd `iOS/Sources/DevCredentials.swift` — and
+is NEVER committed; without one the class skips, so CI/fresh checkouts stay
+green. Tests are read-only (no account mutations). If they fail while the
+unauthenticated live tests pass, suspect an expired cookie first.
+
 ### iOS (needs full Xcode — already installed; license accepted)
 ```bash
 cd Encore/iOS
@@ -180,9 +190,15 @@ with the Co-Authored-By: Claude line.
 - **Session restore must stay PAUSED** on launch (both platforms). `loadedOnce`
   gates this; the ready/state handlers must not auto-play a restored track.
   (Confirmed desired behavior on both macOS and iOS.)
-- **Likes are authoritative from YouTube:** heart state is read from the
-  watch-queue response (`currentLikeStatus`) on each play, plus seeded from the
-  liked-songs library — not just session memory.
+- **Likes: the watch-queue `currentLikeStatus` field went dead.** Verified live
+  2026-07-02: YouTube removed per-item `likeStatus` from ALL playlistPanel
+  renderers (even the LM liked-songs panel), and the response-level
+  `likeButtonRenderer` is an unpersonalized INDIFFERENT — do NOT trust it for
+  hearts. Heart state therefore rests on the liked-songs library seed +
+  session toggles. The parse path (`P.queueResult`) and the engines'
+  `if let status` hooks stay as harmless no-ops in case the field returns;
+  `AuthenticatedLiveTests` carries a canary asserting that if it returns for a
+  liked song it says LIKE.
 - **Library completeness:** "Songs" and "Artists" are built from
   `LibraryStore.allKnownTracks()` = liked songs + the contents of **every**
   playlist (not just `FEmusic_liked_videos`). Playlist pagination must scope
