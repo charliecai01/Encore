@@ -63,7 +63,12 @@ final class PlayerEngine: NSObject, ObservableObject {
     @Published var sleepTimer: SleepTimerMode = .off
     @Published var toast: String?
     @Published var autoplayEnabled = true {
-        didSet { UserDefaults.standard.set(autoplayEnabled, forKey: "autoplayEnabled") }
+        didSet {
+            UserDefaults.standard.set(autoplayEnabled, forKey: "autoplayEnabled")
+            // Turning it ON populates the queue tail right away, like the
+            // site's Autoplay section — don't wait for the last track to end.
+            if autoplayEnabled && !oldValue { prefetchAutoplayTail() }
+        }
     }
     @Published var playbackRate: Double = 1.0 {
         didSet { UserDefaults.standard.set(playbackRate, forKey: "playbackRate") }
@@ -82,7 +87,10 @@ final class PlayerEngine: NSObject, ObservableObject {
     private var playerReady = false
     private var unshuffledQueue: [Track]?
     private var lyricsRequestId = 0
-    private var fetchingMoreRadio = false
+    /// The in-flight autoplay radio fetch, shared so a tail prefetch and the
+    /// end-of-queue advance never race — advance awaits the same fetch.
+    private var radioFetchTask: Task<Bool, Never>?
+    private var advancingViaRadio = false
     /// Endless-radio cursor from the active radio. Autoplay continues the radio
     /// with this instead of re-seeding `RDAMVM…`, which returns the same songs
     /// each time and dead-ends after dedup. nil for finite, non-radio queues.
@@ -641,6 +649,9 @@ final class PlayerEngine: NSObject, ObservableObject {
         if index + 1 < queue.count {
             index += 1
             load(queue[index])
+            // Entering the last queued track: line up the autoplay tail now
+            // so the queue shows what's next and the handoff has no fetch gap.
+            if index == queue.count - 1 { prefetchAutoplayTail() }
             return
         }
         if repeatMode == .all && !queue.isEmpty {
@@ -648,15 +659,17 @@ final class PlayerEngine: NSObject, ObservableObject {
             load(queue[0])
             return
         }
-        guard autoplayEnabled, !queue.isEmpty, !fetchingMoreRadio else {
+        guard autoplayEnabled, !queue.isEmpty, !advancingViaRadio else {
             isPlaying = false
             return
         }
-        fetchingMoreRadio = true
+        advancingViaRadio = true
         Log.player.notice("advance: queue exhausted, extending radio (hasContinuation=\(self.radioContinuation != nil))")
+        let fetch = ensureRadioFetch()
         Task {
-            defer { self.fetchingMoreRadio = false }
-            if await self.extendQueueWithRadio() {
+            defer { self.advancingViaRadio = false }
+            _ = await fetch.value
+            if self.index + 1 < self.queue.count {
                 self.index += 1
                 self.load(self.queue[self.index])
                 Log.player.notice("advance: radio extended -> index=\(self.index) '\(self.queue[self.index].title)'")
@@ -665,6 +678,29 @@ final class PlayerEngine: NSObject, ObservableObject {
                 Log.player.notice("advance: radio extend found nothing new; stopping")
             }
         }
+    }
+
+    /// The single in-flight radio fetch — reused if one is already running so
+    /// the toggle/last-track prefetch and the end-of-queue advance share work.
+    @discardableResult
+    private func ensureRadioFetch() -> Task<Bool, Never> {
+        if let task = radioFetchTask { return task }
+        let task = Task { () -> Bool in
+            defer { self.radioFetchTask = nil }
+            return await self.extendQueueWithRadio()
+        }
+        radioFetchTask = task
+        return task
+    }
+
+    /// Populate the queue tail with upcoming autoplay tracks ahead of time —
+    /// when the toggle turns on and when playback reaches the last queued
+    /// track — so the queue shows what's next. Append-only; never changes
+    /// what's playing.
+    private func prefetchAutoplayTail() {
+        guard autoplayEnabled, repeatMode == .off, !queue.isEmpty else { return }
+        Log.player.notice("autoplay: prefetching radio tail (hasContinuation=\(self.radioContinuation != nil))")
+        ensureRadioFetch()
     }
 
     /// Pull more autoplay tracks when the queue runs out. Continues the active

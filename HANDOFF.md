@@ -259,7 +259,13 @@ with the Co-Authored-By: Claude line.
   `RDAMVM<lastId>` when the queue ran out returned the same head tracks →
   dedup left nothing → playback stopped. Use the queue continuation token
   (`YTM.queueContinuation`), advance the cursor even when a page is all dupes;
-  a fresh seed is only the fallback.
+  a fresh seed is only the fallback. The queue tail also **prefetches** —
+  when the Autoplay toggle flips on and when playback enters the last queued
+  track — so upcoming songs are visible before the queue ends (2026-07-02;
+  was: extend only at exhaustion, so toggling Autoplay showed nothing). All
+  fetches go through one shared `radioFetchTask` (`ensureRadioFetch`) so a
+  prefetch and the end-of-queue advance never race; the advance AWAITS the
+  in-flight fetch instead of bailing to a stop.
 - **Diagnostics:** `EncoreCore.Log` — os.Logger, subsystem
   `dev.charlie.encore`, categories player/net; DEBUG builds also mirror to
   stderr. Live device capture:
