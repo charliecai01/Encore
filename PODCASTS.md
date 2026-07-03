@@ -13,8 +13,8 @@ is a one-line change plus a rebuild.
    ```
 2. Rebuild both apps:
    - macOS: `Encore/scripts/build_app.sh`
-   - iOS device: `xcodebuild … -scheme EncoreiOS … build` then
-     `xcrun devicectl device install …` (see `encore-ios-device-deploy`).
+   - iOS device: `Encore/scripts/deploy_ios.sh` (one command; details in
+     HANDOFF.md §7).
 3. That's it. Everything below switches back on.
 
 To disable again, set the flag back to `false` and rebuild.

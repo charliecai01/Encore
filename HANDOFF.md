@@ -20,11 +20,14 @@ picking up the work without the original chat history.
 /Users/charlie/Documents/9.YTMusic/            ← git root (remote: charliecai01/Encore, branch main)
 ├── HANDOFF.md                                 ← this file
 ├── README.md
+├── BUGS.md                                    ← known bugs + flag-disabled features (podcasts, Most Played)
+├── PODCASTS.md                                ← podcast feature guide + one-line re-enable steps
 ├── .gitignore                                 ← ignores .build/, build/, iOS/.build_ios/, iOS/.build_device/, generated xcodeproj/Info.plist/entitlements
 └── Encore/
     ├── Package.swift                          ← SwiftPM: EncoreCore (lib), Encore (macOS exe), encore-smoke (exe)
     ├── scripts/
     │   ├── build_app.sh                       ← builds macOS Encore.app AND installs to /Applications
+    │   ├── deploy_ios.sh                      ← one-command iOS device build+install (ENCORE_DEVICE_ID/ENCORE_TEAM_ID overridable)
     │   ├── make_icon.swift                    ← macOS .icns generator
     │   └── make_ios_icon.swift                ← iOS app-icon PNG generator (full-bleed, opaque)
     ├── assets/                                ← macOS AppIcon.icns + icon_1024.png
@@ -39,10 +42,15 @@ picking up the work without the original chat history.
     │   │   ├── LyricsService.swift            ← multi-provider orchestration (auto chain)
     │   │   ├── LyricsProviders.swift          ← NetEase, Musixmatch, Genius
     │   │   ├── LRCLib.swift                   ← LRCLIB synced-lyrics provider + LRC parser
-    │   │   └── CJK.swift                      ← Simplified↔Traditional Chinese normalization (ICU transform)
+    │   │   ├── CJK.swift                      ← Simplified↔Traditional Chinese normalization (ICU transform)
+    │   │   ├── Discovery.swift                ← Discover-shelf curation (pure, unit-tested)
+    │   │   ├── Log.swift                      ← os.Logger facade, subsystem dev.charlie.encore (DEBUG also → stderr)
+    │   │   ├── PlayCounts.swift, PlayCountsFeature.swift ← personal play counts + UI flag (OFF — see BUGS.md)
+    │   │   ├── PodcastFeature.swift           ← podcast UI flag (OFF — see PODCASTS.md)
+    │   │   └── PlayedEpisodes.swift           ← episode played-state store (UserDefaults)
     │   └── encore-smoke/                      ← CLI: `swift run encore-smoke` hits the LIVE API unauthenticated
     ├── macOS/                                 ← macOS SwiftUI app (AppKit) — Package target `Encore`, path "macOS"
-    ├── Tests/EncoreCoreTests/                 ← XCTest for the shared core (run: `swift test`) — covers BOTH apps' logic
+    ├── Tests/EncoreCoreTests/                 ← XCTest for the shared core (run: `swift test`) — covers BOTH apps' logic; incl. live-API checks that auto-skip offline
     └── iOS/                                   ← iOS app (folder; Xcode project/scheme still named EncoreiOS)
         ├── project.yml                        ← XcodeGen spec → EncoreiOS.xcodeproj (GENERATED, gitignored)
         └── Sources/
@@ -111,14 +119,16 @@ cd Encore && swift run encore-smoke
 Tests search/album/artist/queue/lyrics/podcasts/CJK against the live API. Run
 this FIRST when a data/parsing bug is reported.
 
-### Unit tests (offline, fast)
+### Unit tests (fast; live checks auto-skip offline)
 ```bash
 cd Encore && swift test          # EncoreCoreTests — the shared brain both apps use
 ```
 Covers podcast duration/episode parsing, `Track` Codable tolerance, artwork URL
 upscaling, CJK matching, and `LibrarySort` (ordering/filtering). Since both apps
 delegate their sort/filter to `LibrarySort` and share `EncoreCore`, these guard
-both platforms. Add tests here when you touch shared logic.
+both platforms. Add tests here when you touch shared logic. The suite also
+includes `LiveConnectionTests` — unauthenticated live-API parser checks that
+skip (not fail) without network; set `ENCORE_SKIP_LIVE=1` to skip explicitly.
 
 ### iOS (needs full Xcode — already installed; license accepted)
 ```bash
@@ -212,6 +222,35 @@ with the Co-Authored-By: Claude line.
   "cannot find X in scope" (the generated project doesn't see the new file).
 - **`.build_device/` is gitignored** (device build output). Compiled objects can
   embed the dev sign-in cookie, so never un-ignore it / never `git add` it.
+- **Restored-session first play needs a forced clean load:** on cold launch the
+  site auto-resumes the account's last track — usually the SAME id as the
+  restored `current` — so `ensure(id)`'s same-id path resumed the SITE's
+  context (its auto-radio "Up Next", not our queue). A one-shot
+  `forceReloadOnEngage` (set on restore, consumed on first play) makes
+  `ensure()` do a clean `loadVideoById`. Both engines. Don't "simplify" the
+  same-id resume path back.
+- **Remote play/pause must be explicit, not a toggle (macOS):** the system
+  sends `pauseCommand` on route changes (AirPods connect, another app plays);
+  a toggle flips an already-paused app to PLAYING at random. `playCommand`
+  acts only when paused, `pauseCommand` only when playing; only the media-key
+  `togglePlayPauseCommand` toggles.
+- **iOS music videos swap to their audio counterpart** before playing — iOS
+  suspends background WKWebView *video* on lock (audio keeps running).
+  `YTM.audioCounterpart(for:)` resolves the paired audio id from the watch
+  response; `playingVideoId` tracks what's actually loaded so state-sync /
+  ended / stall paths compare against the swapped id, not the canonical one.
+- **Autoplay endless radio is continuation-driven:** re-seeding
+  `RDAMVM<lastId>` when the queue ran out returned the same head tracks →
+  dedup left nothing → playback stopped. Use the queue continuation token
+  (`YTM.queueContinuation`), advance the cursor even when a page is all dupes;
+  a fresh seed is only the fallback.
+- **Diagnostics:** `EncoreCore.Log` — os.Logger, subsystem
+  `dev.charlie.encore`, categories player/net; DEBUG builds also mirror to
+  stderr. Live device capture:
+  `log stream --device --predicate 'subsystem == "dev.charlie.encore"' --info`
+  or `xcrun devicectl device process launch --console`. The player lifecycle
+  (restore / first-play / engage decision / state / queue advance) is
+  instrumented on both platforms.
 
 ---
 
@@ -226,14 +265,18 @@ Both platforms unless stated:
   Order" + "Recently Added" (reverse-of-position; no per-track date exists), and
   **playlists always open sorted by Artist** (forced, not persisted).
 - Album / playlist / artist pages; artist page shows "In your playlists & likes"
-- **Podcasts: Apple-Podcasts-style pages on BOTH platforms** (iOS
+- **Podcasts — currently DISABLED behind `PodcastFeature.enabled = false`
+  (2026-06-22); see PODCASTS.md for the one-line re-enable + retest checklist.**
+  The feature itself: Apple-Podcasts-style pages on BOTH platforms (iOS
   `PodcastScreen`, macOS `PodcastView`) — header, expandable description,
   Recent/Oldest sort, episode rows with date + description + duration + circular
   play. Episodes carry `isEpisode/dateText/details`. **Mark-as-played** per
   episode (check toggle + menu); state in `EncoreCore.PlayedEpisodes`
   (UserDefaults, unit-tested) — played episodes dim + show a PLAYED badge.
-- Playback: queue, shuffle, repeat, song radio, **Autoplay** toggle, auto-radio
-  when queue ends, sleep timer, session restore (paused), **playback speed
+- Playback: queue, shuffle, repeat, song radio, **Autoplay** toggle, endless
+  auto-radio when the queue ends (continuation-driven — see §5), sleep timer,
+  session restore (paused; first play forces a clean load — see §5),
+  **playback speed
   0.8–2× + skip 15/30 for podcast episodes** (iOS), **phone-call/Siri audio
   interruption → pause + auto-resume** (iOS; macOS has no AVAudioSession hook)
 - Now Playing: immersive, artwork-tinted, content padded below the Dynamic
@@ -248,8 +291,20 @@ Both platforms unless stated:
 - **iOS performance:** library playlists are prefetched into the disk-backed
   `PageCache` on launch (via `allKnownTracks`) so playlists open instantly;
   larger tap targets across rows/mini-player/cards
-- Media keys + system Now Playing widget; ⌘K palette, mouse back/forward,
-  Space=play/pause (macOS)
+- **Output-device picker** (AirPlay/Bluetooth): player-bar button (macOS) +
+  now-playing button (iOS)
+- **Play counts:** global plays ("102M plays") on artist Top songs + search,
+  with a "Plays" sort (default on play-count lists). Personal **Most Played**
+  views exist on both platforms but the UI is gated OFF behind
+  `PlayCountsFeature.enabled` until cross-device sync; play RECORDING stays on
+  (see BUGS.md).
+- **iOS music videos play as audio** (counterpart swap) so playback survives
+  lock (see §5)
+- iOS Now Playing: drag-to-dismiss, Song/Lyrics/Queue tabs at bottom; artwork
+  is NSCache'd + downsampled on both platforms (scroll perf)
+- Media keys + system Now Playing widget (remote play/pause explicit — see §5);
+  ⌘K palette, mouse back/forward, Space=play/pause, ⌘R reloads the current
+  page (macOS)
 - **CarPlay** (iOS): tab bar (Home with Your Playlists + feed, Library) →
   playlist → episodes/tracks → system Now Playing. **Verified working in the
   CarPlay simulator.** Currently DISABLED in shipped Info.plist (see §7).
@@ -282,7 +337,10 @@ team is fine) → connect iPhone → Run. First run needs Settings → General �
 VPN & Device Management → trust. Free-account apps expire after 7 days.
 
 **CLI device build+install** (no Xcode GUI) works if his Apple ID is in Xcode
-accounts — team `9272YGK74X`, device id `5A20AF61-E66A-5BE7-AA6C-5C7AFAB438A7`:
+accounts — team `9272YGK74X`, device id `5A20AF61-E66A-5BE7-AA6C-5C7AFAB438A7`.
+Preferred: `Encore/scripts/deploy_ios.sh` (wraps the commands below, retries
+the transient developer-disk-image mount failure; override via
+`ENCORE_DEVICE_ID`/`ENCORE_TEAM_ID`). Manually:
 ```bash
 cd Encore/iOS && export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 xcodebuild -project EncoreiOS.xcodeproj -scheme EncoreiOS \
@@ -348,7 +406,7 @@ deploy). Keep it updated; it loads each session.
 1. Read this file + `git log --oneline -20` to see recent work.
 2. For an API/data bug → `swift run encore-smoke` first.
 3. Make the change in `EncoreCore` (shared) if it's logic; then wire UI in BOTH
-   `Sources/Encore` (macOS) and `iOS/Sources` (iOS) for parity — Charlie
+   `Encore/macOS/` and `Encore/iOS/Sources/` for parity — Charlie
    expects feature parity and notices when platforms differ.
 4. Build (`./scripts/build_app.sh` for macOS; xcodegen+xcodebuild for iOS),
    verify, then **commit + push** (§4).
