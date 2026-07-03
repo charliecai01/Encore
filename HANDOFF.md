@@ -273,10 +273,11 @@ with the Co-Authored-By: Claude line.
   a fetch that lands after toggle-off appends nothing. `extendQueueWithRadio`
   follows up to several continuation pages before giving up — one page can
   dedupe to nothing (re-seeding a radio returns already-queued songs) while
-  the cursor still advances. The toggle toasts its outcome ("added N songs" /
-  "removed N"); **iOS toasts must also be mirrored in `NowPlayingScreen`** —
-  the `fullScreenCover` hides `MobileRoot`'s overlay, so a toast fired from
-  the queue tab is otherwise invisible.
+  the cursor still advances. The toggle is SILENT by request (no toasts —
+  songs just appear/disappear at the tail; the unified log still records it).
+  **iOS toasts are mirrored in `NowPlayingScreen`** — the `fullScreenCover`
+  hides `MobileRoot`'s overlay, so toasts fired from the queue tab (e.g.
+  "Playing next") would otherwise be invisible.
 - **Diagnostics:** `EncoreCore.Log` — os.Logger, subsystem
   `dev.charlie.encore`, categories player/net; DEBUG builds also mirror to
   stderr. Live device capture:

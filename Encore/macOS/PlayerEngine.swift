@@ -588,21 +588,12 @@ final class PlayerEngine: NSObject, ObservableObject {
     /// when the toggle turns on and when playback reaches the last queued
     /// track — so the queue shows what's next. Append-only; never changes
     /// what's playing.
-    /// `explicit` = the user just flipped the toggle: fetch even under repeat,
-    /// and toast the outcome — appended songs land at the queue's END, which is
-    /// below the fold on a long queue, so the change needs an acknowledgment.
+    /// `explicit` = the user just flipped the toggle: fetch even under repeat.
+    /// Silent (like the site) — appended songs just show up at the queue tail.
     private func prefetchAutoplayTail(explicit: Bool = false) {
         guard autoplayEnabled, !queue.isEmpty, explicit || repeatMode == .off else { return }
         Log.player.notice("autoplay: prefetching radio tail (explicit=\(explicit), hasContinuation=\(self.radioContinuation != nil))")
-        let fetch = ensureRadioFetch()
-        guard explicit else { return }
-        Task {
-            let before = self.queue.count
-            _ = await fetch.value
-            let added = self.queue.count - before
-            self.showToast(added > 0 ? "Autoplay: added \(added) songs to the queue"
-                                     : "Autoplay: no new songs found")
-        }
+        ensureRadioFetch()
     }
 
     /// Strip not-yet-played autoplay tracks from the queue — the site's
@@ -622,7 +613,6 @@ final class PlayerEngine: NSObject, ObservableObject {
         guard kept.count != before else { return }
         queue = kept
         Log.player.notice("autoplay off: removed \(before - kept.count) autoplay tracks -> \(kept.count) in queue")
-        showToast("Removed \(before - kept.count) autoplay songs")
         persistSnapshot()
     }
 
