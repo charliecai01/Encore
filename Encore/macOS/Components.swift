@@ -143,6 +143,8 @@ struct TrackRow: View {
     var index: Int? = nil
     var showsArtwork = true
     var showsAlbum = true
+    /// Personal play count (from `PlayCounts`); non-nil shows the column.
+    var playCount: Int? = nil
     /// Set by playlist pages: enables "Remove from this Playlist".
     var onRemoveFromPlaylist: (() -> Void)? = nil
     let onPlay: () -> Void
@@ -222,6 +224,14 @@ struct TrackRow: View {
                     .foregroundStyle(Theme.textTertiary)
                     .lineLimit(1)
                     .fixedSize()
+            }
+
+            if let playCount {
+                Text(playCount > 0 ? "\(playCount)" : "")
+                    .font(.system(size: 12).monospacedDigit())
+                    .foregroundStyle(Theme.textTertiary)
+                    .frame(width: 36, alignment: .trailing)
+                    .help("Times you've played this")
             }
 
             Text(track.durationText)

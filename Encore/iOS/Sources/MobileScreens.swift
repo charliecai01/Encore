@@ -98,13 +98,24 @@ struct TrackRowView: View {
     @EnvironmentObject var player: PlayerEngine
     @EnvironmentObject var nav: Nav
     let track: Track
+    /// Album pages: rows share the album art, so show the track number instead.
+    var index: Int? = nil
+    var showsArtwork = true
     var onRemoveFromPlaylist: (() -> Void)?
     let onPlay: () -> Void
     @State private var played = false
 
     var body: some View {
         HStack(spacing: 12) {
-            ArtworkView(url: track.thumbnailURL, corner: 5).frame(width: 52, height: 52)
+            if showsArtwork {
+                ArtworkView(url: track.thumbnailURL, corner: 5).frame(width: 52, height: 52)
+            } else if let index {
+                Text("\(index + 1)")
+                    .font(.system(size: 15, weight: .medium).monospacedDigit())
+                    .foregroundStyle(player.current?.videoId == track.videoId
+                                     ? Theme.accent : Theme.textSecondary)
+                    .frame(width: 28, height: 52)
+            }
             VStack(alignment: .leading, spacing: 3) {
                 Text(track.title)
                     .font(.system(size: 16, weight: .medium))
@@ -756,6 +767,8 @@ struct CollectionScreen: View {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(shown.enumerated()), id: \.offset) { i, t in
                             TrackRowView(track: t,
+                                         index: i,
+                                         showsArtwork: !isAlbum,
                                          onRemoveFromPlaylist: isPlaylist ? { remove(t) } : nil) {
                                 player.playCollection(shown, startAt: i, playlistId: playlistId)
                             }

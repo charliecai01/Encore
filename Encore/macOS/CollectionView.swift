@@ -237,12 +237,16 @@ struct CollectionView: View {
 
     private func trackList(_ page: CollectionPage) -> some View {
         let shown = visibleTracks(page)
+        // Snapshot once per render — PlayCounts.all() decodes UserDefaults.
+        let showPlayCounts = isPlaylist && PlayCountsFeature.enabled
+        let counts = showPlayCounts ? PlayCounts.all() : [:]
         return LazyVStack(spacing: 0) {
             ForEach(Array(shown.enumerated()), id: \.offset) { i, track in
                 TrackRow(track: track,
                          index: i,
                          showsArtwork: !isAlbum,
                          showsAlbum: !isAlbum,
+                         playCount: showPlayCounts ? (counts[track.videoId]?.count ?? 0) : nil,
                          onRemoveFromPlaylist: isPlaylist ? { removeTrack(track) } : nil) {
                     player.playCollection(shown, startAt: i)
                 }

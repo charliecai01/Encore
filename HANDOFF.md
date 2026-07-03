@@ -264,7 +264,9 @@ Both platforms unless stated:
   Library tab**; per-collection persistence. Playlist detail pages: "Playlist
   Order" + "Recently Added" (reverse-of-position; no per-track date exists), and
   **playlists always open sorted by Artist** (forced, not persisted).
-- Album / playlist / artist pages; artist page shows "In your playlists & likes"
+- Album / playlist / artist pages; artist page shows "In your playlists & likes".
+  Album pages show track numbers instead of per-row artwork (identical on an
+  album) — BOTH platforms (`showsArtwork: !isAlbum`).
 - **Podcasts — currently DISABLED behind `PodcastFeature.enabled = false`
   (2026-06-22); see PODCASTS.md for the one-line re-enable + retest checklist.**
   The feature itself: Apple-Podcasts-style pages on BOTH platforms (iOS
@@ -298,7 +300,9 @@ Both platforms unless stated:
   views (macOS sidebar + iOS Library entry) are **ON** as of 2026-07-02
   (`PlayCountsFeature.enabled = true`) with **per-device** counts — no
   cross-device sync yet, accepted as-is. Play RECORDING runs regardless of the
-  flag (see BUGS.md).
+  flag (see BUGS.md). macOS playlist pages also show a personal times-played
+  column (`TrackRow.playCount`, snapshotted once per render in
+  `CollectionView.trackList`).
 - **iOS music videos play as audio** (counterpart swap) so playback survives
   lock (see §5)
 - iOS Now Playing: drag-to-dismiss, Song/Lyrics/Queue tabs at bottom; artwork
