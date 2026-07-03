@@ -646,11 +646,24 @@ final class PlayerEngine: NSObject, ObservableObject {
             autoplayTailIds.formUnion(fresh.map(\.videoId))
             return true
         }
-        if let token = radioContinuation,
-           merge(try? await YTM.shared.queueContinuation(token)) {
-            return true
+        // A page can dedupe to nothing (e.g. re-seeding a radio whose songs
+        // are already queued) while merge still advances the cursor — keep
+        // following it instead of giving up on the first empty page. One
+        // fresh seed is allowed when there's no cursor or it dead-ends.
+        var seeded = false
+        for _ in 0..<5 {
+            guard autoplayEnabled else { return false }
+            if let token = radioContinuation {
+                if merge(try? await YTM.shared.queueContinuation(token)) { return true }
+                if radioContinuation != token { continue } // all-dupe page: follow the next
+                radioContinuation = nil                    // cursor dead — reseed below
+            }
+            if seeded { return false }
+            seeded = true
+            if merge(try? await YTM.shared.radioQueue(for: last.videoId)) { return true }
+            if radioContinuation == nil { return false }   // seed gave no cursor either
         }
-        return merge(try? await YTM.shared.radioQueue(for: last.videoId))
+        return false
     }
 
     func refetchLyrics() {

@@ -67,6 +67,20 @@ struct NowPlayingScreen: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(backdrop)
         .preferredColorScheme(.dark)
+        // Toasts render on MobileRoot, which this full-screen cover hides —
+        // mirror them here so queue-tab actions (e.g. the Autoplay toggle)
+        // give visible feedback.
+        .overlay(alignment: .top) {
+            if let toast = player.toast {
+                Text(toast)
+                    .font(.system(size: 13, weight: .medium))
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: player.toast)
         .offset(y: dragOffset)
         .sheet(isPresented: $showAddToPlaylist) {
             if let t = player.current { AddToPlaylistSheet(track: t) }
