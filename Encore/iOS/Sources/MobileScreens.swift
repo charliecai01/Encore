@@ -104,8 +104,54 @@ struct TrackRowView: View {
     var onRemoveFromPlaylist: (() -> Void)?
     let onPlay: () -> Void
     @State private var played = false
+    @State private var swipeOffset: CGFloat = 0
 
     var body: some View {
+        ZStack(alignment: .leading) {
+            // Swipe-right reveal: Play Next (Apple-Music style). Custom drag —
+            // .swipeActions only works inside List, and these rows live in
+            // LazyVStacks.
+            if swipeOffset > 0 {
+                HStack(spacing: 7) {
+                    Image(systemName: "text.line.first.and.arrowtriangle.forward")
+                        .font(.system(size: 15, weight: .semibold))
+                    if swipeOffset > 60 {
+                        Text("Play Next").font(.system(size: 13, weight: .semibold))
+                    }
+                }
+                .foregroundStyle(.white)
+                .padding(.leading, 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .background(Theme.accent.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
+            }
+            rowContent.offset(x: swipeOffset)
+        }
+        .padding(.vertical, 5)
+        .contentShape(Rectangle())
+        .onTapGesture { onPlay() }
+        .gesture(playNextSwipe)
+        .onAppear { if PodcastFeature.enabled, track.isEpisode { played = PlayedEpisodes.isPlayed(track.videoId) } }
+    }
+
+    /// Rightward drag with horizontal intent; releasing past the threshold
+    /// queues the track to play next. Vertical scrolling stays untouched.
+    private var playNextSwipe: some Gesture {
+        DragGesture(minimumDistance: 24, coordinateSpace: .local)
+            .onChanged { v in
+                guard abs(v.translation.width) > abs(v.translation.height) else { return }
+                swipeOffset = max(0, min(v.translation.width, 96))
+            }
+            .onEnded { _ in
+                let triggered = swipeOffset > 60
+                withAnimation(.spring(duration: 0.3)) { swipeOffset = 0 }
+                if triggered {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    player.playNext(track)
+                }
+            }
+    }
+
+    private var rowContent: some View {
         HStack(spacing: 12) {
             if showsArtwork {
                 ArtworkView(url: track.thumbnailURL, corner: 5).frame(width: 52, height: 52)
@@ -168,19 +214,6 @@ struct TrackRowView: View {
                 Image(systemName: "ellipsis").font(.system(size: 17)).foregroundStyle(Theme.textSecondary)
                     .frame(width: 36, height: 52)
             }
-        }
-        .padding(.vertical, 5)
-        .contentShape(Rectangle())
-        .onTapGesture { onPlay() }
-        .onAppear { if PodcastFeature.enabled, track.isEpisode { played = PlayedEpisodes.isPlayed(track.videoId) } }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            if let onRemoveFromPlaylist {
-                Button(role: .destructive) { onRemoveFromPlaylist() } label: { Label("Remove", systemImage: "trash") }
-            }
-        }
-        .swipeActions(edge: .leading) {
-            Button { player.addToQueue(track) } label: { Label("Queue", systemImage: "text.badge.plus") }
-                .tint(Theme.accent)
         }
     }
 }
