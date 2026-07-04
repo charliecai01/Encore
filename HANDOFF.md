@@ -231,7 +231,13 @@ with the Co-Authored-By: Claude line.
   1× for songs, and `videoMode` is auto-cleared when a non-episode loads.
   Podcast video borrows the shared WKWebView (`PodcastVideoHost` ↔
   `parkWebView()` back to the 1×1 park in MobileRoot) — never leave the web
-  view detached or WebKit throttles audio.
+  view detached or WebKit throttles audio. Video plays in a FULL-SCREEN
+  LANDSCAPE cover (`PodcastVideoScreen`): the app is portrait-only via
+  `AppDelegate.orientationMask` (Info.plist declares all orientations), and
+  the video screen flips the mask + `requestGeometryUpdate` on
+  appear/disappear. The JS `videoMode(true)` must bump quality AND
+  `seekTo(currentTime)` — while parked at 1×1, iOS WebKit decodes audio-only,
+  so without the seek re-negotiation the video element renders BLACK.
 - **iOS lock-screen metadata is the PAGE's MediaSession, not our
   MPNowPlayingInfoCenter** — the WKWebView owns Now Playing on iOS.
   `__encore.setMeta` pushes our track's title/artist/art into the page, and

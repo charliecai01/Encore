@@ -5,6 +5,16 @@ import EncoreCore
 
 @main
 final class AppDelegate: UIResponder, UIApplicationDelegate {
+    /// Orientations currently allowed. The app is portrait-only, except the
+    /// podcast video screen flips this to landscape while it's presented
+    /// (Info.plist declares all orientations; this mask is the actual gate).
+    static var orientationMask: UIInterfaceOrientationMask = .portrait
+
+    func application(_ application: UIApplication,
+                     supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        Self.orientationMask
+    }
+
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Background audio: required for playback to continue when the app is
@@ -19,6 +29,18 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         URLCache.shared = URLCache(memoryCapacity: 128 * 1024 * 1024,
                                    diskCapacity: 512 * 1024 * 1024)
         return true
+    }
+}
+
+/// Flip the allowed orientations at runtime and rotate to match (iOS 16+).
+@MainActor
+enum OrientationLock {
+    static func set(_ mask: UIInterfaceOrientationMask) {
+        AppDelegate.orientationMask = mask
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene }).first else { return }
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask))
+        scene.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
     }
 }
 

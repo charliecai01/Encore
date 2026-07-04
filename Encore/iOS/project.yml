@@ -28,7 +28,9 @@ targets:
         CFBundleDisplayName: Encore
         UIBackgroundModes: [audio]
         UILaunchScreen: {}
-        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        # All orientations declared; AppDelegate.orientationMask keeps the app
+        # portrait everywhere except the podcast video screen (landscape).
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
           UISceneConfigurations:

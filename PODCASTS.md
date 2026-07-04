@@ -3,10 +3,11 @@
 **Status: ENABLED (2026-07-03)** with the Apple-Podcasts-style experience:
 
 - **Dedicated podcast Now Playing screen on iOS** (`PodcastNowPlayingScreen`,
-  chosen by `NowPlayingSwitcher` when `current.isEpisode`): artwork or the
-  episode's **video** (toggle button re-parents the shared web view), release
+  chosen by `NowPlayingSwitcher` when `current.isEpisode`): artwork, release
   date, episode title + show, scrubber, ±15/30s skip, **speed 0.8–2×**, sleep,
-  AirPlay, **mark-as-played**. Splitting the screens killed the old bug where
+  AirPlay, **mark-as-played**, and a **video button** that opens the episode's
+  video **full-screen in landscape** (`PodcastVideoScreen` — tap to show/hide
+  transport; the app stays portrait everywhere else). Splitting the screens killed the old bug where
   the song/podcast UIs mixed and a speed tap could speed up songs
   (`setPlaybackRate` additionally only applies live to episodes).
 - **Resume where you left off** — `EncoreCore.EpisodeProgress` (UserDefaults,

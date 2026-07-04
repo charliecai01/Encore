@@ -1409,6 +1409,21 @@ final class PlayerEngine: NSObject, ObservableObject {
             document.head.appendChild(videoModeStyle);
           }
           document.body.classList.toggle('encore-video', !!on);
+          var p = mp();
+          if (!p) return;
+          try {
+            if (on) {
+              // Undo lowData and force a re-negotiation at the current spot:
+              // while the web view sat parked at 1×1, WebKit skipped the video
+              // track (audio-only decode), which shows as a black frame. The
+              // seek makes the player refetch segments WITH video.
+              if (p.setPlaybackQualityRange) p.setPlaybackQualityRange('large', 'hd1080');
+              if (p.setPlaybackQuality) p.setPlaybackQuality('large');
+              if (p.seekTo && p.getCurrentTime) p.seekTo(p.getCurrentTime(), true);
+            } else {
+              if (p.setPlaybackQualityRange) p.setPlaybackQualityRange('tiny', 'tiny');
+            }
+          } catch (e) {}
         }
       };
 

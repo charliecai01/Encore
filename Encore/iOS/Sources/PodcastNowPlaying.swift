@@ -25,6 +25,7 @@ struct PodcastNowPlayingScreen: View {
     @EnvironmentObject var player: PlayerEngine
     @State private var dragOffset: CGFloat = 0
     @State private var played = false
+    @State private var showVideo = false
 
     private var episode: Track? { player.current }
 
@@ -38,21 +39,11 @@ struct PodcastNowPlayingScreen: View {
 
             Spacer(minLength: 8)
 
-            // Artwork, or the episode's video stream when toggled on.
-            Group {
-                if player.videoMode {
-                    PodcastVideoHost()
-                        .aspectRatio(16 / 9, contentMode: .fit)
-                        .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                } else {
-                    ArtworkView(url: Artwork.upscale(episode?.artworkURL, to: 720), corner: 12)
-                        .frame(width: 300, height: 300)
-                        .shadow(color: .black.opacity(0.45), radius: 22, y: 10)
-                        .gesture(dismissDrag)
-                }
-            }
-            .padding(.horizontal, 24)
+            ArtworkView(url: Artwork.upscale(episode?.artworkURL, to: 720), corner: 12)
+                .frame(width: 300, height: 300)
+                .shadow(color: .black.opacity(0.45), radius: 22, y: 10)
+                .gesture(dismissDrag)
+                .padding(.horizontal, 24)
 
             Spacer(minLength: 14)
 
@@ -99,11 +90,11 @@ struct PodcastNowPlayingScreen: View {
                         .foregroundStyle(played ? Theme.accent : .white.opacity(0.6))
                 }
                 Button {
-                    player.videoMode.toggle()
+                    showVideo = true
                 } label: {
-                    Image(systemName: player.videoMode ? "play.rectangle.fill" : "play.rectangle")
+                    Image(systemName: "play.rectangle")
                         .font(.system(size: 19))
-                        .foregroundStyle(player.videoMode ? Theme.accent : .white.opacity(0.6))
+                        .foregroundStyle(.white.opacity(0.6))
                 }
                 RoutePickerButton().frame(width: 26, height: 26)
                 Menu {
@@ -149,6 +140,9 @@ struct PodcastNowPlayingScreen: View {
         }
         .animation(.easeInOut(duration: 0.2), value: player.toast)
         .offset(y: dragOffset)
+        .fullScreenCover(isPresented: $showVideo) {
+            PodcastVideoScreen().environmentObject(player)
+        }
         .onAppear { syncPlayed() }
         .onChange(of: player.current?.videoId) { _, _ in syncPlayed() }
         .onDisappear { player.videoMode = false }
@@ -248,6 +242,78 @@ struct PodcastNowPlayingScreen: View {
                 }
                 withAnimation(.spring(duration: 0.3)) { dragOffset = 0 }
             }
+    }
+}
+
+/// Full-screen landscape video for the current episode. Rotates the app to
+/// landscape while presented (portrait everywhere else), shows the shared web
+/// view full-bleed with the video-mode CSS, and overlays minimal transport.
+/// Tap anywhere to show/hide the controls.
+struct PodcastVideoScreen: View {
+    @EnvironmentObject var player: PlayerEngine
+    @Environment(\.dismiss) private var dismiss
+    @State private var showControls = true
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            PodcastVideoHost().ignoresSafeArea()
+            if showControls { controls }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { withAnimation(.easeInOut(duration: 0.15)) { showControls.toggle() } }
+        .statusBarHidden()
+        .persistentSystemOverlays(.hidden)
+        .onAppear {
+            player.videoMode = true
+            OrientationLock.set(.landscape)
+        }
+        .onDisappear {
+            player.videoMode = false
+            OrientationLock.set(.portrait)
+        }
+    }
+
+    private var controls: some View {
+        VStack {
+            HStack {
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 40, height: 40)
+                        .background(.black.opacity(0.45), in: Circle())
+                }
+                Spacer()
+            }
+            Spacer()
+            HStack(spacing: 48) {
+                videoCtrl("gobackward.15") { player.skip(-15) }
+                Button { player.togglePlay() } label: {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 30, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 64, height: 64)
+                        .background(.black.opacity(0.45), in: Circle())
+                }
+                videoCtrl("goforward.30") { player.skip(30) }
+            }
+            ProgressBar()
+                .padding(.horizontal, 24)
+                .padding(.top, 10)
+        }
+        .padding(20)
+        .transition(.opacity)
+    }
+
+    private func videoCtrl(_ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 24, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: 52, height: 52)
+                .background(.black.opacity(0.45), in: Circle())
+        }
     }
 }
 
