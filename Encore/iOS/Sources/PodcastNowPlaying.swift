@@ -245,14 +245,15 @@ struct PodcastNowPlayingScreen: View {
     }
 }
 
-/// Full-screen landscape video for the current episode. Rotates the app to
-/// landscape while presented (portrait everywhere else), shows the shared web
-/// view full-bleed with the video-mode CSS, and overlays minimal transport.
-/// Tap anywhere to show/hide the controls.
+/// Full-screen video for the current episode. Opens PORTRAIT (video
+/// letterboxed on black); a rotate button flips the app to landscape and back
+/// — the rest of the app stays portrait-only. Tap anywhere to show/hide the
+/// controls.
 struct PodcastVideoScreen: View {
     @EnvironmentObject var player: PlayerEngine
     @Environment(\.dismiss) private var dismiss
     @State private var showControls = true
+    @State private var landscape = false
 
     var body: some View {
         ZStack {
@@ -266,7 +267,6 @@ struct PodcastVideoScreen: View {
         .persistentSystemOverlays(.hidden)
         .onAppear {
             player.videoMode = true
-            OrientationLock.set(.landscape)
         }
         .onDisappear {
             player.videoMode = false
@@ -285,6 +285,16 @@ struct PodcastVideoScreen: View {
                         .background(.black.opacity(0.45), in: Circle())
                 }
                 Spacer()
+                Button {
+                    landscape.toggle()
+                    OrientationLock.set(landscape ? .landscape : .portrait)
+                } label: {
+                    Image(systemName: landscape ? "rectangle.portrait.rotate" : "rectangle.landscape.rotate")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 40, height: 40)
+                        .background(.black.opacity(0.45), in: Circle())
+                }
             }
             Spacer()
             HStack(spacing: 48) {

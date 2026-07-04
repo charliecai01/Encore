@@ -881,6 +881,10 @@ final class PlayerEngine: NSObject, ObservableObject {
             // auto-resumed session) vs. the track we asked for, and whether we
             // forced a clean load. This is the smoking gun for restore-then-play.
             Log.player.notice("engage: site cur=\(body["cur"] as? String ?? "nil") want=\(body["id"] as? String ?? "nil") force=\(body["force"] as? Bool ?? false) -> \(body["action"] as? String ?? "?")")
+        case "videoDebug":
+            // Fired ~2.5s after videoMode(true): videoWidth 0 means the stream
+            // has no decoded video track; inline=0 means playsinline is missing.
+            Log.player.notice("videoDebug: videos=\(body["n"] as? Int ?? -1) size=\(body["w"] as? Int ?? -1)x\(body["h"] as? Int ?? -1) readyState=\(body["rs"] as? Int ?? -1) paused=\(body["paused"] as? Int ?? -1) inline=\(body["inline"] as? Int ?? -1) desktopDOM=\(body["app"] as? Int ?? -1)")
         case "state":
             let state = body["data"] as? Int ?? -1
             Log.player.notice("state=\(state) vid=\(body["vid"] as? String ?? "nil") current=\(self.current?.videoId ?? "nil") suppress=\(self.suppressSiteAutoplay)")
@@ -1413,13 +1417,34 @@ final class PlayerEngine: NSObject, ObservableObject {
           if (!p) return;
           try {
             if (on) {
-              // Undo lowData and force a re-negotiation at the current spot:
-              // while the web view sat parked at 1×1, WebKit skipped the video
-              // track (audio-only decode), which shows as a black frame. The
-              // seek makes the player refetch segments WITH video.
+              // iPhone WKWebView refuses to RENDER a video element that lacks
+              // the playsinline attribute (desktop YouTube never sets it —
+              // desktop doesn't need it): audio plays, the frame stays black.
+              document.querySelectorAll('video').forEach(function (v) {
+                v.setAttribute('playsinline', '');
+                v.setAttribute('webkit-playsinline', '');
+              });
+              // Undo lowData and force a re-negotiation at the current spot so
+              // the player refetches segments WITH the video track (it decoded
+              // audio-only while parked at 1×1).
               if (p.setPlaybackQualityRange) p.setPlaybackQualityRange('large', 'hd1080');
               if (p.setPlaybackQuality) p.setPlaybackQuality('large');
               if (p.seekTo && p.getCurrentTime) p.seekTo(p.getCurrentTime(), true);
+              // Report what the video element actually sees a moment later —
+              // videoWidth 0 = no video track; readyState/inline tell the rest.
+              setTimeout(function () {
+                try {
+                  var v = document.querySelector('video');
+                  send({ event: 'videoDebug',
+                         n: document.querySelectorAll('video').length,
+                         w: v ? v.videoWidth : -1,
+                         h: v ? v.videoHeight : -1,
+                         rs: v ? v.readyState : -1,
+                         paused: v && v.paused ? 1 : 0,
+                         inline: v && v.hasAttribute('playsinline') ? 1 : 0,
+                         app: document.querySelector('ytmusic-app') ? 1 : 0 });
+                } catch (e) {}
+              }, 2500);
             } else {
               if (p.setPlaybackQualityRange) p.setPlaybackQualityRange('tiny', 'tiny');
             }
