@@ -134,9 +134,11 @@ skip (not fail) without network; set `ENCORE_SKIP_LIVE=1` to skip explicitly.
 
 **`AuthenticatedLiveTests`** covers the SIGNED-IN response shapes: library
 playlists, liked songs, personalized home + history, watch-queue parse (with
-the like-status canary), and continuation accumulation (liked songs paginate
+the like-status canary), continuation accumulation (liked songs paginate
 at 25/page, playlists at 100/page — counts above those prove the continuation
-scoping works). The cookie is resolved at runtime — `ENCORE_TEST_COOKIE` env
+scoping works), and podcasts (library shows → show-page episodes carry
+isEpisode/date/duration; the RDPN "New Episodes" gated episode-merge parses
+non-empty — the original podcast bug's regression guard). The cookie is resolved at runtime — `ENCORE_TEST_COOKIE` env
 var, else the local skip-worktree'd `iOS/Sources/DevCredentials.swift` — and
 is NEVER committed; without one the class skips, so CI/fresh checkouts stay
 green. Tests are read-only (no account mutations). If they fail while the

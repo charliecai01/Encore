@@ -156,6 +156,58 @@ final class AuthenticatedLiveTests: XCTestCase {
         }
     }
 
+    // MARK: - Podcasts (feature re-enabled 2026-07-03)
+
+    /// Library shows parse, and a show page yields episodes with the fields
+    /// the podcast UI depends on: isEpisode (drives the dedicated Now Playing
+    /// screen + transport), release date, and duration (drives the
+    /// "N min left" progress rows).
+    func testPodcastShowAndEpisodesParse() async throws {
+        try await live {
+            let cards = try await YTM.shared.libraryPodcasts()
+            guard !cards.isEmpty else { throw XCTSkip("account has no library podcasts") }
+            for card in cards.prefix(10) {
+                XCTAssertFalse(card.title.isEmpty, "podcast card with empty title")
+            }
+            guard let show = cards.first(where: { $0.kind == .podcast && $0.browseId != nil }),
+                  let browseId = show.browseId else {
+                throw XCTSkip("no subscribed show card carries a browseId")
+            }
+            let page = try await YTM.shared.podcastShow(browseId: browseId)
+            XCTAssertFalse(page.title.isEmpty, "show page parsed no title")
+            XCTAssertFalse(page.tracks.isEmpty, "show page parsed no episodes")
+            let sample = page.tracks.prefix(10)
+            for ep in sample {
+                XCTAssertTrue(ep.isEpisode, "show episode not flagged isEpisode — would get the SONG now-playing screen")
+                XCTAssertFalse(ep.videoId.isEmpty, "episode with empty videoId")
+                XCTAssertFalse(ep.title.isEmpty, "episode with empty title")
+            }
+            XCTAssertTrue(sample.contains { !($0.dateText ?? "").isEmpty },
+                          "no episode carried a release date")
+            XCTAssertTrue(sample.contains { ($0.durationSeconds ?? 0) > 0 },
+                          "no episode carried a duration")
+        }
+    }
+
+    /// "New Episodes" (playlistId RDPN) is an episode auto-playlist whose items
+    /// use the podcast renderer the regular track parser skips. The merge in
+    /// `YTM.playlist` is gated on `PodcastFeature.enabled` — with the flag off
+    /// this page parses EMPTY, which was the original podcast bug. Guard the
+    /// enabled path.
+    func testNewEpisodesPlaylistMergesEpisodes() async throws {
+        try await live {
+            let wasEnabled = PodcastFeature.enabled
+            PodcastFeature.enabled = true
+            defer { PodcastFeature.enabled = wasEnabled }
+            let page = try await YTM.shared.playlist(id: "RDPN")
+            guard !page.tracks.isEmpty else {
+                throw XCTSkip("New Episodes is empty right now — nothing to parse")
+            }
+            XCTAssertTrue(page.tracks.contains(where: \.isEpisode),
+                          "RDPN items didn't parse as episodes — the gated podcastEpisodes merge regressed")
+        }
+    }
+
     // MARK: - Playlist continuations
 
     /// Signed-in collections paginate via continuation tokens, and signed-in
