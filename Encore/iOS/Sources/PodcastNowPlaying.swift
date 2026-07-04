@@ -89,12 +89,14 @@ struct PodcastNowPlayingScreen: View {
                         .font(.system(size: 19))
                         .foregroundStyle(played ? Theme.accent : .white.opacity(0.6))
                 }
-                Button {
-                    showVideo = true
-                } label: {
-                    Image(systemName: "play.rectangle")
-                        .font(.system(size: 19))
-                        .foregroundStyle(.white.opacity(0.6))
+                if PodcastFeature.videoEnabled {
+                    Button {
+                        showVideo = true
+                    } label: {
+                        Image(systemName: "play.rectangle")
+                            .font(.system(size: 19))
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
                 }
                 RoutePickerButton().frame(width: 26, height: 26)
                 Menu {

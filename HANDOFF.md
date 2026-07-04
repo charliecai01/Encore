@@ -331,8 +331,10 @@ Both platforms unless stated:
   album) — BOTH platforms (`showsArtwork: !isAlbum`).
 - **Podcasts — ENABLED (2026-07-03), Apple-Podcasts-style; see PODCASTS.md.**
   iOS has a DEDICATED episode Now Playing screen (`PodcastNowPlayingScreen`
-  via `NowPlayingSwitcher`): date/title/show, ±15/30s, speed 0.8–2×, video
-  toggle (re-parents the shared web view), mark-played, AirPlay. Resume via
+  via `NowPlayingSwitcher`): date/title/show, ±15/30s, speed 0.8–2×,
+  mark-played, AirPlay. **Video is gated OFF** (`PodcastFeature.videoEnabled
+  = false`, 2026-07-04 — renders black on iOS; bug + debugging notes in
+  PODCASTS.md). Resume via
   `EpisodeProgress` on both platforms; episode rows show progress bars +
   "N min left"; finishing auto-marks played. macOS: the PLAYER BAR swaps to
   Apple-Podcasts controls for episodes (speed · ±15/30 · video →

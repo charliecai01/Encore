@@ -101,11 +101,13 @@ struct PlayerBar: View {
                     ControlButton(icon: "goforward.30", size: 16) {
                         player.skip(30)
                     }
-                    ControlButton(icon: "play.rectangle", size: 15,
-                                  active: showVideoSheet) {
-                        showVideoSheet = true
+                    if PodcastFeature.videoEnabled {
+                        ControlButton(icon: "play.rectangle", size: 15,
+                                      active: showVideoSheet) {
+                            showVideoSheet = true
+                        }
+                        .help("Watch the episode's video")
                     }
-                    .help("Watch the episode's video")
                 }
             } else {
                 HStack(spacing: 22) {

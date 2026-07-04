@@ -55,7 +55,7 @@ in too.
 - **Play counts** — global play counts on artist top songs and search, with a "Plays" sort; plus a personal **Most Played** view and a times-played column on playlists (macOS) — counts are per-device, no cross-device sync yet
 - **Podcasts** *(currently disabled behind `PodcastFeature.enabled` — see [PODCASTS.md](PODCASTS.md))* — Apple-Podcasts-style show pages with episode dates, descriptions, and durations; variable playback speed (0.8–2×) and skip 15/30 for episodes (iOS)
 - **Synced lyrics** — YouTube's own timed lyrics when available (fetched via the Android client), falling back to LRCLIB / NetEase / Musixmatch / Genius
-- **Now Playing** — blurred-artwork immersive view with synced lyrics or up-next; podcasts get an Apple-Podcasts-style player (iOS screen + macOS bar) with video, speed, and ±15/30s
+- **Now Playing** — blurred-artwork immersive view with synced lyrics or up-next; podcasts get an Apple-Podcasts-style player (iOS screen + macOS bar) with speed, ±15/30s, resume, and progress bars
 - **Native niceties** — media keys, system/lock-screen Now Playing widget, **AirPlay/output-device picker**, **CarPlay** (iOS), **phone-call/Siri interruption handling** (iOS), Space to play/pause, ⌘←/⌘→ prev/next, ⌘R refresh (macOS), dynamic accent colors from artwork
 
 ## Architecture

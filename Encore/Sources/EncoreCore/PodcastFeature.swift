@@ -12,4 +12,11 @@ public enum PodcastFeature {
     /// `true` to surface podcasts in the UI. Kept as a `var` (not a `let`) so the
     /// gates read as ordinary runtime checks rather than dead code.
     public static var enabled = true
+
+    /// The podcast VIDEO player — DISABLED (2026-07-04): the video element
+    /// renders black on iOS (audio keeps playing) despite playsinline +
+    /// quality bump + seekTo re-negotiation; see PODCASTS.md "Known bug".
+    /// Gates the video button in the iOS podcast Now Playing screen and the
+    /// macOS player-bar episode transport. Flip to `true` to bring them back.
+    public static var videoEnabled = false
 }

@@ -208,12 +208,19 @@ final class PlayerEngine: NSObject, ObservableObject {
         repeatMode = RepeatMode(rawValue: snapshot.repeatRaw) ?? .off
         current = queue[index]
 
-        // Restore the queue and the current track, but always start it from the
-        // beginning on reopen (by design — not from where you left off).
+        // Restore the queue and the current track. Songs restart from the
+        // beginning on reopen (by design); podcast EPISODES resume where you
+        // left off, like Apple Podcasts — load() only covers row taps, so the
+        // restored-session path needs its own resume here.
         duration = Double(current?.durationSeconds ?? 0)
         currentTime = 0
         restoreSeekTime = nil
-        Log.player.notice("restore: \(snapshot.queue.count) tracks, index=\(self.index), current=\(self.current?.videoId ?? "nil") '\(self.current?.title ?? "")'")
+        if let cur = current, cur.isEpisode,
+           let resume = EpisodeProgress.resumePosition(for: cur.videoId) {
+            currentTime = resume
+            restoreSeekTime = resume
+        }
+        Log.player.notice("restore: \(snapshot.queue.count) tracks, index=\(self.index), current=\(self.current?.videoId ?? "nil") '\(self.current?.title ?? "")' resumeAt=\(self.restoreSeekTime ?? 0)")
         updateNowPlayingInfo()
     }
 

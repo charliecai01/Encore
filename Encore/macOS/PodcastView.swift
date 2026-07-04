@@ -38,11 +38,14 @@ struct PodcastView: View {
                         }
                         .padding(.horizontal, 28).padding(.top, 26).padding(.bottom, 6)
 
+                        // One decode of the progress map per render, not per row.
+                        let progressMap = EpisodeProgress.all()
                         LazyVStack(spacing: 0) {
                             ForEach(Array(episodes.enumerated()), id: \.offset) { i, ep in
                                 MacEpisodeRow(episode: ep,
                                               isCurrent: player.current?.videoId == ep.videoId,
                                               isPlayed: playedIds.contains(ep.videoId),
+                                              progress: progressMap[ep.videoId],
                                               onTogglePlayed: { togglePlayed(ep) }) {
                                     player.playCollection(episodes, startAt: i)
                                 }
@@ -127,6 +130,8 @@ struct PodcastView: View {
     private func togglePlayed(_ episode: Track) {
         PlayedEpisodes.toggle(episode.videoId)
         playedIds = PlayedEpisodes.all()
+        // Marking played discards the resume point (Apple Podcasts behavior).
+        if playedIds.contains(episode.videoId) { EpisodeProgress.clear(episode.videoId) }
     }
 
     private func load() async {
@@ -143,10 +148,23 @@ private struct MacEpisodeRow: View {
     let episode: Track
     let isCurrent: Bool
     let isPlayed: Bool
+    /// Saved playback position, when the episode was left partway through.
+    var progress: EpisodeProgressEntry? = nil
     let onTogglePlayed: () -> Void
     let onPlay: () -> Void
 
     @State private var hovering = false
+
+    private var progressFraction: Double? {
+        guard !isPlayed, let p = progress, p.duration > 0, p.position > 5 else { return nil }
+        return min(1, max(0, p.position / p.duration))
+    }
+
+    private var remainingLabel: String {
+        guard let p = progress else { return "" }
+        let minutes = Int((max(0, p.duration - p.position) / 60).rounded(.up))
+        return minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m left" : "\(minutes) min left"
+    }
 
     private var titleColor: Color {
         if isCurrent { return Theme.fallbackAccent }
@@ -178,7 +196,15 @@ private struct MacEpisodeRow: View {
                     HStack(spacing: 7) {
                         Image(systemName: isCurrent && player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                             .font(.system(size: 26))
-                        if !episode.lengthText.isEmpty {
+                        if let frac = progressFraction {
+                            // Partially played: a small bar + time left, like
+                            // Apple Podcasts. Resumes from this spot on play.
+                            ProgressView(value: frac)
+                                .progressViewStyle(.linear)
+                                .tint(Theme.fallbackAccent)
+                                .frame(width: 70)
+                            Text(remainingLabel).font(.system(size: 12, weight: .medium))
+                        } else if !episode.lengthText.isEmpty {
                             Text(episode.lengthText).font(.system(size: 12, weight: .medium))
                         }
                     }
