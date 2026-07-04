@@ -108,9 +108,9 @@ struct TrackRowView: View {
 
     var body: some View {
         ZStack(alignment: .leading) {
-            // Swipe-right reveal: Play Next (Apple-Music style). Custom drag —
-            // .swipeActions only works inside List, and these rows live in
-            // LazyVStacks.
+            // Swipe reveals (custom drag — .swipeActions only works inside
+            // List, and these rows live in LazyVStacks): right = Play Next,
+            // left = Remove from Playlist (playlist pages only).
             if swipeOffset > 0 {
                 HStack(spacing: 7) {
                     Image(systemName: "text.line.first.and.arrowtriangle.forward")
@@ -123,6 +123,18 @@ struct TrackRowView: View {
                 .padding(.leading, 12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .background(Theme.accent.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
+            } else if swipeOffset < 0 {
+                HStack(spacing: 7) {
+                    if swipeOffset < -60 {
+                        Text("Remove").font(.system(size: 13, weight: .semibold))
+                    }
+                    Image(systemName: "trash")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .padding(.trailing, 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                .background(Color.red.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
             }
             rowContent.offset(x: swipeOffset)
         }
@@ -133,20 +145,26 @@ struct TrackRowView: View {
         .onAppear { if PodcastFeature.enabled, track.isEpisode { played = PlayedEpisodes.isPlayed(track.videoId) } }
     }
 
-    /// Rightward drag with horizontal intent; releasing past the threshold
-    /// queues the track to play next. Vertical scrolling stays untouched.
+    /// Horizontal-intent drag: right past the threshold queues the track to
+    /// play next; left removes it from the playlist (only on rows that can).
+    /// Vertical scrolling stays untouched.
     private var playNextSwipe: some Gesture {
         DragGesture(minimumDistance: 24, coordinateSpace: .local)
             .onChanged { v in
                 guard abs(v.translation.width) > abs(v.translation.height) else { return }
-                swipeOffset = max(0, min(v.translation.width, 96))
+                let lower: CGFloat = onRemoveFromPlaylist != nil ? -96 : 0
+                swipeOffset = max(lower, min(v.translation.width, 96))
             }
             .onEnded { _ in
-                let triggered = swipeOffset > 60
+                let playNextTriggered = swipeOffset > 60
+                let removeTriggered = swipeOffset < -60
                 withAnimation(.spring(duration: 0.3)) { swipeOffset = 0 }
-                if triggered {
+                if playNextTriggered {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     player.playNext(track)
+                } else if removeTriggered {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onRemoveFromPlaylist?()
                 }
             }
     }
