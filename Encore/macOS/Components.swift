@@ -305,8 +305,8 @@ struct TrackRow: View {
         }
     }
 
-    /// Trackpad swipe actions: right = add to queue, left = remove from
-    /// playlist (on playlist pages).
+    /// Trackpad swipe actions: right = play next (parity with iOS), left =
+    /// remove from playlist (on playlist pages).
     private func registerForSwipes() {
         SwipeRouter.shared.install()
         SwipeRouter.shared.target = SwipeRouter.Target(
@@ -318,7 +318,7 @@ struct TrackRow: View {
             },
             onEnd: { value in
                 if value > 70 {
-                    player.addToQueue(track)
+                    player.playNext(track)
                 } else if value < -70 {
                     onRemoveFromPlaylist?()
                 }
@@ -329,7 +329,7 @@ struct TrackRow: View {
 
     private var swipeBackground: some View {
         HStack {
-            Label("Add to Queue", systemImage: "text.badge.plus")
+            Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.white)
                 .opacity(swipeOffset > 25 ? 1 : 0)
