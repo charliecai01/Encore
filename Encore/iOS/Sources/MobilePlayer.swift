@@ -1216,6 +1216,24 @@ final class PlayerEngine: NSObject, ObservableObject {
         };
         apply();
         setInterval(apply, 2000); // re-assert if the site rebinds on track change
+        // Own the metadata too: once Encore pushes track metadata, site writes
+        // are IGNORED — the site updates its MediaMetadata late (slow metadata
+        // fetches, SPA events mid-song), which used to overwrite our artwork on
+        // the lock screen / Notification Center with the wrong track's art.
+        try {
+          var desc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(ms), 'metadata');
+          if (desc && desc.set) {
+            Object.defineProperty(ms, 'metadata', {
+              configurable: true,
+              get: function () { return desc.get.call(ms); },
+              set: function (v) {
+                if (window.__encoreOwnsMeta) return;
+                desc.set.call(ms, v);
+              }
+            });
+            window.__encoreSetMetadata = function (v) { desc.set.call(ms, v); };
+          }
+        } catch (e) {}
       } catch (e) {}
     })();
     """#
@@ -1238,12 +1256,16 @@ final class PlayerEngine: NSObject, ObservableObject {
       function applyEncoreMeta() {
         if (!__encoreMeta || !('mediaSession' in navigator)) return;
         try {
-          navigator.mediaSession.metadata = new MediaMetadata({
+          var m = new MediaMetadata({
             title: __encoreMeta.title || '',
             artist: __encoreMeta.artist || '',
             album: __encoreMeta.album || '',
             artwork: __encoreMeta.art ? [{ src: __encoreMeta.art, sizes: '544x544', type: 'image/jpeg' }] : []
           });
+          // Write through the saved prototype setter — the instance property is
+          // patched to swallow (site) writes while __encoreOwnsMeta is set.
+          if (window.__encoreSetMetadata) { window.__encoreSetMetadata(m); }
+          else { navigator.mediaSession.metadata = m; }
         } catch (e) {}
       }
       function reassertEncoreMeta() {
@@ -1322,7 +1344,7 @@ final class PlayerEngine: NSObject, ObservableObject {
           var p = mp();
           if (p) { p.setVolume(v); if (v > 0 && p.isMuted && p.isMuted()) p.unMute(); }
         },
-        setMeta: function (m) { __encoreMeta = m; applyEncoreMeta(); reassertEncoreMeta(); }
+        setMeta: function (m) { __encoreMeta = m; window.__encoreOwnsMeta = true; applyEncoreMeta(); reassertEncoreMeta(); }
       };
 
       // Event-driven state reporting: polling alone misses the brief "ended"

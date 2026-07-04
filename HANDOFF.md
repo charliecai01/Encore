@@ -218,6 +218,14 @@ with the Co-Authored-By: Claude line.
   manager that intercept menu-bar/edge clicks. Prefer `xcrun simctl io booted
   screenshot` over GUI screenshots, and `simctl`/Bash over clicking when
   possible. The user has quit those utilities before when asked.
+- **iOS lock-screen metadata is the PAGE's MediaSession, not our
+  MPNowPlayingInfoCenter** — the WKWebView owns Now Playing on iOS.
+  `__encore.setMeta` pushes our track's title/artist/art into the page, and
+  the documentStart script PATCHES the `mediaSession.metadata` setter so site
+  writes are swallowed while `window.__encoreOwnsMeta` is set (2026-07-03).
+  Before that, the site's late metadata updates (slow fetches, SPA events
+  mid-song) overwrote our artwork → stale art in Notification Center. Native
+  `updateNowPlayingInfo` still runs as a fallback but the page wins on iOS.
 - **iOS site-autoplay on launch (fixed, don't reintroduce):** iOS sets
   `mediaTypesRequiringUserActionForPlayback = []`, so the real site can
   auto-start the account's last track on a cold launch. A `suppressSiteAutoplay`
