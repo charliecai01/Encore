@@ -334,8 +334,11 @@ Both platforms unless stated:
   via `NowPlayingSwitcher`): date/title/show, ±15/30s, speed 0.8–2×, video
   toggle (re-parents the shared web view), mark-played, AirPlay. Resume via
   `EpisodeProgress` on both platforms; episode rows show progress bars +
-  "N min left"; finishing auto-marks played. Show pages: Apple-Podcasts-style
-  pages on BOTH platforms (iOS
+  "N min left"; finishing auto-marks played. macOS: the PLAYER BAR swaps to
+  Apple-Podcasts controls for episodes (speed · ±15/30 · video →
+  `PodcastVideoSheet`; songs keep shuffle/prev/next/repeat), and the engine
+  gained `skip`/`playbackRate` (episode-gated, same as iOS). Show pages:
+  Apple-Podcasts-style pages on BOTH platforms (iOS
   `PodcastScreen`, macOS `PodcastView`) — header, expandable description,
   Recent/Oldest sort, episode rows with date + description + duration + circular
   play. Episodes carry `isEpisode/dateText/details`. **Mark-as-played** per

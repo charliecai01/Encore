@@ -9,6 +9,7 @@ struct PlayerBar: View {
     @ObservedObject private var clock = PlayerClock.shared
     @Binding var nowPlayingExpanded: Bool
     @Binding var queueShown: Bool
+    @State private var showVideoSheet = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -27,6 +28,7 @@ struct PlayerBar: View {
             .frame(height: 86)
             .background(Theme.bgElevated)
         }
+        .sheet(isPresented: $showVideoSheet) { PodcastVideoSheet() }
     }
 
     private var trackInfo: some View {
@@ -87,34 +89,41 @@ struct PlayerBar: View {
 
     private var transport: some View {
         VStack(spacing: 7) {
-            HStack(spacing: 22) {
-                ControlButton(icon: "shuffle", size: 13,
-                              active: player.shuffleOn) {
-                    player.toggleShuffle()
-                }
-                ControlButton(icon: "backward.fill", size: 16) {
-                    player.previous()
-                }
-                Button {
-                    player.togglePlay()
-                } label: {
-                    ZStack {
-                        Circle().fill(.white)
-                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(.black)
-                            .offset(x: player.isPlaying ? 0 : 1)
+            // Episodes get the Apple-Podcasts bar (speed · ±15/30 · video);
+            // songs keep shuffle/prev/next/repeat.
+            if PodcastFeature.enabled, player.current?.isEpisode == true {
+                HStack(spacing: 18) {
+                    speedMenu
+                    ControlButton(icon: "gobackward.15", size: 16) {
+                        player.skip(-15)
                     }
-                    .frame(width: 36, height: 36)
+                    playPauseButton
+                    ControlButton(icon: "goforward.30", size: 16) {
+                        player.skip(30)
+                    }
+                    ControlButton(icon: "play.rectangle", size: 15,
+                                  active: showVideoSheet) {
+                        showVideoSheet = true
+                    }
+                    .help("Watch the episode's video")
                 }
-                .buttonStyle(.plain)
-                .disabled(player.current == nil)
-                ControlButton(icon: "forward.fill", size: 16) {
-                    player.next()
-                }
-                ControlButton(icon: player.repeatMode == .one ? "repeat.1" : "repeat", size: 13,
-                              active: player.repeatMode != .off) {
-                    player.cycleRepeat()
+            } else {
+                HStack(spacing: 22) {
+                    ControlButton(icon: "shuffle", size: 13,
+                                  active: player.shuffleOn) {
+                        player.toggleShuffle()
+                    }
+                    ControlButton(icon: "backward.fill", size: 16) {
+                        player.previous()
+                    }
+                    playPauseButton
+                    ControlButton(icon: "forward.fill", size: 16) {
+                        player.next()
+                    }
+                    ControlButton(icon: player.repeatMode == .one ? "repeat.1" : "repeat", size: 13,
+                                  active: player.repeatMode != .off) {
+                        player.cycleRepeat()
+                    }
                 }
             }
 
@@ -133,6 +142,47 @@ struct PlayerBar: View {
                     .frame(width: 40, alignment: .leading)
             }
         }
+    }
+
+    private var playPauseButton: some View {
+        Button {
+            player.togglePlay()
+        } label: {
+            ZStack {
+                Circle().fill(.white)
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.black)
+                    .offset(x: player.isPlaying ? 0 : 1)
+            }
+            .frame(width: 36, height: 36)
+        }
+        .buttonStyle(.plain)
+        .disabled(player.current == nil)
+    }
+
+    private func rateLabel(_ r: Double) -> String {
+        let s = r == r.rounded() ? String(Int(r)) : String(format: "%g", r)
+        return "\(s)×"
+    }
+
+    private var speedMenu: some View {
+        Menu {
+            ForEach([0.8, 1.0, 1.2, 1.5, 1.75, 2.0], id: \.self) { r in
+                Button { player.setPlaybackRate(r) } label: {
+                    if player.playbackRate == r { Label(rateLabel(r), systemImage: "checkmark") }
+                    else { Text(rateLabel(r)) }
+                }
+            }
+        } label: {
+            Text(rateLabel(player.playbackRate))
+                .font(.system(size: 12, weight: .bold).monospacedDigit())
+                .foregroundStyle(player.playbackRate != 1.0 ? Theme.fallbackAccent : Theme.textSecondary)
+                .frame(width: 40)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Playback speed (podcasts)")
     }
 
     private var rightControls: some View {
@@ -236,6 +286,64 @@ struct ControlButton: View {
 
 /// Native output-route picker (AirPlay). Routes the app's audio output; the
 /// hidden web player's audio follows the selected device.
+/// Apple-Podcasts-style video window for the current episode: the shared
+/// playback web view full-bleed (video-mode CSS strips the site chrome), with
+/// a small transport underneath. Borrows the web view; parks it on close.
+struct PodcastVideoSheet: View {
+    @EnvironmentObject var player: PlayerEngine
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var clock = PlayerClock.shared
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(player.current?.title ?? "")
+                        .font(.headline).lineLimit(1)
+                    Text(player.current?.artistLine ?? "")
+                        .font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+            .padding(12)
+            Divider()
+            VideoSurface()
+            Divider()
+            HStack(spacing: 16) {
+                ControlButton(icon: "gobackward.15", size: 16) { player.skip(-15) }
+                Button {
+                    player.togglePlay()
+                } label: {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.plain)
+                ControlButton(icon: "goforward.30", size: 16) { player.skip(30) }
+                Text(Track.format(seconds: Int(clock.currentTime)))
+                    .font(.system(size: 10.5).monospacedDigit())
+                    .foregroundStyle(Theme.textTertiary)
+                SeekBar(progress: clock.progress, accent: .white) { fraction in
+                    player.seek(fraction: fraction)
+                }
+                Text(Track.format(seconds: Int(clock.duration)))
+                    .font(.system(size: 10.5).monospacedDigit())
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+        }
+        .frame(width: 960, height: 620)
+        .onAppear { player.videoMode = true }
+        .onDisappear {
+            player.videoMode = false
+            player.park()
+        }
+    }
+}
+
 struct RoutePickerButton: NSViewRepresentable {
     func makeNSView(context: Context) -> AVRoutePickerView {
         let picker = AVRoutePickerView()

@@ -77,6 +77,10 @@ final class PlayerEngine: NSObject, ObservableObject {
     @Published var videoMode = false {
         didSet { js("window.__encore && __encore.videoMode(\(videoMode ? "true" : "false"))") }
     }
+    /// Podcast playback speed — applies to episodes only; songs always play 1×.
+    @Published var playbackRate: Double = 1.0 {
+        didSet { UserDefaults.standard.set(playbackRate, forKey: "playbackRate") }
+    }
 
     @Published var volume: Double = 0.85 {
         didSet {
@@ -150,6 +154,10 @@ final class PlayerEngine: NSObject, ObservableObject {
         setupRemoteCommands()
         if UserDefaults.standard.object(forKey: "autoplayEnabled") != nil {
             autoplayEnabled = UserDefaults.standard.bool(forKey: "autoplayEnabled")
+        }
+        if UserDefaults.standard.object(forKey: "playbackRate") != nil {
+            let r = UserDefaults.standard.double(forKey: "playbackRate")
+            if r > 0 { playbackRate = r }
         }
         restoreSession()
     }
@@ -519,6 +527,8 @@ final class PlayerEngine: NSObject, ObservableObject {
 
         if playerReady {
             ensureJS(track.videoId, startAt: startAt)
+            // Episodes keep the chosen speed; songs are forced back to 1×.
+            js("window.__encore && __encore.rate(\(track.isEpisode ? playbackRate : 1.0))")
         }
 
         updateNowPlayingInfo()
@@ -667,6 +677,21 @@ final class PlayerEngine: NSObject, ObservableObject {
         return false
     }
 
+    /// Skip forward/back by a number of seconds (podcast controls).
+    func skip(_ delta: Double) {
+        let target = currentTime + delta
+        let upper = duration > 0 ? duration : target
+        seek(to: max(0, min(target, upper)))
+    }
+
+    func setPlaybackRate(_ rate: Double) {
+        playbackRate = rate
+        // Rate is a podcast concept — apply live only while an episode plays.
+        if current?.isEpisode == true {
+            js("window.__encore && __encore.rate(\(rate))")
+        }
+    }
+
     func refetchLyrics() {
         guard let track = current else { return }
         clock.lyrics = nil
@@ -767,6 +792,10 @@ final class PlayerEngine: NSObject, ObservableObject {
                     break
                 }
                 isPlaying = true
+                // Playback speed applies to podcast episodes only. Songs always
+                // play at 1× — otherwise the web player carries an episode's
+                // rate onto the next song for a few seconds before resetting.
+                js("window.__encore && __encore.rate(\(current?.isEpisode == true ? playbackRate : 1.0))")
                 if let resumeAt = restoreSeekTime {
                     restoreSeekTime = nil
                     seek(to: resumeAt)
@@ -1006,6 +1035,18 @@ final class PlayerEngine: NSObject, ObservableObject {
             document.head.appendChild(videoModeStyle);
           }
           document.body.classList.toggle('encore-video', !!on);
+          var p = mp();
+          if (!p) return;
+          try {
+            if (on) {
+              // Bump quality and re-negotiate at the current spot so the
+              // player fetches segments WITH the video track (it may have
+              // been decoding audio-only while parked).
+              if (p.setPlaybackQualityRange) p.setPlaybackQualityRange('large', 'hd1080');
+              if (p.setPlaybackQuality) p.setPlaybackQuality('large');
+              if (p.seekTo && p.getCurrentTime) p.seekTo(p.getCurrentTime(), true);
+            }
+          } catch (e) {}
         }
       };
 

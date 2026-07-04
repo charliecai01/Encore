@@ -16,6 +16,12 @@
   Finishing an episode auto-marks it played and clears the resume point.
 - **Progress bars on episode rows** (iOS show pages): partially played
   episodes show a small bar + "N min left", like Apple Podcasts.
+- **macOS: Apple-Podcasts-style player bar** — when an episode plays, the
+  bottom bar swaps shuffle/prev/next/repeat for **speed · back-15 · play ·
+  forward-30 · video**. The video button opens a 960×620 sheet
+  (`PodcastVideoSheet` in PlayerBar.swift) hosting the shared web view with
+  the video-mode CSS + a small transport; closing it parks the web view.
+  Speed (0.8–2×) is episode-only on macOS too, same as iOS.
 
 To disable: set `PodcastFeature.enabled = false` in
 [`Encore/Sources/EncoreCore/PodcastFeature.swift`](Encore/Sources/EncoreCore/PodcastFeature.swift)
