@@ -1,10 +1,11 @@
 # Known bugs / disabled features
 
-## Podcasts — DISABLED (2026-06-22)
+## Podcasts — ENABLED (2026-07-03)
 
-The podcast feature is disabled again, now behind a single flag
-(`PodcastFeature.enabled`). See **[PODCASTS.md](PODCASTS.md)** for the full
-feature guide and the one-line re-enable steps.
+Re-enabled with the Apple-Podcasts-style experience: dedicated iOS Now Playing
+screen (speed/skip/video/mark-played), resume-where-you-left-off, and episode
+progress bars. Still gated behind `PodcastFeature.enabled` — see
+**[PODCASTS.md](PODCASTS.md)** for the feature guide and disable steps.
 
 ## Most Played (personal play counts) — ENABLED, per-device (2026-07-02)
 

@@ -99,6 +99,7 @@ final class PlayerEngine: NSObject, ObservableObject {
     private var playerReady = false
     private var unshuffledQueue: [Track]?
     private var lyricsRequestId = 0
+    private var lastEpisodeSaveAt = Date.distantPast
     /// The in-flight autoplay radio fetch, shared so a tail prefetch and the
     /// end-of-queue advance never race — advance awaits the same fetch.
     private var radioFetchTask: Task<Bool, Never>?
@@ -492,6 +493,16 @@ final class PlayerEngine: NSObject, ObservableObject {
 
     private func load(_ track: Track, startAt: Double = 0) {
         loadedOnce = true
+        // Leaving an episode midway: remember the spot so it resumes later.
+        if let prev = current, prev.isEpisode, prev.videoId != track.videoId {
+            EpisodeProgress.save(prev.videoId, position: currentTime, duration: duration)
+        }
+        // Episodes resume where you left off (Apple-Podcasts style).
+        var startAt = startAt
+        if startAt == 0, track.isEpisode,
+           let resume = EpisodeProgress.resumePosition(for: track.videoId) {
+            startAt = resume
+        }
         // Carry the resume offset so the ready/state handlers can apply it too.
         restoreSeekTime = startAt > 0 ? startAt : nil
         sleepStopActive = false
@@ -762,6 +773,9 @@ final class PlayerEngine: NSObject, ObservableObject {
                 }
             case 2:
                 isPlaying = false
+                if let track = current, track.isEpisode {
+                    EpisodeProgress.save(track.videoId, position: currentTime, duration: duration)
+                }
             case 0:
                 isPlaying = false
                 // Only advance on a *trustworthy* end-of-song. The page can briefly
@@ -771,6 +785,11 @@ final class PlayerEngine: NSObject, ObservableObject {
                 let endedVid = body["vid"] as? String
                 let confirmedEnd = !(endedVid ?? "").isEmpty && endedVid == current?.videoId
                 let nearEnd = duration > 0 && currentTime >= duration - 6
+                if confirmedEnd || nearEnd, let track = current, track.isEpisode {
+                    // Finished an episode: mark played, drop the resume point.
+                    PlayedEpisodes.set(track.videoId, played: true)
+                    EpisodeProgress.clear(track.videoId)
+                }
                 if (confirmedEnd || nearEnd), !sleepTimerConsumedSong() {
                     advance()
                 }
@@ -797,6 +816,13 @@ final class PlayerEngine: NSObject, ObservableObject {
             let d = body["d"] as? Double ?? 0
             currentTime = t
             if d > 0 { duration = d }
+            // Remember episode positions every few seconds so force-quits and
+            // crashes lose at most a moment of the resume point.
+            if isPlaying, let track = current, track.isEpisode,
+               Date().timeIntervalSince(lastEpisodeSaveAt) > 5 {
+                lastEpisodeSaveAt = Date()
+                EpisodeProgress.save(track.videoId, position: t, duration: duration)
+            }
             // Count a personal play once the song has played past a threshold
             // (~30s, or 90% for short songs), once per load.
             if isPlaying, !playCountRecorded, let track = current, !track.isEpisode {

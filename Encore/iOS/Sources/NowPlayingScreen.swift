@@ -187,47 +187,28 @@ struct NowPlayingScreen: View {
 
             ProgressBar().padding(.horizontal, 36).padding(.top, 18)
 
-            // Podcast episodes get a dedicated transport (variable speed +
-            // ±15/30s skip); songs get shuffle/prev/next/repeat. Gated on the
-            // podcast feature flag — when off, episodes use the song transport.
-            if PodcastFeature.enabled, player.current?.isEpisode == true {
-                HStack(spacing: 22) {
-                    speedButton
-                    ctrl("gobackward.15", size: 28) { player.skip(-15) }
-                    bigPlayButton
-                    ctrl("goforward.30", size: 28) { player.skip(30) }
-                    sleepMenu
-                }
-                .padding(.top, 22)
-                HStack(spacing: 36) {
-                    RoutePickerButton().frame(width: 26, height: 26)
-                    Button { player.showNowPlaying = false } label: {
-                        Image(systemName: "chevron.down").font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.6))
-                    }
-                }
-                .padding(.top, 18)
-            } else {
-                HStack(spacing: 28) {
-                    ctrl("shuffle", active: player.shuffleOn, size: 18) { player.toggleShuffle() }
-                    ctrl("backward.fill", size: 26) { player.previous() }
-                    bigPlayButton
-                    ctrl("forward.fill", size: 26) { player.next() }
-                    ctrl(player.repeatMode == .one ? "repeat.1" : "repeat",
-                         active: player.repeatMode != .off, size: 18) { player.cycleRepeat() }
-                }
-                .padding(.top, 22)
-
-                HStack(spacing: 36) {
-                    sleepMenu
-                    RoutePickerButton().frame(width: 26, height: 26)
-                    Button { player.showNowPlaying = false } label: {
-                        Image(systemName: "chevron.down").font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.6))
-                    }
-                }
-                .padding(.top, 18)
+            // Songs only — podcast episodes get their own screen
+            // (PodcastNowPlayingScreen via NowPlayingSwitcher), so the two
+            // transports can never mix again.
+            HStack(spacing: 28) {
+                ctrl("shuffle", active: player.shuffleOn, size: 18) { player.toggleShuffle() }
+                ctrl("backward.fill", size: 26) { player.previous() }
+                bigPlayButton
+                ctrl("forward.fill", size: 26) { player.next() }
+                ctrl(player.repeatMode == .one ? "repeat.1" : "repeat",
+                     active: player.repeatMode != .off, size: 18) { player.cycleRepeat() }
             }
+            .padding(.top, 22)
+
+            HStack(spacing: 36) {
+                sleepMenu
+                RoutePickerButton().frame(width: 26, height: 26)
+                Button { player.showNowPlaying = false } label: {
+                    Image(systemName: "chevron.down").font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+            }
+            .padding(.top, 18)
             Spacer(minLength: 0)
         }
     }
@@ -290,30 +271,6 @@ struct NowPlayingScreen: View {
                     .font(.system(size: 28, weight: .bold)).foregroundStyle(.black)
                     .offset(x: player.isPlaying ? 0 : 2)
             }
-        }
-    }
-
-    // Playback-speed control for podcast episodes.
-    private func rateLabel(_ r: Double) -> String {
-        let s = r == r.rounded() ? String(Int(r)) : String(format: "%g", r)
-        return "\(s)×"
-    }
-
-    private var speedButton: some View {
-        Menu {
-            ForEach([0.8, 1.0, 1.2, 1.5, 1.75, 2.0], id: \.self) { r in
-                Button { player.setPlaybackRate(r) } label: {
-                    if player.playbackRate == r { Label(rateLabel(r), systemImage: "checkmark") }
-                    else { Text(rateLabel(r)) }
-                }
-            }
-        } label: {
-            Text(rateLabel(player.playbackRate))
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(player.playbackRate != 1.0 ? Theme.accent : .white)
-                // Fixed width so changing the rate (e.g. 1× → 1.2×) doesn't widen
-                // the control and shove the play button sideways.
-                .frame(width: 52)
         }
     }
 

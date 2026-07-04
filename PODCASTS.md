@@ -1,23 +1,25 @@
 # Podcasts — feature guide
 
-**Status: DISABLED (2026-06-22).** The podcast UI is hidden in both the macOS
-and iOS apps. The code is fully intact and gated behind one flag, so re-enabling
-is a one-line change plus a rebuild.
+**Status: ENABLED (2026-07-03)** with the Apple-Podcasts-style experience:
 
-## How to re-enable
+- **Dedicated podcast Now Playing screen on iOS** (`PodcastNowPlayingScreen`,
+  chosen by `NowPlayingSwitcher` when `current.isEpisode`): artwork or the
+  episode's **video** (toggle button re-parents the shared web view), release
+  date, episode title + show, scrubber, ±15/30s skip, **speed 0.8–2×**, sleep,
+  AirPlay, **mark-as-played**. Splitting the screens killed the old bug where
+  the song/podcast UIs mixed and a speed tap could speed up songs
+  (`setPlaybackRate` additionally only applies live to episodes).
+- **Resume where you left off** — `EncoreCore.EpisodeProgress` (UserDefaults,
+  unit-tested) saves the position every ~5s and on pause/track-change; both
+  engines resume at −5s of the saved spot (skips: <20s in, or nearly done).
+  Finishing an episode auto-marks it played and clears the resume point.
+- **Progress bars on episode rows** (iOS show pages): partially played
+  episodes show a small bar + "N min left", like Apple Podcasts.
 
-1. In [`Encore/Sources/EncoreCore/PodcastFeature.swift`](Encore/Sources/EncoreCore/PodcastFeature.swift),
-   set:
-   ```swift
-   public static var enabled = true
-   ```
-2. Rebuild both apps:
-   - macOS: `Encore/scripts/build_app.sh`
-   - iOS device: `Encore/scripts/deploy_ios.sh` (one command; details in
-     HANDOFF.md §7).
-3. That's it. Everything below switches back on.
-
-To disable again, set the flag back to `false` and rebuild.
+To disable: set `PodcastFeature.enabled = false` in
+[`Encore/Sources/EncoreCore/PodcastFeature.swift`](Encore/Sources/EncoreCore/PodcastFeature.swift)
+and rebuild (macOS: `Encore/scripts/build_app.sh`; iOS:
+`Encore/scripts/deploy_ios.sh`).
 
 ## What the flag controls (gated touch points)
 

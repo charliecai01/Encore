@@ -46,7 +46,7 @@ struct MobileRoot: View {
         .tint(Theme.accent)
         .sheet(isPresented: $auth.showLogin) { LoginSheet().environmentObject(auth) }
         .fullScreenCover(isPresented: $player.showNowPlaying) {
-            NowPlayingScreen()
+            NowPlayingSwitcher()
                 .environmentObject(player)
                 .environmentObject(nav)
         }
@@ -89,6 +89,8 @@ struct PlayerWebHost: UIViewRepresentable {
         let web = PlayerEngine.shared.webView
         web.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
         container.addSubview(web)
+        // The podcast video view borrows the web view; it parks it back here.
+        PlayerEngine.shared.parkContainer = container
         return container
     }
     func updateUIView(_ uiView: UIView, context: Context) {}

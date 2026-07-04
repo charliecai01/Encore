@@ -75,6 +75,11 @@ final class PlayerEngine: NSObject, ObservableObject {
     @Published var playbackRate: Double = 1.0 {
         didSet { UserDefaults.standard.set(playbackRate, forKey: "playbackRate") }
     }
+    /// Podcast video: shows the web player's video full-bleed in the podcast
+    /// Now Playing screen (the site hides everything else via injected CSS).
+    @Published var videoMode = false {
+        didSet { js("window.__encore && __encore.videoMode(\(videoMode ? "true" : "false"))") }
+    }
 
     let webView: WKWebView
     let clock = PlayerClock.shared
@@ -89,6 +94,10 @@ final class PlayerEngine: NSObject, ObservableObject {
     private var playerReady = false
     private var unshuffledQueue: [Track]?
     private var lyricsRequestId = 0
+    private var lastEpisodeSaveAt = Date.distantPast
+    /// The hidden 1×1 container in MobileRoot the web view normally lives in;
+    /// the podcast video view borrows the web view and parks it back here.
+    weak var parkContainer: UIView?
     /// The in-flight autoplay radio fetch, shared so a tail prefetch and the
     /// end-of-queue advance never race — advance awaits the same fetch.
     private var radioFetchTask: Task<Bool, Never>?
@@ -441,6 +450,16 @@ final class PlayerEngine: NSObject, ObservableObject {
         seek(to: fraction * duration)
     }
 
+    /// Return the shared web view to its hidden 1×1 park in MobileRoot after
+    /// the podcast video view borrowed it. Keeping it parented keeps WebKit
+    /// from throttling audio.
+    func parkWebView() {
+        guard let park = parkContainer, webView.superview !== park else { return }
+        webView.removeFromSuperview()
+        webView.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
+        park.addSubview(webView)
+    }
+
     /// Skip forward/back by a number of seconds (podcast controls).
     func skip(_ delta: Double) {
         let target = currentTime + delta
@@ -450,7 +469,12 @@ final class PlayerEngine: NSObject, ObservableObject {
 
     func setPlaybackRate(_ rate: Double) {
         playbackRate = rate
-        js("window.__encore && __encore.rate(\(rate))")
+        // Rate is a podcast concept — apply live only while an episode plays.
+        // Songs always run at 1× (engageJS and the state handler enforce it);
+        // this guard is what keeps a speed tap from ever touching a song.
+        if current?.isEpisode == true {
+            js("window.__encore && __encore.rate(\(rate))")
+        }
     }
 
     func toggleShuffle() {
@@ -557,6 +581,18 @@ final class PlayerEngine: NSObject, ObservableObject {
         loadedOnce = true
         userWantsPlayback = true // loading a track is an intent to play
         stopKeepAlive() // a real track is about to play
+        // Leaving an episode midway: remember the spot so it resumes later.
+        if let prev = current, prev.isEpisode, prev.videoId != track.videoId {
+            EpisodeProgress.save(prev.videoId, position: currentTime, duration: duration)
+        }
+        // Episodes resume where you left off (Apple-Podcasts style).
+        var startAt = startAt
+        if startAt == 0, track.isEpisode,
+           let resume = EpisodeProgress.resumePosition(for: track.videoId) {
+            startAt = resume
+        }
+        // Video mode is a podcast-screen thing; never carry it onto songs.
+        if videoMode, !track.isEpisode { videoMode = false }
         // Carry the resume offset so the ready/state handlers can apply it too.
         restoreSeekTime = startAt > 0 ? startAt : nil
         sleepStopActive = false
@@ -869,6 +905,9 @@ final class PlayerEngine: NSObject, ObservableObject {
                 }
             case 2:
                 isPlaying = false
+                if let track = current, track.isEpisode {
+                    EpisodeProgress.save(track.videoId, position: currentTime, duration: duration)
+                }
             case 0:
                 isPlaying = false
                 // Only advance on a *trustworthy* end-of-song. The page can briefly
@@ -878,6 +917,11 @@ final class PlayerEngine: NSObject, ObservableObject {
                 let endedVid = body["vid"] as? String
                 let confirmedEnd = !(endedVid ?? "").isEmpty && endedVid == activePlaybackId
                 let nearEnd = duration > 0 && currentTime >= duration - 6
+                if confirmedEnd || nearEnd, let track = current, track.isEpisode {
+                    // Finished an episode: mark played, drop the resume point.
+                    PlayedEpisodes.set(track.videoId, played: true)
+                    EpisodeProgress.clear(track.videoId)
+                }
                 if (confirmedEnd || nearEnd), !sleepTimerConsumedSong() {
                     advance()
                 }
@@ -925,6 +969,13 @@ final class PlayerEngine: NSObject, ObservableObject {
             }
             currentTime = t
             if let d = body["d"] as? Double, d > 0 { duration = d }
+            // Remember episode positions every few seconds so force-quits and
+            // crashes lose at most a moment of the resume point.
+            if isPlaying, let track = current, track.isEpisode,
+               Date().timeIntervalSince(lastEpisodeSaveAt) > 5 {
+                lastEpisodeSaveAt = Date()
+                EpisodeProgress.save(track.videoId, position: t, duration: duration)
+            }
             // Count a personal play once the song has played past a threshold
             // (~30s, or 90% for short songs), once per load.
             if isPlaying, !playCountRecorded, let track = current, !track.isEpisode {
@@ -1253,6 +1304,7 @@ final class PlayerEngine: NSObject, ObservableObject {
       // race against the site's update on each track change.
       var __encoreMeta = null;
       var __encoreMetaTimer = null;
+      var videoModeStyle = null;
       function applyEncoreMeta() {
         if (!__encoreMeta || !('mediaSession' in navigator)) return;
         try {
@@ -1344,7 +1396,20 @@ final class PlayerEngine: NSObject, ObservableObject {
           var p = mp();
           if (p) { p.setVolume(v); if (v > 0 && p.isMuted && p.isMuted()) p.unMute(); }
         },
-        setMeta: function (m) { __encoreMeta = m; window.__encoreOwnsMeta = true; applyEncoreMeta(); reassertEncoreMeta(); }
+        setMeta: function (m) { __encoreMeta = m; window.__encoreOwnsMeta = true; applyEncoreMeta(); reassertEncoreMeta(); },
+        videoMode: function (on) {
+          if (!videoModeStyle) {
+            videoModeStyle = document.createElement('style');
+            videoModeStyle.textContent =
+              'body.encore-video ytmusic-app * { visibility: hidden !important; }' +
+              'body.encore-video video { visibility: visible !important; position: fixed !important;' +
+              ' top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important;' +
+              ' object-fit: contain; z-index: 99999; background: #000 !important; }' +
+              'body.encore-video { background: #000 !important; }';
+            document.head.appendChild(videoModeStyle);
+          }
+          document.body.classList.toggle('encore-video', !!on);
+        }
       };
 
       // Event-driven state reporting: polling alone misses the brief "ended"

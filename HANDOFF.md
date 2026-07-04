@@ -46,8 +46,9 @@ picking up the work without the original chat history.
     │   │   ├── Discovery.swift                ← Discover-shelf curation (pure, unit-tested)
     │   │   ├── Log.swift                      ← os.Logger facade, subsystem dev.charlie.encore (DEBUG also → stderr)
     │   │   ├── PlayCounts.swift, PlayCountsFeature.swift ← personal play counts + UI flag (ON/per-device — see BUGS.md)
-    │   │   ├── PodcastFeature.swift           ← podcast UI flag (OFF — see PODCASTS.md)
-    │   │   └── PlayedEpisodes.swift           ← episode played-state store (UserDefaults)
+    │   │   ├── PodcastFeature.swift           ← podcast UI flag (ON since 2026-07-03 — see PODCASTS.md)
+    │   │   ├── PlayedEpisodes.swift           ← episode played-state store (UserDefaults)
+    │   │   └── EpisodeProgress.swift          ← episode resume positions (UserDefaults, unit-tested)
     │   └── encore-smoke/                      ← CLI: `swift run encore-smoke` hits the LIVE API unauthenticated
     ├── macOS/                                 ← macOS SwiftUI app (AppKit) — Package target `Encore`, path "macOS"
     ├── Tests/EncoreCoreTests/                 ← XCTest for the shared core (run: `swift test`) — covers BOTH apps' logic; incl. live-API checks that auto-skip offline
@@ -59,7 +60,8 @@ picking up the work without the original chat history.
             ├── MobileServices.swift           ← Theme, DiskCache, PageCache, AuthManager (auto-sign-in), LibraryStore, Nav, Login
             ├── MobileRoot.swift               ← TabView (Home/Search/Library), MiniPlayer, ArtworkView, route destinations
             ├── MobileScreens.swift            ← Home/Search/Library/Collection/Artist/Browse/PodcastScreen + sort (delegates to LibrarySort)
-            ├── NowPlayingScreen.swift         ← full-screen now playing (Song/Lyrics/Queue); podcast transport for episodes
+            ├── NowPlayingScreen.swift         ← full-screen now playing for SONGS (Song/Lyrics/Queue)
+            ├── PodcastNowPlaying.swift        ← Apple-Podcasts-style episode player + NowPlayingSwitcher + video host
             ├── DevCredentials.swift           ← OPTIONAL dev auto-sign-in cookie; committed EMPTY, real value skip-worktree'd (see §7)
             ├── CarPlay.swift                  ← CarPlaySceneDelegate (currently disabled in Info.plist — see §7)
             └── Assets.xcassets/AppIcon.appiconset/  ← iOS app icon
@@ -218,6 +220,16 @@ with the Co-Authored-By: Claude line.
   manager that intercept menu-bar/edge clicks. Prefer `xcrun simctl io booted
   screenshot` over GUI screenshots, and `simctl`/Bash over clicking when
   possible. The user has quit those utilities before when asked.
+- **Song vs podcast Now Playing are SEPARATE screens on iOS** — the
+  `fullScreenCover` presents `NowPlayingSwitcher`, which picks
+  `PodcastNowPlayingScreen` for episodes and `NowPlayingScreen` for songs.
+  Don't re-merge them: the old single screen mixed the two transports and a
+  podcast speed tap could speed up songs. Defense in depth:
+  `setPlaybackRate` only js-applies when `current.isEpisode`, engageJS forces
+  1× for songs, and `videoMode` is auto-cleared when a non-episode loads.
+  Podcast video borrows the shared WKWebView (`PodcastVideoHost` ↔
+  `parkWebView()` back to the 1×1 park in MobileRoot) — never leave the web
+  view detached or WebKit throttles audio.
 - **iOS lock-screen metadata is the PAGE's MediaSession, not our
   MPNowPlayingInfoCenter** — the WKWebView owns Now Playing on iOS.
   `__encore.setMeta` pushes our track's title/artist/art into the page, and
@@ -309,9 +321,13 @@ Both platforms unless stated:
 - Album / playlist / artist pages; artist page shows "In your playlists & likes".
   Album pages show track numbers instead of per-row artwork (identical on an
   album) — BOTH platforms (`showsArtwork: !isAlbum`).
-- **Podcasts — currently DISABLED behind `PodcastFeature.enabled = false`
-  (2026-06-22); see PODCASTS.md for the one-line re-enable + retest checklist.**
-  The feature itself: Apple-Podcasts-style pages on BOTH platforms (iOS
+- **Podcasts — ENABLED (2026-07-03), Apple-Podcasts-style; see PODCASTS.md.**
+  iOS has a DEDICATED episode Now Playing screen (`PodcastNowPlayingScreen`
+  via `NowPlayingSwitcher`): date/title/show, ±15/30s, speed 0.8–2×, video
+  toggle (re-parents the shared web view), mark-played, AirPlay. Resume via
+  `EpisodeProgress` on both platforms; episode rows show progress bars +
+  "N min left"; finishing auto-marks played. Show pages: Apple-Podcasts-style
+  pages on BOTH platforms (iOS
   `PodcastScreen`, macOS `PodcastView`) — header, expandable description,
   Recent/Oldest sort, episode rows with date + description + duration + circular
   play. Episodes carry `isEpisode/dateText/details`. **Mark-as-played** per
