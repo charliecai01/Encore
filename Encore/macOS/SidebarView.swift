@@ -78,6 +78,15 @@ struct SidebarView: View {
                                     nav.go(.playlist(id))
                                 }
                             }
+                            // Drag a row onto another to reorder; the custom
+                            // order persists locally across launches.
+                            .draggable(playlist.playlistId ?? playlist.id)
+                            .dropDestination(for: String.self) { dropped, _ in
+                                guard let dragged = dropped.first else { return false }
+                                library.movePlaylist(dragged,
+                                                     before: playlist.playlistId ?? playlist.id)
+                                return true
+                            }
                         }
                     }
                 }

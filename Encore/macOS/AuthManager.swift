@@ -289,10 +289,46 @@ final class LibraryStore: ObservableObject {
 
     private init() {}
 
+    // MARK: - Custom sidebar playlist order (local-only; YT Music has no
+    // server-side list order). Persisted as an id array; playlists missing
+    // from it (newly created) stay at the top in server order.
+
+    private static let orderKey = "sidebarPlaylistOrder"
+
+    private func cardId(_ c: CardItem) -> String { c.playlistId ?? c.id }
+
+    func applyCustomOrder(_ cards: [CardItem]) -> [CardItem] {
+        let saved = UserDefaults.standard.stringArray(forKey: Self.orderKey) ?? []
+        guard !saved.isEmpty else { return cards }
+        var byId: [String: CardItem] = [:]
+        for c in cards { byId[cardId(c)] = c }
+        var ordered: [CardItem] = []
+        for id in saved {
+            if let c = byId.removeValue(forKey: id) { ordered.append(c) }
+        }
+        let newOnes = cards.filter { byId[cardId($0)] != nil }
+        return newOnes + ordered
+    }
+
+    /// Drag-to-reorder: move `draggedId` so it sits before `targetId`, and
+    /// persist the full resulting order.
+    func movePlaylist(_ draggedId: String, before targetId: String) {
+        guard draggedId != targetId else { return }
+        var ids = playlists.map(cardId)
+        guard let from = ids.firstIndex(of: draggedId) else { return }
+        ids.remove(at: from)
+        let to = ids.firstIndex(of: targetId) ?? ids.count
+        ids.insert(draggedId, at: to)
+        UserDefaults.standard.set(ids, forKey: Self.orderKey)
+        var byId: [String: CardItem] = [:]
+        for c in playlists { byId[cardId(c)] = c }
+        playlists = ids.compactMap { byId[$0] }
+    }
+
     func loadIfNeeded() async {
         guard !loaded, AuthManager.shared.isSignedIn else { return }
         loaded = true
-        playlists = (try? await YTM.shared.libraryPlaylists()) ?? []
+        playlists = applyCustomOrder((try? await YTM.shared.libraryPlaylists()) ?? [])
         if PodcastFeature.enabled {
             podcastShows = ((try? await YTM.shared.libraryPodcasts()) ?? [])
                 .filter { $0.kind == .podcast }

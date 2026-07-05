@@ -351,7 +351,8 @@ struct LibraryView: View {
         do {
             switch tab {
             case .playlists:
-                cards = try await YTM.shared.libraryPlaylists()
+                // Same local custom order as the sidebar.
+                cards = LibraryStore.shared.applyCustomOrder(try await YTM.shared.libraryPlaylists())
             case .songs:
                 tracks = await LibraryStore.shared.allKnownTracks()
             case .albums:
