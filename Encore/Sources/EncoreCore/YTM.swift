@@ -197,13 +197,24 @@ public final class YTM: @unchecked Sendable {
 
     // MARK: - Library
 
+    /// Episode auto-playlists hidden from every playlist list: "New Episodes"
+    /// (RDPN) and "Episodes for Later" (SE). Episodes surface via the Home
+    /// "New Podcast Episodes" shelf and the show pages instead — these two
+    /// only cluttered the sidebar/home/library lists.
+    private static let hiddenAutoPlaylists: Set<String> = ["RDPN", "SE"]
+
     public func libraryPlaylists() async throws -> [CardItem] {
         let r = try await net.post("browse", body: ["browseId": "FEmusic_liked_playlists"])
         var cards = r.findAll("musicTwoRowItemRenderer").compactMap { P.card(fromMTRIR: $0) }
         for page in await continuationPages(after: r, maxPages: 3) {
             cards.append(contentsOf: P.continuationCards(from: page))
         }
-        return cards
+        return cards.filter { card in
+            let pid = card.playlistId
+                ?? card.browseId.map { $0.hasPrefix("VL") ? String($0.dropFirst(2)) : $0 }
+                ?? card.id
+            return !Self.hiddenAutoPlaylists.contains(pid)
+        }
     }
 
     public func librarySongs() async throws -> [Track] {

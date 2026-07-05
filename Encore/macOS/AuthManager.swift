@@ -278,6 +278,9 @@ final class LibraryStore: ObservableObject {
     static let shared = LibraryStore()
 
     @Published var playlists: [CardItem] = []
+    /// Subscribed podcast shows, pinned atop the sidebar playlists (TheMove
+    /// is the only feed in use — one click beats Library → Podcasts).
+    @Published var podcastShows: [CardItem] = []
     private var loaded = false
     private var songsCache: [Track]?
     private var songsTask: Task<[Track], Never>?
@@ -290,6 +293,10 @@ final class LibraryStore: ObservableObject {
         guard !loaded, AuthManager.shared.isSignedIn else { return }
         loaded = true
         playlists = (try? await YTM.shared.libraryPlaylists()) ?? []
+        if PodcastFeature.enabled {
+            podcastShows = ((try? await YTM.shared.libraryPodcasts()) ?? [])
+                .filter { $0.kind == .podcast }
+        }
         // Warm the liked library so hearts are correct app-wide, not only
         // after visiting a library page.
         Task { _ = await self.songs() }

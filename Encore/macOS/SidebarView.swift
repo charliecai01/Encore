@@ -59,6 +59,18 @@ struct SidebarView: View {
                             .padding(.top, 14)
                             .padding(.trailing, 6)
                         }
+                        // Pinned podcast shows (TheMove) — the only feed in
+                        // use; one click beats Library → Podcasts.
+                        if PodcastFeature.enabled {
+                            ForEach(library.podcastShows.prefix(3)) { show in
+                                SidebarPlaylistItem(playlist: show,
+                                                    selected: isCurrentShow(show)) {
+                                    if let id = show.browseId {
+                                        nav.go(.podcastShow(id))
+                                    }
+                                }
+                            }
+                        }
                         ForEach(library.playlists.prefix(20)) { playlist in
                             SidebarPlaylistItem(playlist: playlist,
                                                 selected: isCurrentPlaylist(playlist)) {
@@ -101,6 +113,13 @@ struct SidebarView: View {
 
     private func isCurrentPlaylist(_ playlist: CardItem) -> Bool {
         if case .playlist(let id) = nav.current, id == playlist.playlistId {
+            return true
+        }
+        return false
+    }
+
+    private func isCurrentShow(_ show: CardItem) -> Bool {
+        if case .podcastShow(let id) = nav.current, id == show.browseId {
             return true
         }
         return false

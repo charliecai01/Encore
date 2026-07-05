@@ -432,7 +432,14 @@ struct HomeScreen: View {
         // Load the user's saved playlists directly so the grid is independent
         // of shared-store timing.
         if auth.isSignedIn {
-            let freshPlaylists = (try? await YTM.shared.libraryPlaylists()) ?? []
+            var freshPlaylists = (try? await YTM.shared.libraryPlaylists()) ?? []
+            // Pin subscribed shows (TheMove) ahead of the playlists — the
+            // only podcast feed in use, one tap from Home.
+            if PodcastFeature.enabled {
+                let shows = ((try? await YTM.shared.libraryPodcasts()) ?? [])
+                    .filter { $0.kind == .podcast }
+                freshPlaylists = shows + freshPlaylists
+            }
             if !freshPlaylists.isEmpty {
                 playlists = freshPlaylists
                 PageCache.shared.homePlaylists = freshPlaylists
