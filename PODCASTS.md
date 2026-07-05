@@ -23,6 +23,18 @@ The **video sub-feature is DISABLED (2026-07-04)** — see the known bug below.
   `MacEpisodeRow`): partially played episodes show a small accent bar +
   "N min left" in place of the duration, like Apple Podcasts. The row list
   decodes `EpisodeProgress.all()` once per render, not per row.
+- **Background/lock-screen playback (iOS)** — episodes are VIDEO streams with
+  **no audio counterpart** (probed live 2026-07-05: `audioCounterpart` nil,
+  zero `playlistPanelVideoWrapperRenderer` pairings), and iOS suspends
+  WKWebView video on lock, which paused podcasts the moment the screen went
+  off. Fix: when a pause lands while the user still wants playback and the
+  app just resigned active (and it's NOT an explicit pause or a call/Siri
+  interruption — `userWantsPlayback` / `audioInterrupted` guards), the engine
+  nudges `play()` — WebKit resumes the element AUDIO-ONLY in the background.
+  Bounded at 6 nudges; reset on play state / foreground.
+- **Home shelf: "New Podcast Episodes"** (BOTH platforms) — the RDPN
+  "New Episodes" feed (latest episodes from subscribed shows, i.e. TheMove)
+  rendered as track rows at the top of Home, gated on `PodcastFeature.enabled`.
 
 To disable everything: set `PodcastFeature.enabled = false` in
 [`Encore/Sources/EncoreCore/PodcastFeature.swift`](Encore/Sources/EncoreCore/PodcastFeature.swift)

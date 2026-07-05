@@ -343,6 +343,9 @@ struct HomeScreen: View {
     @State private var shelves: [Shelf] = []
     @State private var playlists: [CardItem] = []
     @State private var discoverShelf: Shelf?
+    /// Latest episodes from subscribed shows (the "New Episodes" RDPN feed) —
+    /// surfaced on Home because podcasts otherwise live two taps deep.
+    @State private var podcastShelf: Shelf?
     @State private var loading = true
     @State private var editingShortcuts = false
     @State private var shortcutOrder: [String] = UserDefaults.standard.stringArray(forKey: "homeShortcutOrder") ?? []
@@ -403,6 +406,7 @@ struct HomeScreen: View {
                     PlaylistShelf(title: "Your Playlists", playlists: playlists)
                 }
                 if loading { ProgressView().frame(maxWidth: .infinity).padding(.top, 60) }
+                if let podcastShelf { ShelfRow(shelf: podcastShelf) }
                 if let discoverShelf { ShelfRow(shelf: discoverShelf) }
                 ForEach(shelves) { ShelfRow(shelf: $0) }
                 Color.clear.frame(height: 80)
@@ -432,6 +436,15 @@ struct HomeScreen: View {
             if !freshPlaylists.isEmpty {
                 playlists = freshPlaylists
                 PageCache.shared.homePlaylists = freshPlaylists
+            }
+            // Latest episodes from subscribed shows ("New Episodes" / RDPN).
+            if PodcastFeature.enabled {
+                let episodes = ((try? await YTM.shared.playlist(id: "RDPN"))?.tracks ?? [])
+                    .filter(\.isEpisode)
+                if !episodes.isEmpty {
+                    podcastShelf = Shelf(title: "New Podcast Episodes",
+                                         items: episodes.prefix(8).map { .track($0) })
+                }
             }
             await library.loadIfNeeded()
             let discover = await library.discover()

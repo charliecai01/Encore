@@ -190,6 +190,17 @@ struct ContentRouter: View {
                         shelves.insert(Shelf(title: "Discover · Fresh for you",
                                              items: discover.map { .card($0.asSongCard) }), at: 0)
                     }
+                    // Latest episodes from subscribed shows ("New Episodes" /
+                    // RDPN auto-playlist) — podcasts otherwise live two clicks
+                    // deep. Inserted last so it lands at the very top.
+                    if PodcastFeature.enabled {
+                        let episodes = ((try? await YTM.shared.playlist(id: "RDPN"))?.tracks ?? [])
+                            .filter(\.isEpisode)
+                        if !episodes.isEmpty {
+                            shelves.insert(Shelf(title: "New Podcast Episodes",
+                                                 items: episodes.prefix(8).map { .track($0) }), at: 0)
+                        }
+                    }
                     return shelves
                 }, showsSignInPrompt: true, cacheKey: "home")
                     .id("home")

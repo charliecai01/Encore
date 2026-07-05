@@ -95,6 +95,12 @@ final class PlayerEngine: NSObject, ObservableObject {
     private var unshuffledQueue: [Track]?
     private var lyricsRequestId = 0
     private var lastEpisodeSaveAt = Date.distantPast
+    /// True between interruption .began and .ended — never fight the system
+    /// for audio during a call/Siri.
+    private var audioInterrupted = false
+    /// Bounded retries for re-playing an episode that iOS paused on lock.
+    private var backgroundResumeNudges = 0
+    private var lastResignAt = Date.distantPast
     /// The hidden 1×1 container in MobileRoot the web view normally lives in;
     /// the podcast video view borrows the web view and parks it back here.
     weak var parkContainer: UIView?
@@ -904,6 +910,7 @@ final class PlayerEngine: NSObject, ObservableObject {
                 }
                 isPlaying = true
                 stopKeepAlive() // real audio is playing now
+                backgroundResumeNudges = 0 // lock-pause recovery succeeded/reset
                 lastProgressAt = Date() // (re)started — reset the stall watchdog
                 // Playback speed applies to podcast episodes only. Songs always
                 // play at 1× — otherwise the web player carries an episode's rate
@@ -918,6 +925,26 @@ final class PlayerEngine: NSObject, ObservableObject {
                 isPlaying = false
                 if let track = current, track.isEpisode {
                     EpisodeProgress.save(track.videoId, position: currentTime, duration: duration)
+                }
+                // iOS suspends WKWebView VIDEO the moment the screen locks, and
+                // podcast episodes are video streams with NO audio counterpart
+                // (probed live 2026-07-05) — so locking/backgrounding pauses
+                // them. If the user still wants playback and this isn't an
+                // explicit pause or a call/Siri interruption, kick the element
+                // back into play: WebKit resumes it AUDIO-ONLY in background.
+                if let track = current, track.isEpisode,
+                   userWantsPlayback, !sleepStopActive, !audioInterrupted,
+                   UIApplication.shared.applicationState != .active
+                       || Date().timeIntervalSince(lastResignAt) < 3,
+                   backgroundResumeNudges < 6 {
+                    backgroundResumeNudges += 1
+                    Log.player.notice("episode paused in background — nudge #\(self.backgroundResumeNudges)")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                        guard let self, self.userWantsPlayback, !self.audioInterrupted,
+                              self.current?.isEpisode == true, !self.isPlaying else { return }
+                        try? AVAudioSession.sharedInstance().setActive(true)
+                        self.js("window.__encore && __encore.play()")
+                    }
                 }
             case 0:
                 isPlaying = false
@@ -1039,7 +1066,19 @@ final class PlayerEngine: NSObject, ObservableObject {
         NotificationCenter.default.addObserver(
             forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil
         ) { [weak self] _ in
-            DispatchQueue.main.async { self?.resumeIfIntended() }
+            DispatchQueue.main.async {
+                self?.audioInterrupted = false
+                self?.backgroundResumeNudges = 0
+                self?.resumeIfIntended()
+            }
+        }
+        // Timestamp backgrounding/locking so the state-2 handler can tell a
+        // lock-induced episode pause from a user pause even if the pause
+        // event races the applicationState transition.
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            DispatchQueue.main.async { self?.lastResignAt = Date() }
         }
     }
 
@@ -1049,6 +1088,7 @@ final class PlayerEngine: NSObject, ObservableObject {
     }
 
     private func handleInterruption(began: Bool, shouldResume: Bool) {
+        audioInterrupted = began
         if began {
             // The system has paused our audio; mirror it in our state but DON'T
             // clear the playback intent — we still want to resume afterward.
