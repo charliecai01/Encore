@@ -314,7 +314,22 @@ struct ShelfRow: View {
                         if case .card(let card) = item {
                             CardCircleOrSquare(item: card).frame(width: 118)
                         } else if case .track(let track) = item {
-                            Button { player.playRadio(from: track) } label: {
+                            Button {
+                                if track.isEpisode {
+                                    // Episodes: play directly with the shelf as
+                                    // the queue — an RDAMVM "episode radio" is
+                                    // junk that errors through items (songs
+                                    // keep YT's tap-starts-radio behavior).
+                                    let episodes = shelf.items.compactMap { item -> Track? in
+                                        if case .track(let t) = item, t.isEpisode { return t }
+                                        return nil
+                                    }
+                                    let start = episodes.firstIndex { $0.videoId == track.videoId } ?? 0
+                                    player.playCollection(episodes, startAt: start)
+                                } else {
+                                    player.playRadio(from: track)
+                                }
+                            } label: {
                                 VStack(alignment: .leading, spacing: 6) {
                                     ArtworkView(url: Artwork.upscale(track.thumbnailURL, to: 300), corner: 8)
                                         .frame(width: 118, height: 118)

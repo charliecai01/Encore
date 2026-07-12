@@ -278,6 +278,14 @@ final class PlayerEngine: NSObject, ObservableObject {
     }
 
     func playRadio(from track: Track) {
+        // Episode "radio" (RDAMVM<episodeId>) is not a real thing on YT Music —
+        // the returned queue is junk whose items die after a few seconds,
+        // cascading ended→advance so fast that pause can't stick. Just play
+        // the episode.
+        if track.isEpisode {
+            playCollection([track], startAt: 0)
+            return
+        }
         unshuffledQueue = nil
         shuffleOn = false
         playlistContextId = nil
@@ -795,7 +803,9 @@ final class PlayerEngine: NSObject, ObservableObject {
     /// cursor or it returns nothing new, seeds a fresh radio from the last track.
     /// Returns whether any new tracks were appended.
     private func extendQueueWithRadio() async -> Bool {
-        guard let last = queue.last else { return false }
+        // Never seed a radio from an episode (junk queue); episode queues
+        // simply end, like Apple Podcasts.
+        guard let last = queue.last, !last.isEpisode else { return false }
         func merge(_ result: QueueResult?) -> Bool {
             // Re-check the toggle at append time — it may have been switched
             // off while the fetch was in flight.
