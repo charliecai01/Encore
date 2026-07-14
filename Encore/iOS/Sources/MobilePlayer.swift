@@ -95,6 +95,10 @@ final class PlayerEngine: NSObject, ObservableObject {
     private var unshuffledQueue: [Track]?
     private var lyricsRequestId = 0
     private var lastEpisodeSaveAt = Date.distantPast
+    /// Unplayable-track handling: skip once per load on a player error, and
+    /// give up pulling the site back after a few failed re-engages.
+    private var unplayableSkipped = false
+    private var failedEngages = 0
     /// True between interruption .began and .ended — never fight the system
     /// for audio during a call/Siri.
     private var audioInterrupted = false
@@ -628,6 +632,8 @@ final class PlayerEngine: NSObject, ObservableObject {
         lastProgressT = startAt
         lastProgressAt = Date()
         playCountRecorded = false
+        unplayableSkipped = false
+        failedEngages = 0
         persistSnapshot()
         try? AVAudioSession.sharedInstance().setActive(true)
         if playerReady {
@@ -908,6 +914,17 @@ final class PlayerEngine: NSObject, ObservableObject {
             // Fired ~2.5s after videoMode(true): videoWidth 0 means the stream
             // has no decoded video track; inline=0 means playsinline is missing.
             Log.player.notice("videoDebug: videos=\(body["n"] as? Int ?? -1) size=\(body["w"] as? Int ?? -1)x\(body["h"] as? Int ?? -1) readyState=\(body["rs"] as? Int ?? -1) paused=\(body["paused"] as? Int ?? -1) inline=\(body["inline"] as? Int ?? -1) desktopDOM=\(body["app"] as? Int ?? -1)")
+        case "error":
+            // The loaded video is unplayable (deleted/region-blocked) — skip it
+            // instead of reload-looping while the site's queue bleeds through.
+            let errVid = body["vid"] as? String
+            Log.player.notice("player error code=\(body["code"] as? Int ?? -1) vid=\(errVid ?? "nil") current=\(self.current?.videoId ?? "nil")")
+            if let track = current, !unplayableSkipped,
+               errVid == nil || errVid == activePlaybackId || errVid == track.videoId {
+                unplayableSkipped = true
+                showToast("Skipped unavailable: \(track.title)")
+                advance(manual: true)
+            }
         case "state":
             let state = body["data"] as? Int ?? -1
             Log.player.notice("state=\(state) vid=\(body["vid"] as? String ?? "nil") current=\(self.current?.videoId ?? "nil") suppress=\(self.suppressSiteAutoplay)")
@@ -982,6 +999,17 @@ final class PlayerEngine: NSObject, ObservableObject {
                 mismatchTicks += 1
                 if mismatchTicks > 8, !suppressSiteAutoplay, let playId = activePlaybackId {
                     mismatchTicks = 0
+                    // A track that never takes after repeated pulls is
+                    // unplayable — skip it rather than yank forever (the user
+                    // hears fragments of the site's own queue otherwise).
+                    failedEngages += 1
+                    if failedEngages >= 3 {
+                        failedEngages = 0
+                        Log.player.notice("won't engage after repeated pulls — skipping '\(self.current?.title ?? "")'")
+                        showToast("Skipped unavailable: \(current?.title ?? "song")")
+                        advance(manual: true)
+                        return
+                    }
                     lastLoadAt = Date()
                     // Re-sync at our tracked position, not 0, so a glitch doesn't restart the song.
                     ensureJS(playId, startAt: currentTime)
@@ -989,6 +1017,7 @@ final class PlayerEngine: NSObject, ObservableObject {
                 return
             }
             mismatchTicks = 0
+            if reportedMatchesCurrent(body) { failedEngages = 0 }
             let t = body["t"] as? Double ?? 0
             // Stall watchdog: on weak cellular the stream can stop buffering and
             // playback freezes (position stops advancing) with no ended/pause
@@ -1521,6 +1550,13 @@ final class PlayerEngine: NSObject, ObservableObject {
         p.addEventListener('onStateChange', function (state) {
           var data = p.getVideoData ? p.getVideoData() : null;
           send({ event: 'state', data: state, vid: data ? data.video_id : null });
+        });
+        // Unplayable videos (deleted/region-blocked) fire onError and never
+        // reach a playing state — report so the engine can SKIP instead of
+        // reload-looping while the site's own queue bleeds through.
+        p.addEventListener('onError', function (code) {
+          var data = p.getVideoData ? p.getVideoData() : null;
+          send({ event: 'error', code: code, vid: data ? data.video_id : null });
         });
       }
 
