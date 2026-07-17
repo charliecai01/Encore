@@ -10,32 +10,36 @@ struct MobileRoot: View {
     @StateObject private var library = LibraryStore.shared
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            TabView(selection: $nav.selectedTab) {
-                NavigationStack(path: $nav.homePath) {
-                    HomeScreen().routeDestinations()
-                }
-                .tabItem { Label("Home", systemImage: "house.fill") }
-                .tag(0)
-
-                NavigationStack(path: $nav.searchPath) {
-                    SearchScreen().routeDestinations()
-                }
-                .tabItem { Label("Search", systemImage: "magnifyingglass") }
-                .tag(1)
-
-                NavigationStack(path: $nav.libraryPath) {
-                    LibraryScreen().routeDestinations()
-                }
-                .tabItem { Label("Library", systemImage: "square.stack.fill") }
-                .tag(2)
+        // The system tab bar is hidden — a slim custom bar (CompactTabBar)
+        // keeps the bottom chrome short so the mini player sits low. Both are
+        // a bottom safeAreaInset, so screen content avoids them automatically.
+        TabView(selection: $nav.selectedTab) {
+            NavigationStack(path: $nav.homePath) {
+                HomeScreen().routeDestinations()
             }
-            .tint(Theme.accent)
+            .toolbar(.hidden, for: .tabBar)
+            .tag(0)
 
-            if player.current != nil {
-                MiniPlayer()
-                    .padding(.horizontal, 8)
-                    .padding(.bottom, 49) // sit just above the tab bar
+            NavigationStack(path: $nav.searchPath) {
+                SearchScreen().routeDestinations()
+            }
+            .toolbar(.hidden, for: .tabBar)
+            .tag(1)
+
+            NavigationStack(path: $nav.libraryPath) {
+                LibraryScreen().routeDestinations()
+            }
+            .toolbar(.hidden, for: .tabBar)
+            .tag(2)
+        }
+        .tint(Theme.accent)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 5) {
+                if player.current != nil {
+                    MiniPlayer()
+                        .padding(.horizontal, 8)
+                }
+                CompactTabBar()
             }
         }
         .environmentObject(player)
@@ -96,6 +100,60 @@ struct PlayerWebHost: UIViewRepresentable {
     func updateUIView(_ uiView: UIView, context: Context) {}
 }
 
+// MARK: - Compact tab bar
+
+/// Slimmer replacement for the system tab bar (~42pt of chrome instead of
+/// ~49 + margins) so the mini player rides lower. Re-tapping the active tab
+/// pops its navigation stack to the root, like the system bar.
+struct CompactTabBar: View {
+    @EnvironmentObject var nav: Nav
+
+    private let tabs: [(icon: String, label: String, tag: Int)] = [
+        ("house.fill", "Home", 0),
+        ("magnifyingglass", "Search", 1),
+        ("square.stack.fill", "Library", 2),
+    ]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(tabs, id: \.tag) { tab in
+                Button {
+                    select(tab.tag)
+                } label: {
+                    VStack(spacing: 2) {
+                        Image(systemName: tab.icon)
+                            .font(.system(size: 19, weight: .medium))
+                        Text(tab.label)
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .foregroundStyle(nav.selectedTab == tab.tag ? Theme.accent : Theme.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 5)
+                    .padding(.bottom, 3)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .background {
+            Rectangle().fill(.ultraThinMaterial).ignoresSafeArea(edges: .bottom)
+        }
+    }
+
+    private func select(_ tag: Int) {
+        guard nav.selectedTab == tag else {
+            nav.selectedTab = tag
+            return
+        }
+        switch tag {
+        case 0: nav.homePath = NavigationPath()
+        case 1: nav.searchPath = NavigationPath()
+        case 2: nav.libraryPath = NavigationPath()
+        default: break
+        }
+    }
+}
+
 // MARK: - Mini player
 
 struct MiniPlayer: View {
@@ -107,15 +165,15 @@ struct MiniPlayer: View {
             player.showNowPlaying = true
         } label: {
             VStack(spacing: 0) {
-                HStack(spacing: 11) {
-                    ArtworkView(url: player.current?.thumbnailURL, corner: 5)
-                        .frame(width: 46, height: 46)
-                    VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 12) {
+                    ArtworkView(url: player.current?.thumbnailURL, corner: 6)
+                        .frame(width: 52, height: 52)
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(player.current?.title ?? "")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(Theme.textPrimary).lineLimit(1)
                         Text(player.current?.artistLine ?? "")
-                            .font(.system(size: 12))
+                            .font(.system(size: 12.5))
                             .foregroundStyle(Theme.textSecondary).lineLimit(1)
                     }
                     Spacer()
@@ -124,40 +182,40 @@ struct MiniPlayer: View {
                     } label: {
                         Image(systemName: player.current.map { player.likedIds.contains($0.videoId) } == true
                               ? "heart.fill" : "heart")
-                            .font(.system(size: 18))
+                            .font(.system(size: 19))
                             .foregroundStyle(player.current.map { player.likedIds.contains($0.videoId) } == true
                                              ? Theme.accent : Theme.textSecondary)
-                            .frame(width: 40, height: 44)
+                            .frame(width: 42, height: 48)
                     }
                     .buttonStyle(.plain)
                     Button { player.togglePlay() } label: {
                         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 20, weight: .bold))
+                            .font(.system(size: 22, weight: .bold))
                             .foregroundStyle(Theme.textPrimary)
-                            .frame(width: 44, height: 44)
+                            .frame(width: 46, height: 48)
                     }
                     .buttonStyle(.plain)
                     Button { player.next() } label: {
                         Image(systemName: "forward.fill")
-                            .font(.system(size: 17))
+                            .font(.system(size: 18))
                             .foregroundStyle(Theme.textPrimary)
-                            .frame(width: 40, height: 44)
+                            .frame(width: 42, height: 48)
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        Rectangle().fill(.white.opacity(0.12)).frame(height: 2)
+                        Rectangle().fill(.white.opacity(0.12)).frame(height: 3)
                         Rectangle().fill(Theme.accent)
-                            .frame(width: max(0, geo.size.width * clock.progress), height: 2)
+                            .frame(width: max(0, geo.size.width * clock.progress), height: 3)
                     }
                 }
-                .frame(height: 2)
+                .frame(height: 3)
             }
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.stroke))
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.stroke))
         }
         .buttonStyle(.plain)
     }
