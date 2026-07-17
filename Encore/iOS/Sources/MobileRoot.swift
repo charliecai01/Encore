@@ -10,36 +10,32 @@ struct MobileRoot: View {
     @StateObject private var library = LibraryStore.shared
 
     var body: some View {
-        // The system tab bar is hidden — a slim custom bar (CompactTabBar)
-        // keeps the bottom chrome short so the mini player sits low. Both are
-        // a bottom safeAreaInset, so screen content avoids them automatically.
-        TabView(selection: $nav.selectedTab) {
-            NavigationStack(path: $nav.homePath) {
-                HomeScreen().routeDestinations()
-            }
-            .toolbar(.hidden, for: .tabBar)
-            .tag(0)
-
-            NavigationStack(path: $nav.searchPath) {
-                SearchScreen().routeDestinations()
-            }
-            .toolbar(.hidden, for: .tabBar)
-            .tag(1)
-
-            NavigationStack(path: $nav.libraryPath) {
-                LibraryScreen().routeDestinations()
-            }
-            .toolbar(.hidden, for: .tabBar)
-            .tag(2)
-        }
-        .tint(Theme.accent)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 5) {
-                if player.current != nil {
-                    MiniPlayer()
-                        .padding(.horizontal, 8)
+        ZStack(alignment: .bottom) {
+            TabView(selection: $nav.selectedTab) {
+                NavigationStack(path: $nav.homePath) {
+                    HomeScreen().routeDestinations()
                 }
-                CompactTabBar()
+                .tabItem { Label("Home", systemImage: "house.fill") }
+                .tag(0)
+
+                NavigationStack(path: $nav.searchPath) {
+                    SearchScreen().routeDestinations()
+                }
+                .tabItem { Label("Search", systemImage: "magnifyingglass") }
+                .tag(1)
+
+                NavigationStack(path: $nav.libraryPath) {
+                    LibraryScreen().routeDestinations()
+                }
+                .tabItem { Label("Library", systemImage: "square.stack.fill") }
+                .tag(2)
+            }
+            .tint(Theme.accent)
+
+            if player.current != nil {
+                MiniPlayer()
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 49) // sit just above the tab bar
             }
         }
         .environmentObject(player)
@@ -98,60 +94,6 @@ struct PlayerWebHost: UIViewRepresentable {
         return container
     }
     func updateUIView(_ uiView: UIView, context: Context) {}
-}
-
-// MARK: - Compact tab bar
-
-/// Slimmer replacement for the system tab bar (~42pt of chrome instead of
-/// ~49 + margins) so the mini player rides lower. Re-tapping the active tab
-/// pops its navigation stack to the root, like the system bar.
-struct CompactTabBar: View {
-    @EnvironmentObject var nav: Nav
-
-    private let tabs: [(icon: String, label: String, tag: Int)] = [
-        ("house.fill", "Home", 0),
-        ("magnifyingglass", "Search", 1),
-        ("square.stack.fill", "Library", 2),
-    ]
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(tabs, id: \.tag) { tab in
-                Button {
-                    select(tab.tag)
-                } label: {
-                    VStack(spacing: 2) {
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 19, weight: .medium))
-                        Text(tab.label)
-                            .font(.system(size: 10, weight: .medium))
-                    }
-                    .foregroundStyle(nav.selectedTab == tab.tag ? Theme.accent : Theme.textSecondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 5)
-                    .padding(.bottom, 3)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .background {
-            Rectangle().fill(.ultraThinMaterial).ignoresSafeArea(edges: .bottom)
-        }
-    }
-
-    private func select(_ tag: Int) {
-        guard nav.selectedTab == tag else {
-            nav.selectedTab = tag
-            return
-        }
-        switch tag {
-        case 0: nav.homePath = NavigationPath()
-        case 1: nav.searchPath = NavigationPath()
-        case 2: nav.libraryPath = NavigationPath()
-        default: break
-        }
-    }
 }
 
 // MARK: - Mini player
