@@ -46,7 +46,7 @@ picking up the work without the original chat history.
     │   │   ├── Discovery.swift                ← Discover-shelf curation (pure, unit-tested)
     │   │   ├── Log.swift                      ← os.Logger facade, subsystem dev.charlie.encore (DEBUG also → stderr)
     │   │   ├── PlayCounts.swift, PlayCountsFeature.swift ← personal play counts + UI flag (ON/per-device — see BUGS.md)
-    │   │   ├── PodcastFeature.swift           ← podcast UI flag (ON since 2026-07-03 — see PODCASTS.md)
+    │   │   ├── PodcastFeature.swift           ← podcast UI flag (OFF since 2026-07-13, Charlie's call — see PODCASTS.md)
     │   │   ├── PlayedEpisodes.swift           ← episode played-state store (UserDefaults)
     │   │   └── EpisodeProgress.swift          ← episode resume positions (UserDefaults, unit-tested)
     │   └── encore-smoke/                      ← CLI: `swift run encore-smoke` hits the LIVE API unauthenticated
@@ -329,7 +329,9 @@ Both platforms unless stated:
 - Album / playlist / artist pages; artist page shows "In your playlists & likes".
   Album pages show track numbers instead of per-row artwork (identical on an
   album) — BOTH platforms (`showsArtwork: !isAlbum`).
-- **Podcasts — ENABLED (2026-07-03), Apple-Podcasts-style; see PODCASTS.md.**
+- **Podcasts — DISABLED (2026-07-13) at Charlie's request; the feature is
+  complete and intact behind `PodcastFeature.enabled` (see PODCASTS.md, incl.
+  why the playback incidents were NOT podcast bugs).** When enabled:
   iOS has a DEDICATED episode Now Playing screen (`PodcastNowPlayingScreen`
   via `NowPlayingSwitcher`): date/title/show, ±15/30s, speed 0.8–2×,
   mark-played, AirPlay. **Video is gated OFF** (`PodcastFeature.videoEnabled

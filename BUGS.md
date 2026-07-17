@@ -1,11 +1,14 @@
 # Known bugs / disabled features
 
-## Podcasts — ENABLED (2026-07-03)
+## Podcasts — DISABLED (2026-07-13)
 
-Re-enabled with the Apple-Podcasts-style experience: dedicated iOS Now Playing
-screen (speed/skip/video/mark-played), resume-where-you-left-off, and episode
-progress bars. Still gated behind `PodcastFeature.enabled` — see
-**[PODCASTS.md](PODCASTS.md)** for the feature guide and disable steps.
+Turned off at Charlie's request (`PodcastFeature.enabled = false`). The full
+Apple-Podcasts-style experience (dedicated iOS Now Playing screen, macOS bar
+transport, resume, progress bars, Home shelf, pinned shows) remains intact
+behind the flag — flipping it to `true` and rebuilding restores everything.
+The two playback incidents that motivated this were general engine bugs, both
+since fixed (episode-radio seeding; unplayable-track reload-looping). See
+**[PODCASTS.md](PODCASTS.md)** for the feature guide and the video known-bug.
 
 ## Most Played (personal play counts) — ENABLED, per-device (2026-07-02)
 

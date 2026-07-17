@@ -1,7 +1,15 @@
 # Podcasts — feature guide
 
-**Status: ENABLED (2026-07-03)** with the Apple-Podcasts-style experience.
-The **video sub-feature is DISABLED (2026-07-04)** — see the known bug below.
+**Status: DISABLED (2026-07-13)** — Charlie's call. To re-enable, set
+`PodcastFeature.enabled = true` in
+[`Encore/Sources/EncoreCore/PodcastFeature.swift`](Encore/Sources/EncoreCore/PodcastFeature.swift)
+and rebuild both apps; everything below comes back as described (it shipped
+and worked — the two playback incidents that motivated disabling were traced
+to general engine bugs, both fixed: episode-radio seeding in 253ff71 and
+unplayable-track reload-looping in 7440cfb). The video sub-feature has its
+own flag and known bug — see below.
+
+What the feature includes when enabled (all intact behind the flag):
 
 - **Dedicated podcast Now Playing screen on iOS** (`PodcastNowPlayingScreen`,
   chosen by `NowPlayingSwitcher` when `current.isEpisode`): artwork, release
@@ -36,10 +44,8 @@ The **video sub-feature is DISABLED (2026-07-04)** — see the known bug below.
   "New Episodes" feed (latest episodes from subscribed shows, i.e. TheMove)
   rendered as track rows at the top of Home, gated on `PodcastFeature.enabled`.
 
-To disable everything: set `PodcastFeature.enabled = false` in
-[`Encore/Sources/EncoreCore/PodcastFeature.swift`](Encore/Sources/EncoreCore/PodcastFeature.swift)
-and rebuild (macOS: `Encore/scripts/build_app.sh`; iOS:
-`Encore/scripts/deploy_ios.sh`).
+Rebuild commands: macOS `Encore/scripts/build_app.sh`; iOS
+`Encore/scripts/deploy_ios.sh`.
 
 ## Known bug: podcast VIDEO renders black — sub-feature disabled (2026-07-04)
 
@@ -154,3 +160,8 @@ Two bugs were fixed during an earlier enable and the fixes are still in place
 - 2026-07-04 video sub-feature disabled (`videoEnabled = false`) after the
   black-screen bug resisted the playsinline/quality/re-parent fixes; resume
   extended to restored sessions and progress bars added on macOS the same day.
+- 2026-07-05 background/lock playback fixed (play() nudge — episodes have no
+  audio counterpart); "New Podcast Episodes" Home shelf + pinned shows added.
+- 2026-07-13 feature disabled by Charlie's preference. Both playback
+  incidents suspected of it turned out to be general engine bugs, fixed in
+  253ff71 (episode-radio seeding) and 7440cfb (unplayable-track reload loop).
