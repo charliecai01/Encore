@@ -180,18 +180,11 @@ struct ArtistView: View {
     private func loadLibraryTracks(artistName: String) async {
         scanningLibrary = true
         let all = await LibraryStore.shared.allKnownTracks()
-        var mine = all.filter { track in
-            track.artists.contains { $0.id == browseId }
+        // Shared matcher: id arm (incl. MPLA alias) + per-name matching that
+        // survives combined page titles like "陶喆 - David Tao".
+        libraryTracks = all.filter {
+            ArtistMatch.matches($0, browseId: browseId, pageName: artistName)
         }
-        if !artistName.isEmpty {
-            let normalizedName = artistName.matchNormalized
-            let extra = all.filter { track in
-                !track.artists.contains { $0.id == browseId }
-                    && track.artistLine.matches(normalizedQuery: normalizedName)
-            }
-            mine.append(contentsOf: extra)
-        }
-        libraryTracks = mine
         scanningLibrary = false
     }
 }

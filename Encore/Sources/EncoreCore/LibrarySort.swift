@@ -1,5 +1,32 @@
 import Foundation
 
+/// Matching for the artist page's "In your playlists & likes" section: does a
+/// library track belong to the artist being viewed?
+///
+/// Two arms:
+/// - **id**: any of the track's artist refs equals the page's browse id
+///   (`UC…` channel id; an `MPLA…` alias is normalized first).
+/// - **name**: artist pages are now often titled with COMBINED names
+///   ("陶喆 - David Tao"), which the old `artistLine.contains(pageName)` check
+///   could never match — so compare per artist-name, in both directions,
+///   CJK-normalized. This regression is what silently emptied the section.
+public enum ArtistMatch {
+    public static func matches(_ track: Track, browseId: String, pageName: String) -> Bool {
+        let channelId = browseId.hasPrefix("MPLA") ? String(browseId.dropFirst(4)) : browseId
+        if track.artists.contains(where: { $0.id == channelId || $0.id == browseId }) {
+            return true
+        }
+        guard !pageName.isEmpty else { return false }
+        let page = pageName.matchNormalized
+        for a in track.artists where !a.name.isEmpty {
+            let name = a.name.matchNormalized
+            if page.contains(name) || name.contains(page) { return true }
+        }
+        let line = track.artistLine.matchNormalized
+        return !line.isEmpty && (page.contains(line) || line.contains(page))
+    }
+}
+
 /// Shared, pure sort/filter logic for library & collection lists, so the macOS
 /// and iOS apps behave identically (and it's unit-testable without any UI).
 

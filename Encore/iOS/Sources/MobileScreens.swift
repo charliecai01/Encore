@@ -1265,8 +1265,9 @@ struct ArtistScreen: View {
         if let fresh = try? await YTM.shared.artist(browseId: browseId) {
             page = fresh; PageCache.shared.artists[browseId] = fresh
             let all = await LibraryStore.shared.allKnownTracks()
-            libraryTracks = all.filter { t in t.artists.contains { $0.id == browseId }
-                || t.artistLine.localizedCaseInsensitiveContains(fresh.name) }
+            libraryTracks = all.filter {
+                ArtistMatch.matches($0, browseId: browseId, pageName: fresh.name)
+            }
         }
         loading = false
     }
