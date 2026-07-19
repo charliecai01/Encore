@@ -197,8 +197,15 @@ final class LibraryStore: ObservableObject {
 
     func loadIfNeeded() async {
         guard !loaded, AuthManager.shared.isSignedIn else { return }
+        // Don't latch `loaded` until a fetch actually succeeds — latching on a
+        // transient cold-launch failure left the store EMPTY for the whole
+        // session (Home fetches independently and looked fine, while the
+        // Add-to-Playlist sheet showed "No playlists"). Every loadIfNeeded
+        // call site retries until this succeeds once.
+        let fetched = (try? await YTM.shared.libraryPlaylists()) ?? []
+        guard !fetched.isEmpty else { return }
         loaded = true
-        playlists = (try? await YTM.shared.libraryPlaylists()) ?? []
+        playlists = fetched
         // Warm liked songs + every playlist page into the cache (disk-backed)
         // in the background, so hearts are correct app-wide and playlists open
         // instantly instead of fetching on first tap.

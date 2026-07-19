@@ -493,7 +493,14 @@ struct AddToPlaylistSheet: View {
     @ObservedObject private var library = LibraryStore.shared
     @Environment(\.dismiss) private var dismiss
 
-    private var playlists: [CardItem] { library.playlists.filter { $0.playlistId != nil } }
+    /// Only playlists you can actually add to — Liked Music and auto-radios
+    /// are excluded (parity with the macOS context menu).
+    private var playlists: [CardItem] {
+        library.playlists.filter { pl in
+            guard let id = pl.playlistId else { return false }
+            return id != "LM" && !id.hasPrefix("RD")
+        }
+    }
 
     var body: some View {
         NavigationStack {

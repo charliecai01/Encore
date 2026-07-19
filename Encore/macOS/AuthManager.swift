@@ -327,8 +327,13 @@ final class LibraryStore: ObservableObject {
 
     func loadIfNeeded() async {
         guard !loaded, AuthManager.shared.isSignedIn else { return }
+        // Don't latch `loaded` until a fetch actually succeeds — latching on a
+        // transient cold-launch failure left the store (sidebar, add-to-
+        // playlist menus) empty for the whole session.
+        let fetched = (try? await YTM.shared.libraryPlaylists()) ?? []
+        guard !fetched.isEmpty else { return }
         loaded = true
-        playlists = applyCustomOrder((try? await YTM.shared.libraryPlaylists()) ?? [])
+        playlists = applyCustomOrder(fetched)
         if PodcastFeature.enabled {
             podcastShows = ((try? await YTM.shared.libraryPodcasts()) ?? [])
                 .filter { $0.kind == .podcast }
