@@ -1223,6 +1223,7 @@ struct ArtistScreen: View {
     @EnvironmentObject var player: PlayerEngine
     @State private var page: ArtistPage?
     @State private var libraryTracks: [Track] = []
+    @State private var libraryExpanded = false
     @State private var loading = true
 
     var body: some View {
@@ -1240,11 +1241,28 @@ struct ArtistScreen: View {
                     }
                     if !libraryTracks.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("In your playlists & likes").font(.system(size: 18, weight: .bold)).padding(.horizontal, 16)
-                            ForEach(Array(libraryTracks.prefix(8).enumerated()), id: \.offset) { i, t in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("In your playlists & likes").font(.system(size: 18, weight: .bold))
+                                Text("\(libraryTracks.count) song\(libraryTracks.count == 1 ? "" : "s") from your collection")
+                                    .font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
+                            }
+                            .padding(.horizontal, 16)
+                            let shown = libraryExpanded ? libraryTracks : Array(libraryTracks.prefix(8))
+                            ForEach(Array(shown.enumerated()), id: \.offset) { i, t in
                                 TrackRowView(track: t, onRemoveFromPlaylist: nil) {
                                     player.playCollection(libraryTracks, startAt: i)
                                 }.padding(.horizontal, 16)
+                            }
+                            if libraryTracks.count > 8 {
+                                Button {
+                                    withAnimation { libraryExpanded.toggle() }
+                                } label: {
+                                    Text(libraryExpanded ? "Show less" : "Show all \(libraryTracks.count) songs")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(Theme.accent)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.top, 2)
                             }
                         }
                     }
