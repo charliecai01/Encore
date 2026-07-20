@@ -584,8 +584,13 @@ final class PlayerEngine: NSObject, ObservableObject {
         sleepTimer = .off
         sleepStopActive = true
         userWantsPlayback = false
+        // Stand down the engagement machinery: with the stop active, the
+        // mismatch/error recovery paths must not pull the player back.
+        mismatchTicks = 0
+        failedEngages = 0
         js("window.__encore && __encore.pause()")
         isPlaying = false
+        Log.player.notice("sleep timer fired — playback stopped")
         updateNowPlayingInfo()
         showToast("Sleep timer — paused. Good night ♪")
     }
@@ -919,7 +924,7 @@ final class PlayerEngine: NSObject, ObservableObject {
             // instead of reload-looping while the site's queue bleeds through.
             let errVid = body["vid"] as? String
             Log.player.notice("player error code=\(body["code"] as? Int ?? -1) vid=\(errVid ?? "nil") current=\(self.current?.videoId ?? "nil")")
-            if let track = current, !unplayableSkipped,
+            if let track = current, !unplayableSkipped, !sleepStopActive,
                errVid == nil || errVid == activePlaybackId || errVid == track.videoId {
                 unplayableSkipped = true
                 showToast("Skipped unavailable: \(track.title)")
@@ -997,7 +1002,10 @@ final class PlayerEngine: NSObject, ObservableObject {
         case "time":
             guard reportedMatchesCurrent(body) || Date().timeIntervalSince(lastLoadAt) < 6 else {
                 mismatchTicks += 1
-                if mismatchTicks > 8, !suppressSiteAutoplay, let playId = activePlaybackId {
+                // Never re-engage while the sleep stop is active — ensure()'s
+                // loadVideoById AUTOPLAYS, which resumed music after the timer
+                // (and the failed-engage skip could then walk the queue).
+                if mismatchTicks > 8, !suppressSiteAutoplay, !sleepStopActive, let playId = activePlaybackId {
                     mismatchTicks = 0
                     // A track that never takes after repeated pulls is
                     // unplayable — skip it rather than yank forever (the user

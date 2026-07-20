@@ -190,7 +190,13 @@ with the Co-Authored-By: Claude line.
 - **Sleep timer:** the site's own autoplay can resume after the timer fires.
   The fix uses a `sleepStopActive` flag that force-re-pauses any
   site-initiated playback until the user explicitly plays. Don't make the
-  pause conditional on `isPlaying`.
+  pause conditional on `isPlaying`. `sleepStopActive` must ALSO gate the
+  OTHER resume paths (2026-07-20): the mismatch-recovery `ensure()` pull
+  (loadVideoById AUTOPLAYS — it resumed music after the fire, and the
+  failed-engage skip could then walk the queue all night) and the
+  unplayable-error skip's `advance()`. `fireSleepTimer` zeroes
+  mismatchTicks/failedEngages and logs "sleep timer fired" so log checks
+  can see it.
 - **Session restore must stay PAUSED** on launch (both platforms). `loadedOnce`
   gates this; the ready/state handlers must not auto-play a restored track.
   (Confirmed desired behavior on both macOS and iOS.)
