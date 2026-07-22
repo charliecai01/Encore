@@ -6,7 +6,9 @@ struct RootView: View {
     @EnvironmentObject var player: PlayerEngine
     @EnvironmentObject var auth: AuthManager
 
-    @State private var queueShown = false
+    // Up-Next pane is shown by default and its state persists across launches;
+    // the player-bar toggle and the pane's ✕ still hide it.
+    @AppStorage("queueShown") private var queueShown = true
 
     var body: some View {
         ZStack(alignment: .bottom) {
