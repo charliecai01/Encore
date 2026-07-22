@@ -22,6 +22,7 @@ struct NowPlayingScreen: View {
 
     @State private var showAddToPlaylist = false
     @State private var showSongInfo = false
+    @State private var showEQ = false
 
     /// Live offset while the card is being dragged down to dismiss.
     @State private var dragOffset: CGFloat = 0
@@ -89,6 +90,10 @@ struct NowPlayingScreen: View {
             if let t = player.current {
                 SongInfoSheet(track: t, fromPlaylist: currentPlaylistName)
             }
+        }
+        .sheet(isPresented: $showEQ) {
+            EqualizerSheet().environmentObject(player)
+                .presentationDetents([.height(380), .large])
         }
     }
 
@@ -254,6 +259,7 @@ struct NowPlayingScreen: View {
                 UIPasteboard.general.url = url
             } label: { Label("Copy Link", systemImage: "link") }
         }
+        Button { showEQ = true } label: { Label("Equalizer", systemImage: "slider.vertical.3") }
         Button { showSongInfo = true } label: { Label("Song Info", systemImage: "info.circle") }
         if player.canRemoveCurrentFromPlaylist {
             Divider()

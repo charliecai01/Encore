@@ -48,7 +48,8 @@ picking up the work without the original chat history.
     │   │   ├── PlayCounts.swift, PlayCountsFeature.swift ← personal play counts + UI flag (ON/per-device — see BUGS.md)
     │   │   ├── PodcastFeature.swift           ← podcast UI flag (OFF since 2026-07-13, Charlie's call — see PODCASTS.md)
     │   │   ├── PlayedEpisodes.swift           ← episode played-state store (UserDefaults)
-    │   │   └── EpisodeProgress.swift          ← episode resume positions (UserDefaults, unit-tested)
+    │   │   ├── EpisodeProgress.swift          ← episode resume positions (UserDefaults, unit-tested)
+    │   │   └── Equalizer.swift                 ← 10-band EQ model + presets + JS payload (unit-tested)
     │   └── encore-smoke/                      ← CLI: `swift run encore-smoke` hits the LIVE API unauthenticated
     ├── macOS/                                 ← macOS SwiftUI app (AppKit) — Package target `Encore`, path "macOS"
     ├── Tests/EncoreCoreTests/                 ← XCTest for the shared core (run: `swift test`) — covers BOTH apps' logic; incl. live-API checks that auto-skip offline
@@ -244,6 +245,19 @@ with the Co-Authored-By: Claude line.
   appear/disappear. The JS `videoMode(true)` must bump quality AND
   `seekTo(currentTime)` — while parked at 1×1, iOS WebKit decodes audio-only,
   so without the seek re-negotiation the video element renders BLACK.
+- **Equalizer is Web Audio in the PAGE, not native DSP** (2026-07-20): the
+  controller script taps the `<video>` with `createMediaElementSource` → ten
+  peaking biquads (32Hz–16kHz, Q≈1.41) + a preamp gain → destination.
+  `EncoreCore.Equalizer` holds the numbers/presets and builds the
+  `__encore.eq(...)` payload; `PlayerEngine.eqSettings` persists and pushes on
+  change and on `ready`. Gotchas: (1) `createMediaElementSource` is
+  ONCE-PER-ELEMENT, so the tick re-hooks if the site swaps `<video>`; (2) the
+  graph is built LAZILY only when EQ is first enabled — users who never touch
+  it keep an untouched audio path; (3) once built it always routes (flat =
+  transparent when disabled), never torn down; (4) **the make-or-break risk is
+  CORS/tainting → SILENCE**: YouTube uses MSE/blob (same-origin) so it should
+  be fine (the Electron youtube-music EQ works the same way), but this MUST be
+  confirmed by ear on device — if enabling EQ silences audio, that's the cause.
 - **iOS lock-screen metadata is the PAGE's MediaSession, not our
   MPNowPlayingInfoCenter** — the WKWebView owns Now Playing on iOS.
   `__encore.setMeta` pushes our track's title/artist/art into the page, and

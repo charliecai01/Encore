@@ -56,6 +56,7 @@ in too.
 - **Podcasts** *(currently disabled behind `PodcastFeature.enabled` — see [PODCASTS.md](PODCASTS.md))* — Apple-Podcasts-style show pages with episode dates, descriptions, and durations; variable playback speed (0.8–2×) and skip 15/30 for episodes (iOS)
 - **Synced lyrics** — YouTube's own timed lyrics when available (fetched via the Android client), falling back to LRCLIB / NetEase / Musixmatch / Genius
 - **Now Playing** — blurred-artwork immersive view with synced lyrics or up-next; when podcasts are enabled, episodes get an Apple-Podcasts-style player (iOS screen + macOS bar) with speed, ±15/30s, resume, and progress bars
+- **10-band graphic equalizer** — 32Hz–16kHz bands (±12dB) + preamp and presets (Bass Boost, Vocal, Rock…), applied in real time via Web Audio biquad filters; both platforms
 - **Native niceties** — media keys, system/lock-screen Now Playing widget, **AirPlay/output-device picker**, **CarPlay** (iOS), **phone-call/Siri interruption handling** (iOS), Space to play/pause, ⌘←/⌘→ prev/next, ⌘R refresh (macOS), dynamic accent colors from artwork
 
 ## Architecture

@@ -81,6 +81,10 @@ final class PlayerEngine: NSObject, ObservableObject {
     @Published var playbackRate: Double = 1.0 {
         didSet { UserDefaults.standard.set(playbackRate, forKey: "playbackRate") }
     }
+    /// 10-band graphic EQ (Web Audio, in the page). Persisted + pushed on change.
+    @Published var eqSettings: EQSettings = Equalizer.load() {
+        didSet { Equalizer.save(eqSettings); applyEqualizer() }
+    }
 
     @Published var volume: Double = 0.85 {
         didSet {
@@ -720,6 +724,11 @@ final class PlayerEngine: NSObject, ObservableObject {
         }
     }
 
+    /// Push the current EQ settings into the page's Web Audio graph.
+    func applyEqualizer() {
+        js("window.__encore && __encore.eq(\(Equalizer.jsPayload(eqSettings)))")
+    }
+
     func refetchLyrics() {
         guard let track = current else { return }
         clock.lyrics = nil
@@ -799,6 +808,7 @@ final class PlayerEngine: NSObject, ObservableObject {
             playerReady = true
             Log.player.notice("ready: loadedOnce=\(self.loadedOnce) current=\(self.current?.videoId ?? "nil")")
             js("window.__encore && __encore.vol(\(Int(volume * 100)))")
+            applyEqualizer()
             if loadedOnce, let track = current {
                 ensureJS(track.videoId, startAt: restoreSeekTime ?? 0)
             }
@@ -1029,8 +1039,55 @@ final class PlayerEngine: NSObject, ObservableObject {
       }
       function mp() { return document.getElementById('movie_player'); }
 
+      // --- 10-band graphic EQ (Web Audio biquad filters) ---
+      // Tap the <video> element with a MediaElementSource, run it through ten
+      // peaking filters + a preamp gain, out to the destination. Built lazily
+      // only once EQ is enabled, so users who never touch it keep the untouched
+      // audio path. createMediaElementSource is once-per-element, so we track
+      // the element and rebuild if the site swaps it.
+      var EQ_FREQS = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+      var eqCtx = null, eqSrc = null, eqEl = null, eqBands = [], eqPre = null;
+      var eqOn = false, eqGains = [0,0,0,0,0,0,0,0,0,0], eqPreDb = 0;
+      function eqBuild() {
+        var v = document.querySelector('video');
+        if (!v) return false;
+        if (eqEl === v && eqCtx) return true;
+        try {
+          if (!eqCtx) eqCtx = new (window.AudioContext || window.webkitAudioContext)();
+          eqSrc = eqCtx.createMediaElementSource(v);
+          eqEl = v;
+          eqBands = EQ_FREQS.map(function (f) {
+            var b = eqCtx.createBiquadFilter();
+            b.type = 'peaking'; b.frequency.value = f; b.Q.value = 1.41; b.gain.value = 0;
+            return b;
+          });
+          eqPre = eqCtx.createGain(); eqPre.gain.value = 1;
+          var node = eqSrc;
+          eqBands.forEach(function (b) { node.connect(b); node = b; });
+          node.connect(eqPre); eqPre.connect(eqCtx.destination);
+          return true;
+        } catch (e) { return false; }
+      }
+      function eqApply() {
+        if (!eqCtx) return;
+        if (eqCtx.state === 'suspended') { try { eqCtx.resume(); } catch (e) {} }
+        for (var i = 0; i < eqBands.length; i++) {
+          eqBands[i].gain.value = eqOn ? (eqGains[i] || 0) : 0;
+        }
+        if (eqPre) eqPre.gain.value = eqOn ? Math.pow(10, (eqPreDb || 0) / 20) : 1;
+      }
+
       var videoModeStyle = null;
       window.__encore = {
+        eq: function (cfg) {
+          try {
+            eqOn = !!cfg.enabled;
+            eqPreDb = cfg.preamp || 0;
+            if (cfg.gains && cfg.gains.length) eqGains = cfg.gains;
+          } catch (e) {}
+          if (eqOn && !eqBuild()) return; // no <video> yet — the tick retries
+          eqApply();
+        },
         ensure: function (id, start, force) {
           start = start || 0;
           var attempt = function (n) {
@@ -1128,6 +1185,7 @@ final class PlayerEngine: NSObject, ObservableObject {
       var lastState = -9;
       setInterval(function () {
         hookPlayer();
+        if (eqOn && eqBuild()) eqApply(); // re-hook if the site swapped <video>
         var p = mp();
         if (!p || !p.getPlayerState) { return; }
         var data = p.getVideoData ? p.getVideoData() : null;

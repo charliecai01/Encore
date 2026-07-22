@@ -9,6 +9,7 @@ struct PlayerBar: View {
     @ObservedObject private var clock = PlayerClock.shared
     @Binding var nowPlayingExpanded: Bool
     @State private var showVideoSheet = false
+    @State private var showEQ = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -194,6 +195,14 @@ struct PlayerBar: View {
             .disabled(player.current == nil)
             .help("Copy link to song")
             sleepTimerMenu
+            ControlButton(icon: "slider.vertical.3", size: 14,
+                          active: player.eqSettings.enabled) {
+                showEQ.toggle()
+            }
+            .help("Equalizer")
+            .popover(isPresented: $showEQ, arrowEdge: .top) {
+                EqualizerView().environmentObject(player)
+            }
             ControlButton(icon: "quote.bubble", size: 14,
                           active: nowPlayingExpanded) {
                 nowPlayingExpanded.toggle()
