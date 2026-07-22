@@ -17,7 +17,10 @@ struct EncoreApp: App {
                 .environmentObject(auth)
                 .environmentObject(nav)
                 .environmentObject(library)
-                .frame(minWidth: 1080, minHeight: 680)
+                // Min width fits sidebar (224) + a comfortable content column
+                // + the pinned Up Next pane (300) with dividers, so nothing is
+                // clipped at the smallest window size.
+                .frame(minWidth: 1140, minHeight: 680)
                 .preferredColorScheme(.dark)
                 .task { await auth.bootstrap() }
         }

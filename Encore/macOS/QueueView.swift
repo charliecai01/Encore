@@ -3,7 +3,6 @@ import EncoreCore
 
 struct QueuePanel: View {
     @EnvironmentObject var player: PlayerEngine
-    @Binding var shown: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -13,16 +12,6 @@ struct QueuePanel: View {
                     .foregroundStyle(Theme.textPrimary)
                 Spacer()
                 AutoplayToggle()
-                Button {
-                    shown = false
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 24, height: 24)
-                        .background(Theme.card, in: Circle())
-                }
-                .buttonStyle(.plain)
             }
             .padding(.horizontal, 16)
             .padding(.top, 46)

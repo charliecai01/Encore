@@ -6,10 +6,6 @@ struct RootView: View {
     @EnvironmentObject var player: PlayerEngine
     @EnvironmentObject var auth: AuthManager
 
-    // Up-Next pane is shown by default and its state persists across launches;
-    // the player-bar toggle and the pane's ✕ still hide it.
-    @AppStorage("queueShown") private var queueShown = true
-
     var body: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
@@ -25,18 +21,16 @@ struct RootView: View {
                     }
                     .frame(maxWidth: .infinity)
 
-                    if queueShown {
-                        Rectangle()
-                            .fill(Theme.stroke)
-                            .frame(width: 1)
-                        QueuePanel(shown: $queueShown)
-                            .frame(width: 320)
-                            .transition(.move(edge: .trailing))
-                    }
+                    // Up Next is pinned — always visible, no close control.
+                    Rectangle()
+                        .fill(Theme.stroke)
+                        .frame(width: 1)
+                    QueuePanel()
+                        .frame(width: 300)
                 }
                 .frame(maxHeight: .infinity)
 
-                PlayerBar(nowPlayingExpanded: $player.showNowPlaying, queueShown: $queueShown)
+                PlayerBar(nowPlayingExpanded: $player.showNowPlaying)
             }
 
             if player.showNowPlaying {
@@ -66,7 +60,6 @@ struct RootView: View {
                 .opacity(0.02)
         }
         .animation(.spring(duration: 0.35), value: player.showNowPlaying)
-        .animation(.spring(duration: 0.3), value: queueShown)
         .animation(.easeInOut(duration: 0.2), value: player.toast)
         .sheet(isPresented: $auth.showLogin) {
             LoginSheet()

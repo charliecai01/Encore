@@ -8,7 +8,6 @@ struct PlayerBar: View {
     @EnvironmentObject var nav: Nav
     @ObservedObject private var clock = PlayerClock.shared
     @Binding var nowPlayingExpanded: Bool
-    @Binding var queueShown: Bool
     @State private var showVideoSheet = false
 
     var body: some View {
@@ -198,9 +197,6 @@ struct PlayerBar: View {
             ControlButton(icon: "quote.bubble", size: 14,
                           active: nowPlayingExpanded) {
                 nowPlayingExpanded.toggle()
-            }
-            ControlButton(icon: "list.bullet", size: 14, active: queueShown) {
-                queueShown.toggle()
             }
             RoutePickerButton()
                 .frame(width: 20, height: 16)
