@@ -17,10 +17,12 @@ struct EncoreApp: App {
                 .environmentObject(auth)
                 .environmentObject(nav)
                 .environmentObject(library)
-                // Min width fits sidebar (224) + a comfortable content column
-                // + the pinned Up Next pane (300) with dividers, so nothing is
-                // clipped at the smallest window size.
-                .frame(minWidth: 1140, minHeight: 680)
+                // Min width fits sidebar (224) + the content column's natural
+                // minimum (the album/playlist header: 212 artwork +
+                // Play/Shuffle/Radio/Edit buttons ≈ 730) + the pinned Up Next
+                // pane (300) + dividers, so neither edge clips at the smallest
+                // window size. Verified empirically at this width.
+                .frame(minWidth: 1264, minHeight: 680)
                 .preferredColorScheme(.dark)
                 .task { await auth.bootstrap() }
         }
