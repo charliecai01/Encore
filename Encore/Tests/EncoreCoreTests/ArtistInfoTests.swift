@@ -39,17 +39,35 @@ final class ArtistInfoTests: XCTestCase {
         XCTAssertNil(ArtistInfo.age(year: 1600, month: nil, day: nil, now: now))
     }
 
-    func testComposePersonAllFacts() {
+    func testComposePersonAllFactsUsesRecordedPronoun() {
         var f = ArtistFacts()
+        f.gender = .male
         f.birthplace = "Hong Kong"
         f.birthYear = 1969; f.birthMonth = 7; f.birthDay = 11
         f.country = "Taiwan"
         f.careerStartYear = 1993
         let s = ArtistInfo.compose(name: "David Tao", facts: f, now: now)
         XCTAssertEqual(s, "David Tao was born in Hong Kong, Taiwan. "
-                        + "They are 57 years old, born July 11, 1969. "
-                        + "They are most active in Taiwan. "
-                        + "They first entered the scene in 1993.")
+                        + "He is 57 years old, born July 11, 1969. "
+                        + "He is most active in Taiwan. "
+                        + "He first entered the scene in 1993.")
+    }
+
+    func testComposeFemalePronoun() {
+        var f = ArtistFacts()
+        f.gender = .female
+        f.birthYear = 1972
+        let s = ArtistInfo.compose(name: "A-Mei", facts: f, now: now)!
+        XCTAssertTrue(s.contains("She is about 54 years old"))
+    }
+
+    func testComposeUnrecordedGenderFallsBackToThey() {
+        var f = ArtistFacts()
+        f.birthYear = 1969
+        f.country = "Taiwan"
+        let s = ArtistInfo.compose(name: "X", facts: f, now: now)!
+        XCTAssertTrue(s.contains("They are about 57 years old"))
+        XCTAssertTrue(s.contains("They are most active in Taiwan."))
     }
 
     func testComposeSkipsMissingFacts() {
@@ -62,12 +80,52 @@ final class ArtistInfoTests: XCTestCase {
 
     func testComposeDeceased() {
         var f = ArtistFacts()
+        f.gender = .male
         f.birthYear = 1958
         f.deathYear = 2009
         f.country = "United States"
         let s = ArtistInfo.compose(name: "Y", facts: f, now: now)
-        XCTAssertTrue(s!.contains("passed away in 2009, at around 51 years old"))
-        XCTAssertTrue(s!.contains("They were most active in United States."))
+        XCTAssertTrue(s!.contains("He passed away in 2009, at around 51 years old"))
+        XCTAssertTrue(s!.contains("He was most active in United States."))
+    }
+
+    func testComposeAppendsWikipediaKnownFor() {
+        var f = ArtistFacts()
+        f.gender = .male
+        f.birthYear = 1969
+        f.knownFor = ["David Tao is a Taiwanese singer-songwriter.",
+                      "He is credited with pioneering Mandopop R&B."]
+        let s = ArtistInfo.compose(name: "David Tao", facts: f, now: now)!
+        XCTAssertTrue(s.hasSuffix("David Tao is a Taiwanese singer-songwriter. "
+                                  + "He is credited with pioneering Mandopop R&B."))
+    }
+
+    func testComposeKnownForFallbackFromOccupationsAndGenres() {
+        var f = ArtistFacts()
+        f.gender = .female
+        f.birthYear = 1972
+        f.occupations = ["singer", "record producer"]
+        f.genres = ["Mandopop", "rhythm and blues"]
+        let s = ArtistInfo.compose(name: "Z", facts: f, now: now)!
+        XCTAssertTrue(s.contains("She is best known as a singer and record producer."))
+        XCTAssertTrue(s.contains("Her music spans Mandopop and rhythm and blues."))
+    }
+
+    func testKnownForSentencesStripParentheticalsAndSplit() {
+        let extract = "Tao Zhe (born July 11, 1969), known as David Tao, is a Taiwanese singer. "
+            + "He is known for fusing R&B with rock. His third sentence should be dropped."
+        let out = ArtistInfo.knownForSentences(from: extract, limit: 2)
+        XCTAssertEqual(out.count, 2)
+        XCTAssertEqual(out[0], "Tao Zhe, known as David Tao, is a Taiwanese singer.")
+        XCTAssertEqual(out[1], "He is known for fusing R&B with rock.")
+        XCTAssertFalse(out.joined().contains("born July"))
+    }
+
+    func testKnownForSentencesProtectsInitials() {
+        let out = ArtistInfo.knownForSentences(from: "R. Kelly is a singer. Second sentence here.",
+                                               limit: 2)
+        XCTAssertEqual(out[0], "R. Kelly is a singer.")
+        XCTAssertEqual(out[1], "Second sentence here.")
     }
 
     func testComposeBandWithMembers() {
@@ -123,5 +181,7 @@ final class ArtistInfoTests: XCTestCase {
         }
         XCTAssertTrue(s.contains("born"), "summary lacks a birth sentence: \(s)")
         XCTAssertTrue(s.contains("Hong Kong"), "unexpected birthplace: \(s)")
+        XCTAssertTrue(s.contains("He "), "Wikidata records male for David Tao; got: \(s)")
+        XCTAssertTrue(s.lowercased().contains("singer"), "no known-for content: \(s)")
     }
 }

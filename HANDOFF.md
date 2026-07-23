@@ -349,8 +349,12 @@ Both platforms unless stated:
   **playlists always open sorted by Artist** (forced, not persisted).
 - Album / playlist / artist pages; artist page shows "In your playlists & likes"
   and a **Wikidata bio summary** under the hero (both platforms): birthplace,
-  age (death-aware), country most active in, career start — and for BANDS the
-  member list with roles ("Thom Yorke (vocals), …"). `EncoreCore.ArtistInfo`:
+  age (death-aware), country most active in, career start, TWO "known for"
+  sentences (Wikipedia lede via the enwiki sitelink, parentheticals stripped;
+  occupations/genres fallback) — and for BANDS the member list with roles
+  ("Thom Yorke (vocals), …"). Pronouns come from Wikidata's RECORDED gender
+  (P21 → he/she; trans values mapped); they/them only when unrecorded — never
+  inferred from the name. `EncoreCore.ArtistInfo`:
   search is language-aware (zh for Han names, combined "陶喆 - David Tao" names
   split into candidates) and requires a music-flavored description so a
   namesake never attaches; compose() is pure + unit-tested; results (incl.

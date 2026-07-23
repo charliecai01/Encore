@@ -7,10 +7,25 @@ public struct BandMember: Equatable {
     public init(name: String, role: String? = nil) { self.name = name; self.role = role }
 }
 
+/// Pronoun set derived from Wikidata's recorded gender (P21). `unspecified`
+/// (no/unmapped P21) falls back to they/them — never guessed from the name.
+public enum ArtistGender: Equatable {
+    case male, female, unspecified
+
+    var subject: String {
+        switch self { case .male: return "He"; case .female: return "She"; case .unspecified: return "They" }
+    }
+    var possessive: String {
+        switch self { case .male: return "His"; case .female: return "Her"; case .unspecified: return "Their" }
+    }
+    var isPlural: Bool { self == .unspecified }
+}
+
 /// Structured facts about an artist, resolved from Wikidata. For a band, the
 /// "birth" fields carry formation place/year and `deathYear` the disband year.
 public struct ArtistFacts: Equatable {
     public var isBand = false
+    public var gender: ArtistGender = .unspecified
     public var birthplace: String?      // person: birthplace · band: formation place
     public var birthYear: Int?          // person: born · band: formed (inception)
     public var birthMonth: Int?
@@ -19,6 +34,12 @@ public struct ArtistFacts: Equatable {
     public var country: String?         // citizenship / country of origin
     public var careerStartYear: Int?    // work-period start (falls back to inception)
     public var members: [BandMember] = []
+    /// "What they're known for" — sentences from the Wikipedia lede when
+    /// available; compose() falls back to occupations/genres otherwise.
+    public var knownFor: [String] = []
+    public var occupations: [String] = []
+    public var genres: [String] = []
+    public var wikiTitle: String?       // enwiki sitelink, for the lede fetch
 
     public init() {}
 }
@@ -52,7 +73,10 @@ public enum ArtistInfo {
         var summary: String?
         for candidate in candidates(from: rawName) {
             guard let id = await searchEntity(candidate) else { continue }
-            guard let facts = await fetchFacts(id: id) else { continue }
+            guard var facts = await fetchFacts(id: id) else { continue }
+            if let title = facts.wikiTitle {
+                facts.knownFor = await fetchKnownFor(wikiTitle: title)
+            }
             if let s = compose(name: candidate, facts: facts, now: now) {
                 summary = s
                 break
@@ -83,11 +107,16 @@ public enum ArtistInfo {
     // MARK: - Composition (pure)
 
     /// Build the summary sentences per the spec: birthplace, age, country most
-    /// active in, when they entered the scene — plus, for bands, who the
-    /// members are (with roles when known).
+    /// active in, when they entered the scene, two "known for" sentences —
+    /// plus, for bands, who the members are (with roles when known). Pronouns
+    /// come from Wikidata's recorded gender; they/them when unrecorded.
     public static func compose(name: String, facts: ArtistFacts, now: Date = Date()) -> String? {
         var s: [String] = []
         let verb = facts.isBand ? "was formed" : "was born"
+        let gender: ArtistGender = facts.isBand ? .unspecified : facts.gender
+        let subject = gender.subject
+        let copula = gender.isPlural ? "are" : "is"
+        let pastCopula = gender.isPlural ? "were" : "was"
 
         if let place = facts.birthplace {
             if let c = facts.country, c != place {
@@ -105,26 +134,43 @@ public enum ArtistInfo {
                     s.append("The band is \(a) years old, formed in \(y).")
                 }
             } else if let died = facts.deathYear {
-                s.append("They passed away in \(died), at around \(max(0, died - y)) years old.")
+                s.append("\(subject) passed away in \(died), at around \(max(0, died - y)) years old.")
             } else if let a = age(year: y, month: facts.birthMonth, day: facts.birthDay, now: now) {
                 if let m = facts.birthMonth, let d = facts.birthDay {
-                    s.append("They are \(a) years old, born \(monthName(m)) \(d), \(y).")
+                    s.append("\(subject) \(copula) \(a) years old, born \(monthName(m)) \(d), \(y).")
                 } else {
-                    s.append("They are about \(a) years old, born in \(y).")
+                    s.append("\(subject) \(copula) about \(a) years old, born in \(y).")
                 }
             }
         }
 
         if let c = facts.country {
-            s.append(facts.deathYear == nil ? "They are most active in \(c)."
-                                            : "They were most active in \(c).")
+            s.append(facts.deathYear == nil ? "\(subject) \(copula) most active in \(c)."
+                                            : "\(subject) \(pastCopula) most active in \(c).")
         }
 
         // Skip the career sentence when it would just repeat the band's
         // formation year from sentence two.
         if let start = facts.careerStartYear,
            !(facts.isBand && facts.birthYear == start) {
-            s.append("They first entered the scene in \(start).")
+            s.append("\(subject) first entered the scene in \(start).")
+        }
+
+        // What they're known for: the Wikipedia lede when available, else a
+        // structured occupations/genres fallback.
+        if !facts.knownFor.isEmpty {
+            s.append(contentsOf: facts.knownFor.prefix(2))
+        } else {
+            if !facts.occupations.isEmpty {
+                let occ = joined(Array(facts.occupations.prefix(3)))
+                let article = "aeiou".contains(occ.lowercased().first ?? "x") ? "an" : "a"
+                s.append(facts.deathYear == nil
+                         ? "\(subject) \(copula) best known as \(article) \(occ)."
+                         : "\(subject) \(pastCopula) best known as \(article) \(occ).")
+            }
+            if !facts.genres.isEmpty {
+                s.append("\(gender.possessive) music spans \(joined(Array(facts.genres.prefix(3)))).")
+            }
         }
 
         if facts.isBand, !facts.members.isEmpty {
@@ -135,6 +181,45 @@ public enum ArtistInfo {
         }
 
         return s.isEmpty ? nil : s.joined(separator: " ")
+    }
+
+    /// First `limit` sentences of a Wikipedia lede, with parentheticals (birth
+    /// dates, pinyin, IPA) stripped. Pure; the splitter protects initials.
+    static func knownForSentences(from extract: String, limit: Int = 2) -> [String] {
+        var text = extract.replacingOccurrences(of: #"\s*\([^()]*\)"#, with: "",
+                                                options: .regularExpression)
+        text = text.replacingOccurrences(of: #"\s{2,}"#, with: " ",
+                                         options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return [] }
+
+        var sentences: [String] = []
+        var current = ""
+        let chars = Array(text)
+        var i = 0
+        while i < chars.count {
+            let ch = chars[i]
+            current.append(ch)
+            if ".!?".contains(ch), i + 1 < chars.count, chars[i + 1] == " " {
+                let next = i + 2 < chars.count ? chars[i + 2] : " "
+                let trimmed = current.trimmingCharacters(in: .whitespaces)
+                // Don't split after an initial ("R." in "R. Kelly") or common titles.
+                let lastWord = trimmed.split(separator: " ").last.map(String.init) ?? ""
+                let isInitial = lastWord.count == 2 && lastWord.hasSuffix(".")
+                    && lastWord.first!.isUppercase
+                let isTitle = ["Mr.", "Mrs.", "Dr.", "St.", "Jr.", "Sr."].contains(lastWord)
+                if next.isUppercase || next.isNumber, !isInitial, !isTitle {
+                    sentences.append(trimmed)
+                    current = ""
+                    i += 2
+                    continue
+                }
+            }
+            i += 1
+        }
+        let tail = current.trimmingCharacters(in: .whitespaces)
+        if !tail.isEmpty { sentences.append(tail) }
+        return Array(sentences.prefix(limit))
     }
 
     static func joined(_ parts: [String]) -> String {
@@ -225,14 +310,23 @@ public enum ArtistInfo {
 
     static func fetchFacts(id: String) async -> ArtistFacts? {
         guard let json = await api([
-            "action": "wbgetentities", "format": "json", "ids": id, "props": "claims",
+            "action": "wbgetentities", "format": "json", "ids": id,
+            "props": "claims|sitelinks",
         ]) else { return nil }
         let claims = json["entities"][id]["claims"]
         guard claims.exists else { return nil }
 
         var facts = ArtistFacts()
+        facts.wikiTitle = json["entities"][id]["sitelinks"]["enwiki"]["title"].string
         let instanceOf = entityIds(claims, "P31")
         let isHuman = instanceOf.contains("Q5")
+
+        // Recorded gender (P21) → pronouns; unmapped values stay they/them.
+        switch firstEntityId(claims, "P21") {
+        case "Q6581097", "Q2449503": facts.gender = .male    // male, trans man
+        case "Q6581072", "Q1052281": facts.gender = .female  // female, trans woman
+        default: facts.gender = .unspecified
+        }
 
         if let t = firstTime(claims, "P569") ?? (isHuman ? nil : firstTime(claims, "P571")) {
             facts.birthYear = t.year; facts.birthMonth = t.month; facts.birthDay = t.day
@@ -246,6 +340,8 @@ public enum ArtistInfo {
 
         let placeId = firstEntityId(claims, "P19") ?? firstEntityId(claims, "P740")
         let countryId = firstEntityId(claims, "P27") ?? firstEntityId(claims, "P495")
+        let occupationIds = Array(entityIds(claims, "P106").prefix(3))
+        let genreIds = Array(entityIds(claims, "P136").prefix(3))
 
         if !isHuman {
             let memberIds = entityIds(claims, "P527")
@@ -255,13 +351,29 @@ public enum ArtistInfo {
             }
         }
 
-        let toResolve = [placeId, countryId].compactMap { $0 }
+        let toResolve = ([placeId, countryId].compactMap { $0 }) + occupationIds + genreIds
         if !toResolve.isEmpty {
             let labels = await fetchLabels(ids: toResolve)
             if let p = placeId { facts.birthplace = labels[p] }
             if let c = countryId { facts.country = labels[c] }
+            facts.occupations = occupationIds.compactMap { labels[$0] }
+            facts.genres = genreIds.compactMap { labels[$0] }
         }
         return facts
+    }
+
+    /// First sentences of the English Wikipedia lede for a sitelinked title.
+    static func fetchKnownFor(wikiTitle: String) async -> [String] {
+        let path = wikiTitle.replacingOccurrences(of: " ", with: "_")
+            .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? wikiTitle
+        guard let url = URL(string: "https://en.wikipedia.org/api/rest_v1/page/summary/\(path)")
+        else { return [] }
+        var req = URLRequest(url: url)
+        req.setValue("Encore/1.0 (personal music player)", forHTTPHeaderField: "User-Agent")
+        guard let (data, resp) = try? await session.data(for: req),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              let extract = JSONValue.parse(data)["extract"].string else { return [] }
+        return knownForSentences(from: extract, limit: 2)
     }
 
     /// Names + roles for band members: one batched call for the members
