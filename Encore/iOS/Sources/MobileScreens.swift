@@ -1224,6 +1224,7 @@ struct ArtistScreen: View {
     @State private var page: ArtistPage?
     @State private var libraryTracks: [Track] = []
     @State private var libraryExpanded = false
+    @State private var artistSummary: String?
     @State private var loading = true
 
     var body: some View {
@@ -1238,6 +1239,16 @@ struct ArtistScreen: View {
                         .frame(height: 240).frame(maxWidth: .infinity).clipped()
                         .overlay(LinearGradient(colors: [.clear, Theme.bg], startPoint: .center, endPoint: .bottom))
                         Text(page.name).font(.system(size: 30, weight: .heavy)).foregroundStyle(.white).padding(16)
+                    }
+                    if let artistSummary {
+                        // Wikidata bio: birthplace · age · country · career start
+                        // (+ members for bands).
+                        Text(artistSummary)
+                            .font(.system(size: 13.5))
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineSpacing(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 16)
                     }
                     if !libraryTracks.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
@@ -1286,6 +1297,7 @@ struct ArtistScreen: View {
             libraryTracks = all.filter {
                 ArtistMatch.matches($0, browseId: browseId, pageName: fresh.name)
             }
+            artistSummary = await ArtistInfo.summary(forName: fresh.name)
         }
         loading = false
     }

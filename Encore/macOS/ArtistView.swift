@@ -12,6 +12,7 @@ struct ArtistView: View {
     @State private var libraryTracks: [Track] = []
     @State private var showAllLibrary = false
     @State private var scanningLibrary = false
+    @State private var artistSummary: String?
 
     var body: some View {
         Group {
@@ -25,6 +26,16 @@ struct ArtistView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 26) {
                         hero(page)
+                        if let artistSummary {
+                            // Wikidata bio: birthplace · age · country · career
+                            // start (+ members for bands).
+                            Text(artistSummary)
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.textSecondary)
+                                .lineSpacing(4)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, 24)
+                        }
                         if scanningLibrary && libraryTracks.isEmpty {
                             HStack(spacing: 8) {
                                 ProgressView().controlSize(.small)
@@ -160,6 +171,7 @@ struct ArtistView: View {
             page = cached
             loading = false
             await loadLibraryTracks(artistName: cached.name)
+            artistSummary = await ArtistInfo.summary(forName: cached.name)
             return
         }
         loading = true
@@ -170,6 +182,7 @@ struct ArtistView: View {
             PageCache.shared.artists[browseId] = result
             loading = false
             await loadLibraryTracks(artistName: result.name)
+            artistSummary = await ArtistInfo.summary(forName: result.name)
         } catch {
             self.error = error.localizedDescription
             loading = false

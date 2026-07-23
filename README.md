@@ -54,6 +54,7 @@ in too.
 - **Full playback** — queue management (play next / add to queue / reorder-lite), shuffle, repeat one/all, song radio, endless Autoplay radio when the queue runs out, sleep timer, session restore
 - **Play counts** — global play counts on artist top songs and search, with a "Plays" sort; plus a personal **Most Played** view and a times-played column on playlists (macOS) — counts are per-device, no cross-device sync yet
 - **Podcasts** *(currently disabled behind `PodcastFeature.enabled` — see [PODCASTS.md](PODCASTS.md))* — Apple-Podcasts-style show pages with episode dates, descriptions, and durations; variable playback speed (0.8–2×) and skip 15/30 for episodes (iOS)
+- **Artist bios** — a Wikidata-sourced summary on every artist page: birthplace, age, country, career start, and band members with roles
 - **Synced lyrics** — YouTube's own timed lyrics when available (fetched via the Android client), falling back to LRCLIB / NetEase / Musixmatch / Genius
 - **Now Playing** — blurred-artwork immersive view with synced lyrics or up-next; when podcasts are enabled, episodes get an Apple-Podcasts-style player (iOS screen + macOS bar) with speed, ±15/30s, resume, and progress bars
 - **10-band graphic equalizer** — 32Hz–16kHz bands (±12dB) + preamp and presets (Bass Boost, Vocal, Rock…), applied in real time via Web Audio biquad filters; both platforms

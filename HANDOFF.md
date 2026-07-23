@@ -49,7 +49,8 @@ picking up the work without the original chat history.
     │   │   ├── PodcastFeature.swift           ← podcast UI flag (OFF since 2026-07-13, Charlie's call — see PODCASTS.md)
     │   │   ├── PlayedEpisodes.swift           ← episode played-state store (UserDefaults)
     │   │   ├── EpisodeProgress.swift          ← episode resume positions (UserDefaults, unit-tested)
-    │   │   └── Equalizer.swift                 ← 10-band EQ model + presets + JS payload (unit-tested)
+    │   │   ├── Equalizer.swift                 ← 10-band EQ model + presets + JS payload (unit-tested)
+    │   │   └── ArtistInfo.swift                ← Wikidata bio resolver → 4-sentence artist summary (+ band members)
     │   └── encore-smoke/                      ← CLI: `swift run encore-smoke` hits the LIVE API unauthenticated
     ├── macOS/                                 ← macOS SwiftUI app (AppKit) — Package target `Encore`, path "macOS"
     ├── Tests/EncoreCoreTests/                 ← XCTest for the shared core (run: `swift test`) — covers BOTH apps' logic; incl. live-API checks that auto-skip offline
@@ -346,7 +347,14 @@ Both platforms unless stated:
   Library tab**; per-collection persistence. Playlist detail pages: "Playlist
   Order" + "Recently Added" (reverse-of-position; no per-track date exists), and
   **playlists always open sorted by Artist** (forced, not persisted).
-- Album / playlist / artist pages; artist page shows "In your playlists & likes".
+- Album / playlist / artist pages; artist page shows "In your playlists & likes"
+  and a **Wikidata bio summary** under the hero (both platforms): birthplace,
+  age (death-aware), country most active in, career start — and for BANDS the
+  member list with roles ("Thom Yorke (vocals), …"). `EncoreCore.ArtistInfo`:
+  search is language-aware (zh for Han names, combined "陶喆 - David Tao" names
+  split into candidates) and requires a music-flavored description so a
+  namesake never attaches; compose() is pure + unit-tested; results (incl.
+  misses) cached per name for the session; 8s timeouts so pages never hang.
   Album pages show track numbers instead of per-row artwork (identical on an
   album) — BOTH platforms (`showsArtwork: !isAlbum`).
 - **Podcasts — DISABLED (2026-07-13) at Charlie's request; the feature is
