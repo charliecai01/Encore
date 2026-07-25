@@ -1,5 +1,30 @@
 # Known bugs / disabled features
 
+## Equalizer — DISABLED (2026-07-23), breaks playback in WKWebView
+
+`Equalizer.featureEnabled = false`. **Symptom:** the first song plays, every
+song after it is silent (reported on iOS; macOS uses the identical mechanism
+and is presumed affected).
+
+**Cause:** the EQ tapped the site's `<video>` with
+`createMediaElementSource`, which permanently reroutes that element's audio
+through the Web Audio graph. In WKWebView the source node stops producing
+output once the element loads a *different* track — so track 2 onward is
+silent. `createMediaElementSource` is **once-per-element and irreversible**
+(a second call throws), so nothing in-page can restore direct audio; only
+never tapping the element, or a full page reload, works.
+
+While the flag is `false` the engines never call `__encore.eq(...)` at all —
+the graph is never built and the audio path is untouched — and the EQ UI is
+hidden on both platforms. The JS graph, the `Equalizer` model (9 unit tests),
+and both UIs remain intact behind the flag.
+
+**If you revive it,** the element tap is a dead end in WKWebView; a viable EQ
+would need a different audio path entirely (e.g. routing playback through a
+native AVAudioEngine, which this architecture doesn't have since Google's
+player owns the stream). Verify any attempt by playing **through a track
+change**, not just one song — that's what the original testing missed.
+
 ## Podcasts — DISABLED (2026-07-13)
 
 Turned off at Charlie's request (`PodcastFeature.enabled = false`). The full

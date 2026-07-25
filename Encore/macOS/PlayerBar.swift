@@ -195,13 +195,15 @@ struct PlayerBar: View {
             .disabled(player.current == nil)
             .help("Copy link to song")
             sleepTimerMenu
-            ControlButton(icon: "slider.vertical.3", size: 14,
-                          active: player.eqSettings.enabled) {
-                showEQ.toggle()
-            }
-            .help("Equalizer")
-            .popover(isPresented: $showEQ, arrowEdge: .top) {
-                EqualizerView().environmentObject(player)
+            if Equalizer.featureEnabled {
+                ControlButton(icon: "slider.vertical.3", size: 14,
+                              active: player.eqSettings.enabled) {
+                    showEQ.toggle()
+                }
+                .help("Equalizer")
+                .popover(isPresented: $showEQ, arrowEdge: .top) {
+                    EqualizerView().environmentObject(player)
+                }
             }
             ControlButton(icon: "quote.bubble", size: 14,
                           active: nowPlayingExpanded) {

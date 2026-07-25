@@ -23,6 +23,17 @@ public struct EQSettings: Codable, Equatable {
 /// enum only holds the numbers, presets, and the JS payload. Pure and
 /// unit-tested; override `store` in tests.
 public enum Equalizer {
+    /// Master switch — **OFF (2026-07-23)**: tapping the site's `<video>` with
+    /// `createMediaElementSource` permanently routes that element's audio
+    /// through Web Audio, and in WKWebView the source node goes SILENT once the
+    /// element loads a different track. Symptom: first song plays, every song
+    /// after it is silent. `createMediaElementSource` is once-per-element and
+    /// cannot be undone, so there's no in-page recovery — only never tapping
+    /// the element (or reloading the page). While this is `false` the engines
+    /// never call `__encore.eq(...)`, so the audio path is untouched and the
+    /// EQ UI is hidden. See BUGS.md.
+    public static var featureEnabled = false
+
     public static var store: UserDefaults = .standard
     private static let key = "equalizerSettings"
 

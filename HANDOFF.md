@@ -246,6 +246,16 @@ with the Co-Authored-By: Claude line.
   appear/disappear. The JS `videoMode(true)` must bump quality AND
   `seekTo(currentTime)` — while parked at 1×1, iOS WebKit decodes audio-only,
   so without the seek re-negotiation the video element renders BLACK.
+- **Equalizer is DISABLED (2026-07-23) — it broke playback; see BUGS.md.**
+  Tapping the `<video>` with `createMediaElementSource` permanently reroutes
+  that element's audio through Web Audio, and in WKWebView the source goes
+  SILENT once the element loads a different track (song 1 fine, song 2+
+  silent). The call is once-per-element and irreversible, so there is no
+  in-page recovery — `Equalizer.featureEnabled = false` makes the engines
+  never call `__encore.eq(...)`, leaving the audio path untouched. **Lesson:
+  any change touching the audio path must be tested ACROSS A TRACK CHANGE,
+  not on a single song.** Original design notes below, still accurate for the
+  code that remains behind the flag:
 - **Equalizer is Web Audio in the PAGE, not native DSP** (2026-07-20): the
   controller script taps the `<video>` with `createMediaElementSource` → ten
   peaking biquads (32Hz–16kHz, Q≈1.41) + a preamp gain → destination.

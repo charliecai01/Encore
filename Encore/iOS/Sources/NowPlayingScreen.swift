@@ -259,7 +259,9 @@ struct NowPlayingScreen: View {
                 UIPasteboard.general.url = url
             } label: { Label("Copy Link", systemImage: "link") }
         }
-        Button { showEQ = true } label: { Label("Equalizer", systemImage: "slider.vertical.3") }
+        if Equalizer.featureEnabled {
+            Button { showEQ = true } label: { Label("Equalizer", systemImage: "slider.vertical.3") }
+        }
         Button { showSongInfo = true } label: { Label("Song Info", systemImage: "info.circle") }
         if player.canRemoveCurrentFromPlaylist {
             Divider()

@@ -57,7 +57,6 @@ in too.
 - **Artist bios** — a Wikidata-sourced summary on every artist page: birthplace, age, country, career start, and band members with roles
 - **Synced lyrics** — YouTube's own timed lyrics when available (fetched via the Android client), falling back to LRCLIB / NetEase / Musixmatch / Genius
 - **Now Playing** — blurred-artwork immersive view with synced lyrics or up-next; when podcasts are enabled, episodes get an Apple-Podcasts-style player (iOS screen + macOS bar) with speed, ±15/30s, resume, and progress bars
-- **10-band graphic equalizer** — 32Hz–16kHz bands (±12dB) + preamp and presets (Bass Boost, Vocal, Rock…), applied in real time via Web Audio biquad filters; both platforms
 - **Native niceties** — media keys, system/lock-screen Now Playing widget, **AirPlay/output-device picker**, **CarPlay** (iOS), **phone-call/Siri interruption handling** (iOS), Space to play/pause, ⌘←/⌘→ prev/next, ⌘R refresh (macOS), dynamic accent colors from artwork
 
 ## Architecture

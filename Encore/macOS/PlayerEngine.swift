@@ -724,8 +724,11 @@ final class PlayerEngine: NSObject, ObservableObject {
         }
     }
 
-    /// Push the current EQ settings into the page's Web Audio graph.
+    /// Push the current EQ settings into the page's Web Audio graph. No-op
+    /// while the feature is off: calling eq() at all would tap the <video>
+    /// element, which silences every track after the first (see Equalizer).
     func applyEqualizer() {
+        guard Equalizer.featureEnabled else { return }
         js("window.__encore && __encore.eq(\(Equalizer.jsPayload(eqSettings)))")
     }
 
