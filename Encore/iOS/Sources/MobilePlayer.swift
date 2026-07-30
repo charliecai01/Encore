@@ -932,6 +932,9 @@ final class PlayerEngine: NSObject, ObservableObject {
             // Fired ~2.5s after videoMode(true): videoWidth 0 means the stream
             // has no decoded video track; inline=0 means playsinline is missing.
             Log.player.notice("videoDebug: videos=\(body["n"] as? Int ?? -1) size=\(body["w"] as? Int ?? -1)x\(body["h"] as? Int ?? -1) readyState=\(body["rs"] as? Int ?? -1) paused=\(body["paused"] as? Int ?? -1) inline=\(body["inline"] as? Int ?? -1) desktopDOM=\(body["app"] as? Int ?? -1)")
+        case "hijack":
+            // The site's own autoplay overrode our load; the page re-asserted.
+            Log.player.notice("hijack: site loaded \(body["cur"] as? String ?? "nil") over \(body["id"] as? String ?? "nil") — re-asserting")
         case "error":
             // The loaded video is unplayable (deleted/region-blocked) — skip it
             // instead of reload-looping while the site's queue bleeds through.
@@ -1416,6 +1419,9 @@ final class PlayerEngine: NSObject, ObservableObject {
       var __encoreMeta = null;
       var __encoreMetaTimer = null;
       var videoModeStyle = null;
+      // Bumped by every ensure() so an older load's watchdog can't fight a
+      // newer one (e.g. the user pressing next while a watchdog is running).
+      var encoreGen = 0;
       function applyEncoreMeta() {
         if (!__encoreMeta || !('mediaSession' in navigator)) return;
         try {
@@ -1490,7 +1496,9 @@ final class PlayerEngine: NSObject, ObservableObject {
         },
         ensure: function (id, start, force) {
           start = start || 0;
+          var gen = ++encoreGen;
           var attempt = function (n) {
+            if (gen !== encoreGen) { return; }
             var p = mp();
             if (p && p.loadVideoById && p.getVideoData) {
               var cur = p.getVideoData().video_id;
@@ -1503,19 +1511,32 @@ final class PlayerEngine: NSObject, ObservableObject {
                 if (start > 0 && p.seekTo) { p.seekTo(start, true); }
                 if (p.getPlayerState && p.getPlayerState() !== 1) { p.playVideo(); }
               }
-              // Watchdog: iOS autoplay policy can leave the player CUED (5) or
-              // UNSTARTED (-1) instead of playing, which used to require skipping
-              // a track to recover. Nudge playVideo() until it actually starts.
+              // Watchdog, for ~5s after a load. Two jobs:
+              // 1. iOS autoplay policy can leave the player CUED (5)/UNSTARTED
+              //    (-1) instead of playing — nudge playVideo() until it starts.
+              // 2. RE-ASSERT our track if the site's own autoplay hijacks the
+              //    load. When a song ends the site queues ITS next track and
+              //    calls loadVideoById a beat after ours, so the user hears the
+              //    wrong song until the slow mismatch recovery (6s grace + 2s
+              //    of ticks) pulls it back. Correcting here makes that ~0.4s.
               var nudges = 0;
               var nudge = function () {
+                if (gen !== encoreGen) { return; } // superseded by a newer load
                 var q = mp();
                 if (!q || !q.getPlayerState || !q.getVideoData) { return; }
-                if (q.getVideoData().video_id !== id) { return; }
-                var s = q.getPlayerState();
-                if (s === 5 || s === -1) {
-                  q.playVideo();
-                  if (++nudges < 6) { setTimeout(nudge, 350); }
+                var now = q.getVideoData().video_id;
+                if (now && now !== id) {
+                  send({ event: 'hijack', cur: now, id: id });
+                  if (++nudges < 10) {
+                    if (start > 0) { q.loadVideoById({ videoId: id, startSeconds: start }); }
+                    else { q.loadVideoById(id); }
+                    setTimeout(nudge, 500);
+                  }
+                  return;
                 }
+                var s = q.getPlayerState();
+                if (s === 5 || s === -1) { q.playVideo(); }
+                if (++nudges < 10) { setTimeout(nudge, 500); }
               };
               setTimeout(nudge, 400);
               return;

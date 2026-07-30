@@ -282,6 +282,16 @@ with the Co-Authored-By: Claude line.
   auto-start the account's last track on a cold launch. A `suppressSiteAutoplay`
   flag (mirrors `sleepStopActive`) force-pauses any site-initiated playback
   until the user explicitly plays; cleared in `load()`/`togglePlay()`.
+- **Site autoplay HIJACKS our load at track transitions (fixed 2026-07-30):**
+  when a song ends, the site queues ITS OWN next track and calls
+  loadVideoById a beat AFTER ours — so the wrong song plays until the slow
+  mismatch recovery (6s grace + 8 ticks ≈ 8s) pulls it back. That is what
+  "suddenly changes track mid song" is: the wrong song starts, then snaps to
+  the right one. Fix: `ensure()`'s watchdog now polls for ~5s after every load
+  and RE-ASSERTS our id whenever the site's differs (~0.4s correction), and an
+  `encoreGen` counter stops an older load's watchdog from fighting a newer one
+  (user pressing next). Each correction emits a `hijack` bridge event → log
+  line "hijack: site loaded X over Y". Don't remove the generation guard.
 - **iOS track "jumps back to previous song" (fixed):** 250 ms polling misses the
   brief "ended" state, so the queue didn't advance and mismatch-recovery
   reloaded the stale `current`. The injected controller now also hooks

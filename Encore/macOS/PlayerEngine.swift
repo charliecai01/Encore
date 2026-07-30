@@ -820,6 +820,9 @@ final class PlayerEngine: NSObject, ObservableObject {
             // auto-resumed session) vs. the track we asked for, and whether we
             // forced a clean load. The smoking gun for restore-then-play.
             Log.player.notice("engage: site cur=\(body["cur"] as? String ?? "nil") want=\(body["id"] as? String ?? "nil") force=\(body["force"] as? Bool ?? false) -> \(body["action"] as? String ?? "?")")
+        case "hijack":
+            // The site's own autoplay overrode our load; the page re-asserted.
+            Log.player.notice("hijack: site loaded \(body["cur"] as? String ?? "nil") over \(body["id"] as? String ?? "nil") — re-asserting")
         case "error":
             // The loaded video is unplayable (deleted/region-blocked) — skip it
             // instead of reload-looping while the site's queue bleeds through.
@@ -1081,6 +1084,9 @@ final class PlayerEngine: NSObject, ObservableObject {
       }
 
       var videoModeStyle = null;
+      // Bumped by every ensure() so an older load's watchdog can't fight a
+      // newer one (e.g. the user pressing next while a watchdog is running).
+      var encoreGen = 0;
       window.__encore = {
         eq: function (cfg) {
           try {
@@ -1093,7 +1099,9 @@ final class PlayerEngine: NSObject, ObservableObject {
         },
         ensure: function (id, start, force) {
           start = start || 0;
+          var gen = ++encoreGen;
           var attempt = function (n) {
+            if (gen !== encoreGen) { return; }
             var p = mp();
             if (p && p.loadVideoById && p.getVideoData) {
               var cur = p.getVideoData().video_id;
@@ -1106,18 +1114,31 @@ final class PlayerEngine: NSObject, ObservableObject {
                 if (start > 0 && p.seekTo) { p.seekTo(start, true); }
                 if (p.getPlayerState && p.getPlayerState() !== 1) { p.playVideo(); }
               }
-              // Watchdog: nudge playVideo() if the player ends up CUED (5) or
-              // UNSTARTED (-1) instead of playing.
+              // Watchdog, for ~5s after a load. Two jobs:
+              // 1. Nudge playVideo() if the player ends up CUED (5)/UNSTARTED (-1).
+              // 2. RE-ASSERT our track if the site's own autoplay hijacks the
+              //    load. When a song ends the site queues ITS next track and
+              //    calls loadVideoById a beat after ours, so the user hears the
+              //    wrong song until the slow mismatch recovery (6s grace + 2s
+              //    of ticks) pulls it back. Correcting here makes that ~0.4s.
               var nudges = 0;
               var nudge = function () {
+                if (gen !== encoreGen) { return; } // superseded by a newer load
                 var q = mp();
                 if (!q || !q.getPlayerState || !q.getVideoData) { return; }
-                if (q.getVideoData().video_id !== id) { return; }
-                var s = q.getPlayerState();
-                if (s === 5 || s === -1) {
-                  q.playVideo();
-                  if (++nudges < 6) { setTimeout(nudge, 350); }
+                var now = q.getVideoData().video_id;
+                if (now && now !== id) {
+                  send({ event: 'hijack', cur: now, id: id });
+                  if (++nudges < 10) {
+                    if (start > 0) { q.loadVideoById({ videoId: id, startSeconds: start }); }
+                    else { q.loadVideoById(id); }
+                    setTimeout(nudge, 500);
+                  }
+                  return;
                 }
+                var s = q.getPlayerState();
+                if (s === 5 || s === -1) { q.playVideo(); }
+                if (++nudges < 10) { setTimeout(nudge, 500); }
               };
               setTimeout(nudge, 400);
               return;
