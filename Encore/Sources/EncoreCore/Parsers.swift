@@ -347,7 +347,12 @@ public enum P {
         let second = header["secondSubtitle"].runsText ?? ""
         let description = header["description"].findFirst("description")?.runsText
             ?? header["description"].runsText
-        let thumb = thumbnailURL(in: header)
+        // Take the header's OWN `thumbnail` (the cover) explicitly. A plain
+        // recursive search finds `straplineThumbnail` — the ARTIST's avatar —
+        // first on any header that has an artist strapline, which showed a
+        // promo photo instead of the album cover (and, since album tracks
+        // inherit this, on every row and queue entry too).
+        let thumb = thumbnailURL(in: header["thumbnail"]) ?? thumbnailURL(in: header)
         let playlistId = header.findFirst("watchEndpoint")?["playlistId"].string
             ?? header.findFirst("watchPlaylistEndpoint")?["playlistId"].string
         return (title, subtitle, second, description, thumb, playlistId)

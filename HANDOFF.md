@@ -282,6 +282,15 @@ with the Co-Authored-By: Claude line.
   auto-start the account's last track on a cold launch. A `suppressSiteAutoplay`
   flag (mirrors `sleepStopActive`) force-pauses any site-initiated playback
   until the user explicitly plays; cleared in `load()`/`togglePlay()`.
+- **Header artwork: take `header["thumbnail"]`, never a recursive search
+  (fixed 2026-07-30).** Album/playlist headers carry BOTH the cover
+  (`thumbnail`) and the artist's avatar (`straplineThumbnail`), and a plain
+  `findFirst("thumbnails")` hits the AVATAR first — so albums with an artist
+  strapline showed a promo photo as their cover, and every track row + queue
+  entry inherited it (album tracks fall back to the header thumb). Verified on
+  "Soul Power (Live Concert)": header now returns the real cover.
+  `HeaderArtworkTests` guards it with a fixture whose keys are in YouTube's
+  order.
 - **Site autoplay HIJACKS our load at track transitions (fixed 2026-07-30):**
   when a song ends, the site queues ITS OWN next track and calls
   loadVideoById a beat AFTER ours — so the wrong song plays until the slow
