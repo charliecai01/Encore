@@ -37,6 +37,8 @@ public enum TrackOrder: Sendable {
     case artist
     case album
     case plays         // global play count, high → low (tracks without counts last)
+    case mostPlayed    // YOUR play count (PlayCounts), high → low
+    case leastPlayed   // YOUR play count, low → high (never-played first)
 }
 
 public enum CardOrder: Sendable {
@@ -82,6 +84,18 @@ public enum LibrarySort {
             return tracks.sorted { lhs, rhs in
                 let a = lhs.playCountValue ?? -1, b = rhs.playCountValue ?? -1
                 if a != b { return a > b }
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
+        case .mostPlayed, .leastPlayed:
+            // YOUR counts, not YouTube's. Snapshot the map once — PlayCounts
+            // .all() decodes UserDefaults JSON, so per-comparison lookups
+            // would decode it O(n log n) times.
+            let counts = PlayCounts.all()
+            let descending = (order == .mostPlayed)
+            return tracks.sorted { lhs, rhs in
+                let a = counts[lhs.videoId]?.count ?? 0
+                let b = counts[rhs.videoId]?.count ?? 0
+                if a != b { return descending ? a > b : a < b }
                 return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
             }
         }

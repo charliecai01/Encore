@@ -6,6 +6,14 @@ enum SongSort: String, CaseIterable {
     case title = "Title"
     case artist = "Artist"
     case album = "Album"
+    /// YOUR play counts (PlayCounts); Least Played surfaces never-played songs.
+    case mostPlayed = "Most Played"
+    case leastPlayed = "Least Played"
+
+    /// Hidden while personal play counts are flagged off.
+    static var visible: [SongSort] {
+        allCases.filter { PlayCountsFeature.enabled || ($0 != .mostPlayed && $0 != .leastPlayed) }
+    }
 }
 
 enum CardSort: String, CaseIterable {
@@ -39,6 +47,8 @@ struct LibraryView: View {
         case .title: order = .title
         case .artist: order = .artist
         case .album: order = .album
+        case .mostPlayed: order = .mostPlayed
+        case .leastPlayed: order = .leastPlayed
         }
         return LibrarySort.arrange(tracks, query: filterText, order: order)
     }
@@ -256,7 +266,7 @@ struct LibraryView: View {
 
                         if tab == .songs {
                             Menu {
-                                ForEach(SongSort.allCases, id: \.self) { sort in
+                                ForEach(SongSort.visible, id: \.self) { sort in
                                     Button {
                                         songSort = sort
                                     } label: {

@@ -11,7 +11,12 @@ enum SortMode: String, CaseIterable {
     case title = "Title"
     case artist = "Artist"
     case album = "Album"
+    /// YouTube's global play count (artist Top songs).
     case plays = "Plays"
+    /// YOUR play counts (PlayCounts) — never-played songs sort first under
+    /// Least Played, which is how you find what you've been skipping.
+    case mostPlayed = "Most Played"
+    case leastPlayed = "Least Played"
 }
 
 enum TrackSort {
@@ -37,6 +42,8 @@ private extension SortMode {
         case .artist: return .artist
         case .album: return .album
         case .plays: return .plays
+        case .mostPlayed: return .mostPlayed
+        case .leastPlayed: return .leastPlayed
         }
     }
     /// Cards only carry title + subtitle, so artist/album both key off subtitle.
@@ -46,7 +53,7 @@ private extension SortMode {
         case .added: return .reversed
         case .title: return .title
         case .artist, .album: return .subtitle
-        case .plays: return .source
+        case .plays, .mostPlayed, .leastPlayed: return .source
         }
     }
 }
@@ -619,7 +626,9 @@ struct LibraryScreen: View {
     }
     private var sortOptions: [SortMode] {
         // Full options in every Library tab.
-        [.recent, .title, .artist, .album]
+        var opts: [SortMode] = [.recent, .title, .artist, .album]
+        if PlayCountsFeature.enabled { opts += [.mostPlayed, .leastPlayed] }
+        return opts
     }
 
     var body: some View {
@@ -810,6 +819,7 @@ struct CollectionScreen: View {
         if isAlbum { return [] }
         var opts: [SortMode] = [.recent, .added, .title, .artist, .album]
         if let page, LibrarySort.hasPlayCounts(page.tracks) { opts.append(.plays) }
+        if PlayCountsFeature.enabled { opts += [.mostPlayed, .leastPlayed] }
         return opts
     }
     /// Default a play-count-ranked playlist to the Plays sort, once.

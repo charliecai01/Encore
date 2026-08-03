@@ -33,7 +33,13 @@ struct CollectionView: View {
     /// "Plays" only makes sense on play-count-ranked lists (e.g. Top songs).
     private var availableSorts: [CollectionSort] {
         let hasPlays = page.map { LibrarySort.hasPlayCounts($0.tracks) } ?? false
-        return CollectionSort.allCases.filter { $0 != .plays || hasPlays }
+        return CollectionSort.allCases.filter { option in
+            switch option {
+            case .plays: return hasPlays            // global counts (Top songs)
+            case .mostPlayed, .leastPlayed: return PlayCountsFeature.enabled
+            default: return true
+            }
+        }
     }
 
     /// Default a play-count-ranked playlist (artist Top songs) to the Plays sort,
@@ -50,7 +56,11 @@ struct CollectionView: View {
         case title = "Title"
         case artist = "Artist"
         case album = "Album"
+        /// YouTube's global play count (artist Top songs).
         case plays = "Plays"
+        /// YOUR play counts (PlayCounts); Least Played surfaces never-played.
+        case mostPlayed = "Most Played"
+        case leastPlayed = "Least Played"
     }
 
     private var sortStorageKey: String {
@@ -70,6 +80,8 @@ struct CollectionView: View {
         case .artist: order = .artist
         case .album: order = .album
         case .plays: order = .plays
+        case .mostPlayed: order = .mostPlayed
+        case .leastPlayed: order = .leastPlayed
         }
         return LibrarySort.arrange(page.tracks, query: filterText, order: order)
     }

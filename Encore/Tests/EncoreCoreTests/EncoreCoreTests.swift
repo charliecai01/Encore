@@ -155,6 +155,36 @@ final class EncoreCoreTests: XCTestCase {
                        ["2", "1", "3"])
     }
 
+    // MARK: - LibrarySort: personal play-count ordering
+
+    func testMostAndLeastPlayedUsePersonalCounts() {
+        let suite = UserDefaults(suiteName: "PlayCountSortTests")!
+        suite.removePersistentDomain(forName: "PlayCountSortTests")
+        let prev = PlayCounts.store
+        PlayCounts.store = suite
+        defer { PlayCounts.store = prev }
+
+        let t = sampleTracks()   // ids 1 (Banana), 2 (apple), 3 (Cherry)
+        // Play "Cherry" 3x and "Banana" once; "apple" is never played.
+        for _ in 0..<3 { PlayCounts.record(t[2]) }
+        PlayCounts.record(t[0])
+
+        XCTAssertEqual(LibrarySort.sort(t, by: .mostPlayed).map(\.videoId), ["3", "1", "2"])
+        // Never-played first — the point of Least Played.
+        XCTAssertEqual(LibrarySort.sort(t, by: .leastPlayed).map(\.videoId), ["2", "1", "3"])
+    }
+
+    func testPlayCountSortTieBreaksByTitle() {
+        let suite = UserDefaults(suiteName: "PlayCountSortTiesTests")!
+        suite.removePersistentDomain(forName: "PlayCountSortTiesTests")
+        let prev = PlayCounts.store
+        PlayCounts.store = suite
+        defer { PlayCounts.store = prev }
+        // All zero plays -> alphabetical, deterministic (not source order).
+        XCTAssertEqual(LibrarySort.sort(sampleTracks(), by: .mostPlayed).map(\.title),
+                       ["apple", "Banana", "Cherry"])
+    }
+
     // MARK: - LibrarySort: filtering (CJK-aware)
 
     func testTrackFilterMatchesTitleArtistAlbum() {
