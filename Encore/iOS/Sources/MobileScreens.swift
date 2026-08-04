@@ -888,12 +888,15 @@ struct CollectionScreen: View {
         }
         .sheet(isPresented: $showEdit) {
             if let id = playlistId, let page {
-                PlaylistEditSheet(playlistId: id, title: page.title, description: page.description ?? "") { newTitle, newDesc in
+                PlaylistEditSheet(playlistId: id, title: page.title, description: page.description ?? "",
+                                  onSaved: { newTitle, newDesc in
                     if var updated = self.page {
                         updated.title = newTitle; updated.description = newDesc
                         self.page = updated; PageCache.shared.collections[cacheKey] = updated
                     }
-                }
+                }, onDeleted: {
+                    Nav.shared.pop()   // the page no longer exists
+                })
             }
         }
         .refreshable { await load() }
@@ -945,12 +948,15 @@ struct PlaylistEditSheet: View {
     @State var title: String
     @State var description: String
     var onSaved: (String, String) -> Void
+    /// Called after a successful delete so the page can navigate away.
+    var onDeleted: (() -> Void)? = nil
 
     @EnvironmentObject var player: PlayerEngine
     @Environment(\.dismiss) private var dismiss
     @State private var privacy = "KEEP"
     @State private var saving = false
     @State private var error: String?
+    @State private var confirmingDelete = false
 
     var body: some View {
         NavigationStack {
@@ -972,6 +978,16 @@ struct PlaylistEditSheet: View {
                 if let error { Text(error).foregroundStyle(.red).font(.footnote) }
                 Text("YouTube Music doesn't allow custom artwork for regular playlists — art is auto-generated from the tracks.")
                     .font(.footnote).foregroundStyle(Theme.textTertiary)
+                Section {
+                    Button("Delete Playlist…", role: .destructive) { confirmingDelete = true }
+                        .disabled(saving)
+                }
+            }
+            .alert("Delete “\(title)”?", isPresented: $confirmingDelete) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete", role: .destructive) { deletePlaylist() }
+            } message: {
+                Text("This removes the playlist from your YouTube Music account for good — it can't be undone. The songs stay in your library.")
             }
             .navigationTitle("Edit Playlist").navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -999,6 +1015,23 @@ struct PlaylistEditSheet: View {
                 dismiss()
             } else {
                 error = "Couldn't save — you can only edit your own playlists."
+            }
+        }
+    }
+
+    private func deletePlaylist() {
+        saving = true; error = nil
+        Task {
+            let ok = (try? await YTM.shared.deletePlaylist(playlistId: playlistId)) ?? false
+            saving = false
+            if ok {
+                player.showToast("Deleted “\(title)”")
+                PageCache.shared.collections["playlist-\(playlistId)"] = nil
+                LibraryStore.shared.invalidate()
+                onDeleted?()
+                dismiss()
+            } else {
+                error = "Couldn't delete — you can only delete your own playlists."
             }
         }
     }

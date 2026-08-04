@@ -200,8 +200,32 @@ struct ContentRouter: View {
                 }, showsSignInPrompt: true, cacheKey: "home")
                     .id("home")
             case .explore:
-                ShelvesScreen(title: "Explore", loader: { try await YTM.shared.explore() },
-                              cacheKey: "explore")
+                ShelvesScreen(title: "Explore", loader: {
+                    // Charlie's genre: lead Explore with R&B — YouTube Music's
+                    // own "R&B & soul" category, plus the long DJ remix mixes
+                    // that only exist as videos.
+                    async let baseTask = (try? await YTM.shared.explore()) ?? []
+                    async let rnbTask = (try? await YTM.shared.genre(params: YTM.Genre.rnbParams)) ?? []
+                    async let remixTask = (try? await YTM.shared.search("R&B remix mix", filter: .videos))?
+                        .shelves.flatMap(\.items) ?? []
+
+                    var shelves = await baseTask
+                    let remixes = await remixTask
+                    if !remixes.isEmpty {
+                        shelves.insert(Shelf(title: "R&B Remixes & DJ Mixes",
+                                             items: Array(remixes.prefix(20))), at: 0)
+                    }
+                    // Genre shelves already carry their own titles; prefix them
+                    // so they read as one R&B section rather than generic rows.
+                    let rnb = await rnbTask
+                    for shelf in rnb.prefix(4).reversed() {
+                        let titled = Shelf(title: shelf.title.localizedCaseInsensitiveContains("r&b")
+                                           ? shelf.title : "R&B · \(shelf.title)",
+                                           items: shelf.items, moreBrowseId: shelf.moreBrowseId)
+                        shelves.insert(titled, at: 0)
+                    }
+                    return shelves
+                }, cacheKey: "explore")
                     .id("explore")
             case .library(let tab):
                 LibraryView(tab: tab)

@@ -357,6 +357,16 @@ final class Nav: ObservableObject {
         }
     }
 
+    /// Drop the top screen of the active tab (e.g. a playlist page whose
+    /// playlist was just deleted).
+    func pop() {
+        switch selectedTab {
+        case 0: if !homePath.isEmpty { homePath.removeLast() }
+        case 1: if !searchPath.isEmpty { searchPath.removeLast() }
+        default: if !libraryPath.isEmpty { libraryPath.removeLast() }
+        }
+    }
+
     func goArtist(id: String?, name: String) {
         if let id {
             if id.hasPrefix("MPLA") { go(.artist(String(id.dropFirst(4)))); return }

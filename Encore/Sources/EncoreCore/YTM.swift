@@ -129,10 +129,28 @@ public final class YTM: @unchecked Sendable {
     }
 
     /// Generic browse page (e.g. library-artist MPLA pages): title + shelves.
-    public func browsePage(browseId: String) async throws -> (title: String, shelves: [Shelf]) {
-        let r = try await net.post("browse", body: ["browseId": browseId])
+    public func browsePage(browseId: String, params: String? = nil) async throws
+        -> (title: String, shelves: [Shelf]) {
+        var body: [String: Any] = ["browseId": browseId]
+        if let params { body["params"] = params }
+        let r = try await net.post("browse", body: body)
         let info = P.headerInfo(from: r)
         return (info.title, P.shelves(from: r))
+    }
+
+    /// YouTube Music's own mood/genre category pages. `params` selects the
+    /// genre — probe `FEmusic_moods_and_genres` for the current values, they
+    /// are opaque and can change.
+    public enum Genre {
+        public static let browseId = "FEmusic_moods_and_genres_category"
+        /// "R&B & soul" (verified live 2026-08-04).
+        public static let rnbParams = "ggMPOg1uX2JxQ2hxc2J5UFhR"
+        public static let hipHopParams = "ggMPOg1uX01sVVAwVmNXcEIx"
+    }
+
+    /// Shelves for a genre category page (playlists/mixes YouTube curates).
+    public func genre(params: String) async throws -> [Shelf] {
+        try await browsePage(browseId: Genre.browseId, params: params).shelves
     }
 
     // MARK: - Search
@@ -367,6 +385,17 @@ public final class YTM: @unchecked Sendable {
         guard !actions.isEmpty else { return true }
         let r = try await net.post("browse/edit_playlist", body: ["playlistId": pid, "actions": actions], idempotent: false)
         return r["status"].string?.contains("SUCCEEDED") ?? false
+    }
+
+    /// Delete an owned playlist. **Irreversible** — YouTube Music has no trash
+    /// for playlists, so the UI must confirm before calling this.
+    public func deletePlaylist(playlistId: String) async throws -> Bool {
+        let pid = playlistId.hasPrefix("VL") ? String(playlistId.dropFirst(2)) : playlistId
+        let r = try await net.post("playlist/delete", body: ["playlistId": pid], idempotent: false)
+        // A successful delete returns a command/status payload; treat an
+        // explicit failure status as the only failure signal.
+        if let status = r["status"].string { return status.contains("SUCCEEDED") }
+        return r.exists
     }
 
     // MARK: - Discovery

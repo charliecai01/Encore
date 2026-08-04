@@ -130,12 +130,16 @@ struct CollectionView: View {
         }
         .sheet(isPresented: $showEdit) {
             if case .playlist(let id) = kind, let page {
-                PlaylistEditSheet(playlistId: id, title: page.title, description: page.description ?? "") { newTitle, newDesc in
+                PlaylistEditSheet(playlistId: id, title: page.title, description: page.description ?? "",
+                                  onSaved: { newTitle, newDesc in
                     if var updated = self.page {
                         updated.title = newTitle; updated.description = newDesc
                         self.page = updated; PageCache.shared.collections[cacheKey] = updated
                     }
-                }
+                }, onDeleted: {
+                    // The page no longer exists — go home.
+                    Nav.shared.go(.home)
+                })
             }
         }
     }
