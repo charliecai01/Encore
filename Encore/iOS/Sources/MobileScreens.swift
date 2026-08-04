@@ -368,6 +368,9 @@ struct HomeScreen: View {
     /// Latest episodes from subscribed shows (the "New Episodes" RDPN feed) —
     /// surfaced on Home because podcasts otherwise live two taps deep.
     @State private var podcastShelf: Shelf?
+    /// R&B — Charlie's genre. iOS has no Explore tab, so it rides on Home:
+    /// the long DJ remix mixes (videos) + YouTube's own "R&B & soul" shelves.
+    @State private var rnbShelves: [Shelf] = []
     @State private var loading = true
     @State private var editingShortcuts = false
     @State private var shortcutOrder: [String] = UserDefaults.standard.stringArray(forKey: "homeShortcutOrder") ?? []
@@ -430,6 +433,7 @@ struct HomeScreen: View {
                 if loading { ProgressView().frame(maxWidth: .infinity).padding(.top, 60) }
                 if let podcastShelf { ShelfRow(shelf: podcastShelf) }
                 if let discoverShelf { ShelfRow(shelf: discoverShelf) }
+                ForEach(rnbShelves) { ShelfRow(shelf: $0) }
                 ForEach(shelves) { ShelfRow(shelf: $0) }
                 Color.clear.frame(height: 80)
             }
@@ -481,6 +485,27 @@ struct HomeScreen: View {
                 discoverShelf = Shelf(title: "Discover · Fresh for you", items: discover.map { .card($0.asSongCard) })
             }
         }
+        await loadRnB()
+    }
+
+    /// R&B section (no sign-in needed): the long DJ remix mixes that only
+    /// exist as videos, then YouTube Music's own "R&B & soul" shelves.
+    private func loadRnB() async {
+        async let remixTask = (try? await YTM.shared.search("R&B remix mix", filter: .videos))?
+            .shelves.flatMap(\.items) ?? []
+        async let genreTask = (try? await YTM.shared.genre(params: YTM.Genre.rnbParams)) ?? []
+
+        var built: [Shelf] = []
+        let remixes = await remixTask
+        if !remixes.isEmpty {
+            built.append(Shelf(title: "R&B Remixes & DJ Mixes", items: Array(remixes.prefix(15))))
+        }
+        for shelf in await genreTask.prefix(4) where !shelf.items.isEmpty {
+            built.append(Shelf(title: shelf.title.localizedCaseInsensitiveContains("r&b")
+                               ? shelf.title : "R&B · \(shelf.title)",
+                               items: shelf.items, moreBrowseId: shelf.moreBrowseId))
+        }
+        if !built.isEmpty { rnbShelves = built }
     }
 
     /// One full-width shortcut box (artwork + title).
