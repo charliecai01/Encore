@@ -1519,19 +1519,26 @@ final class PlayerEngine: NSObject, ObservableObject {
               //    calls loadVideoById a beat after ours, so the user hears the
               //    wrong song until the slow mismatch recovery (6s grace + 2s
               //    of ticks) pulls it back. Correcting here makes that ~0.4s.
-              var nudges = 0;
+              var nudges = 0, reloads = 0, sawOurs = false;
               var nudge = function () {
                 if (gen !== encoreGen) { return; } // superseded by a newer load
                 var q = mp();
                 if (!q || !q.getPlayerState || !q.getVideoData) { return; }
                 var now = q.getVideoData().video_id;
+                if (now === id) { sawOurs = true; }
                 if (now && now !== id) {
-                  send({ event: 'hijack', cur: now, id: id });
-                  if (++nudges < 10) {
+                  // Only a HIJACK once our load has actually taken and the id
+                  // then changed away. Before that the player is still
+                  // committing our load (or reporting the audio counterpart's
+                  // sibling id), and reloading would restart it every 500ms —
+                  // a loop that stopped playback from ever starting.
+                  if (sawOurs && reloads < 3) {
+                    reloads++;
+                    send({ event: 'hijack', cur: now, id: id });
                     if (start > 0) { q.loadVideoById({ videoId: id, startSeconds: start }); }
                     else { q.loadVideoById(id); }
-                    setTimeout(nudge, 500);
                   }
+                  if (++nudges < 10) { setTimeout(nudge, 500); }
                   return;
                 }
                 var s = q.getPlayerState();
