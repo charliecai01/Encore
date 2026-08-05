@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// One band member: display name plus an optional role ("vocals", "guitar").
 public struct BandMember: Equatable {
@@ -49,8 +50,10 @@ public struct ArtistFacts: Equatable {
 /// Network results are cached per name for the session; `compose` is pure and
 /// unit-tested.
 public enum ArtistInfo {
-    private static let lock = NSLock()
-    private static var cache: [String: String] = [:]   // name -> summary ("" = known miss)
+    /// name → summary ("" = known miss). Scoped async-safe lock: NSLock's
+    /// lock()/unlock() are unavailable from async contexts (a hard error under
+    /// the Swift 6 language mode), same as the Musixmatch token cache.
+    private static let cache = OSAllocatedUnfairLock<[String: String]>(initialState: [:])
 
     private static let session: URLSession = {
         let cfg = URLSessionConfiguration.ephemeral
@@ -66,9 +69,7 @@ public enum ArtistInfo {
     public static func summary(forName rawName: String, now: Date = Date()) async -> String? {
         let key = rawName.trimmingCharacters(in: .whitespaces).lowercased()
         guard !key.isEmpty else { return nil }
-        lock.lock()
-        if let hit = cache[key] { lock.unlock(); return hit.isEmpty ? nil : hit }
-        lock.unlock()
+        if let hit = cache.withLock({ $0[key] }) { return hit.isEmpty ? nil : hit }
 
         var summary: String?
         for candidate in candidates(from: rawName) {
@@ -82,7 +83,8 @@ public enum ArtistInfo {
                 break
             }
         }
-        lock.lock(); cache[key] = summary ?? ""; lock.unlock()
+        let resolved = summary ?? ""   // capture a let, not the mutable var
+        cache.withLock { $0[key] = resolved }
         return summary
     }
 
