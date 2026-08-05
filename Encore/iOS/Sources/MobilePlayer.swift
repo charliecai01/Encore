@@ -163,6 +163,13 @@ final class PlayerEngine: NSObject, ObservableObject {
     private var lastProgressT = 0.0
     private var lastProgressAt = Date.distantPast
     private var stallNudged = false
+    /// The player reports it is buffering (YT state 3) — i.e. it IS making
+    /// progress on a slow link. StallPolicy uses this to avoid reloading the
+    /// download out from under itself.
+    private var isBuffering = false
+    /// Stall reloads since the position last actually advanced. Drives the
+    /// backoff so a bad link isn't hammered every few seconds.
+    private var consecutiveStallReloads = 0
     /// Guards one play-count increment per track load (recorded after a threshold).
     private var playCountRecorded = false
     // Silent looping player that holds the audio session (and the Now Playing
@@ -989,6 +996,7 @@ final class PlayerEngine: NSObject, ObservableObject {
             }
         case "state":
             let state = body["data"] as? Int ?? -1
+            isBuffering = (state == 3)
             Log.player.notice("state=\(state) vid=\(body["vid"] as? String ?? "nil") current=\(self.current?.videoId ?? "nil") suppress=\(self.suppressSiteAutoplay)")
             switch state {
             case 1:
@@ -1094,18 +1102,28 @@ final class PlayerEngine: NSObject, ObservableObject {
                     lastProgressT = t
                     lastProgressAt = Date()
                     stallNudged = false
+                    consecutiveStallReloads = 0
                 } else if Date().timeIntervalSince(lastLoadAt) > 5, let playId = activePlaybackId {
                     let frozen = Date().timeIntervalSince(lastProgressAt)
-                    if frozen > 9 {
-                        // Still stuck — re-establish the stream at our position.
+                    switch StallPolicy.action(frozen: frozen,
+                                              buffering: isBuffering,
+                                              consecutiveReloads: consecutiveStallReloads,
+                                              alreadyNudged: stallNudged) {
+                    case .reload:
+                        // Re-establish the stream at our position. Costs the
+                        // buffer, so StallPolicy backs off after each one.
+                        consecutiveStallReloads += 1
+                        Log.player.notice("stall reload #\(self.consecutiveStallReloads) after \(Int(frozen))s frozen (buffering=\(self.isBuffering))")
                         lastProgressAt = Date()
                         lastLoadAt = Date()
                         stallNudged = false
                         ensureJS(playId, startAt: t)
-                    } else if frozen > 4, !stallNudged {
+                    case .nudge:
                         // A buffer stall often just needs a kick before a full reload.
                         stallNudged = true
                         js("window.__encore && __encore.play()")
+                    case .none:
+                        break
                     }
                 }
             }
