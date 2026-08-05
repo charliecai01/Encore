@@ -144,7 +144,30 @@ non-empty — the original podcast bug's regression guard). The cookie is resolv
 var, else the local skip-worktree'd `iOS/Sources/DevCredentials.swift` — and
 is NEVER committed; without one the class skips, so CI/fresh checkouts stay
 green. Tests are read-only (no account mutations). If they fail while the
-unauthenticated live tests pass, suspect an expired cookie first.
+unauthenticated live tests pass, suspect an expired cookie first. The lookup
+lives in `TestCookie.resolve()`, shared with the health sweep below.
+
+**`HealthSweepTests` — the app-wide health check (OPT-IN).** One pass over
+every screen's backing call against the live signed-in account, printing
+anomalies as `SUSPECT`:
+
+```bash
+ENCORE_HEALTH_SWEEP=1 swift test --filter HealthSweepTests
+```
+
+Covers home, library (playlists/songs/albums/artists/history), each playlist
+with continuation, album, artist page + bio + library matching, all search
+filters, the R&B genre section, watch queue / radio / lyrics, the sorts, and
+the Discover pool. Read the output: every `SUSPECT` is a data path that came
+back empty or malformed; `NOTE` is usually legitimate (e.g. a few tracks
+missing against a playlist's declared count, or most/least-played tying
+because play counts are per-device and a test process has none); only `SWEEP`
+lines = healthy. Reach for it when something feels broken app-wide, or after
+touching `Parsers`/`YTM` — it localizes "is it the data or the player?" in one
+run. It reports rather than asserts, so it is gated behind the env var and
+**skips in a normal `swift test`** (it was ~half the suite's runtime and can
+never fail). Same cookie rules and read-only guarantee as above; a wholesale
+broken sweep means an expired cookie, not a parser regression.
 
 ### iOS (needs full Xcode — already installed; license accepted)
 ```bash

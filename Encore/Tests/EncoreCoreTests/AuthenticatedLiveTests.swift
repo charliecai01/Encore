@@ -49,21 +49,7 @@ final class AuthenticatedLiveTests: XCTestCase {
     /// ENCORE_TEST_COOKIE, else the string literal out of the local
     /// DevCredentials.swift (committed empty; real value is skip-worktree'd).
     /// Reading the app's copy keeps the secret in exactly one place.
-    private static func testCookie() -> String? {
-        if let env = ProcessInfo.processInfo.environment["ENCORE_TEST_COOKIE"],
-           !env.isEmpty { return env }
-        let url = URL(fileURLWithPath: #filePath)   // …/Tests/EncoreCoreTests/AuthenticatedLiveTests.swift
-            .deletingLastPathComponent()            // Tests/EncoreCoreTests
-            .deletingLastPathComponent()            // Tests
-            .deletingLastPathComponent()            // Encore
-            .appendingPathComponent("iOS/Sources/DevCredentials.swift")
-        guard let src = try? String(contentsOf: url, encoding: .utf8),
-              let open = src.range(of: "static let cookie = \""),
-              let close = src.range(of: "\"", range: open.upperBound..<src.endIndex)
-        else { return nil }
-        let cookie = String(src[open.upperBound..<close.lowerBound])
-        return cookie.isEmpty ? nil : cookie
-    }
+    private static func testCookie() -> String? { TestCookie.resolve() }
 
     /// Run `body`, turning transport-level errors into a skip (same policy as
     /// LiveConnectionTests): offline/rate-limited isn't a parse regression.
