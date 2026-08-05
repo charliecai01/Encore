@@ -291,6 +291,18 @@ with the Co-Authored-By: Claude line.
   "Soul Power (Live Concert)": header now returns the real cover.
   `HeaderArtworkTests` guards it with a fixture whose keys are in YouTube's
   order.
+- **"Stops playing until I restart the app" = the web content process died
+  (fixed 2026-08-05).** iOS jettisons WKWebView content processes under memory
+  pressure and a hidden 1x1 web view is a prime target. When it happens
+  `window.__encore` is gone, every `js()` call silently no-ops, and NO bridge
+  messages arrive — so the stall watchdog, which is DRIVEN BY those messages,
+  can never fire, and the engine still thinks `playerReady`. Only relaunching
+  rebuilt it. Both engines now (a) implement
+  `webViewWebContentProcessDidTerminate` -> `reloadSite()`, and (b) run a 5s
+  liveness timer that reloads when no bridge message has arrived for 15s
+  (`lastBridgeAt`, reset on foreground since timers don't fire while
+  suspended). `reloadSite()` keeps the queue; `ready` re-engages, paused.
+  TELL: playback works right after every relaunch and degrades over a session.
 - **Site autoplay HIJACKS our load at track transitions (fixed 2026-07-30):**
   when a song ends, the site queues ITS OWN next track and calls
   loadVideoById a beat AFTER ours — so the wrong song plays until the slow

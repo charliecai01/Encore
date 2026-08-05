@@ -99,6 +99,10 @@ final class PlayerEngine: NSObject, ObservableObject {
     private var unshuffledQueue: [Track]?
     private var lyricsRequestId = 0
     private var lastEpisodeSaveAt = Date.distantPast
+    /// Last time ANY bridge message arrived. The page reports 4×/second while
+    /// alive, so prolonged silence means its web content process was killed.
+    private var lastBridgeAt = Date()
+    private var livenessTimer: Timer?
     /// Unplayable-track handling: skip once per load on a player error, and
     /// give up pulling the site back after a few failed re-engages.
     private var unplayableSkipped = false
@@ -189,9 +193,11 @@ final class PlayerEngine: NSObject, ObservableObject {
         webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
         super.init()
         config.userContentController.add(BridgeHandler(engine: self), name: "bridge")
+        webView.navigationDelegate = self
         webView.load(URLRequest(url: URL(string: "https://music.youtube.com/")!))
         setupRemoteCommands()
         setupInterruptionHandling()
+        startLivenessWatch()
         if UserDefaults.standard.object(forKey: "autoplayEnabled") != nil {
             autoplayEnabled = UserDefaults.standard.bool(forKey: "autoplayEnabled")
         }
@@ -506,6 +512,28 @@ final class PlayerEngine: NSObject, ObservableObject {
         }
     }
 
+    // MARK: - Web view liveness
+
+    /// iOS jettisons WKWebView content processes under memory pressure — a
+    /// hidden 1×1 web view in a backgrounded app is a prime candidate. When
+    /// that happens `window.__encore` is gone, every js() call silently does
+    /// nothing, and NO bridge messages arrive — so the stall watchdog (which
+    /// is driven BY those messages) can't fire either. The engine still
+    /// believes the player is ready, so nothing plays until the app is
+    /// relaunched. These two checks recover it in place.
+    private func startLivenessWatch() {
+        livenessTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.checkPageLiveness() }
+        }
+    }
+
+    private func checkPageLiveness() {
+        // playerReady gates re-entry: reloadSite() clears it until `ready`.
+        guard playerReady, Date().timeIntervalSince(lastBridgeAt) > 15 else { return }
+        Log.player.error("no bridge messages for 15s — page is dead; reloading site")
+        reloadSite()
+    }
+
     /// Push the current EQ settings into the page's Web Audio graph. No-op
     /// while the feature is off: calling eq() at all would tap the <video>
     /// element, which silences every track after the first (see Equalizer).
@@ -553,8 +581,12 @@ final class PlayerEngine: NSObject, ObservableObject {
         Task { try? await YTM.shared.setLiked(videoId: track.videoId, liked: !liked) }
     }
 
+    /// Rebuild the page (sign-in change, or recovery from a dead web content
+    /// process). Queue/index/current are untouched; `ready` re-engages the
+    /// current track, still paused.
     func reloadSite() {
         playerReady = false
+        lastBridgeAt = Date()   // grace period while the reload runs
         webView.load(URLRequest(url: URL(string: "https://music.youtube.com/")!))
     }
 
@@ -906,6 +938,7 @@ final class PlayerEngine: NSObject, ObservableObject {
     // MARK: - Bridge events
 
     fileprivate func handleBridge(_ body: [String: Any]) {
+        lastBridgeAt = Date()   // proof the page is alive (see checkPageLiveness)
         guard let event = body["event"] as? String else { return }
         switch event {
         case "remote":
@@ -1132,6 +1165,10 @@ final class PlayerEngine: NSObject, ObservableObject {
             DispatchQueue.main.async {
                 self?.audioInterrupted = false
                 self?.backgroundResumeNudges = 0
+                // Timers don't fire while suspended, so the bridge legitimately
+                // went quiet — restart the liveness window instead of reading
+                // that silence as a dead page.
+                self?.lastBridgeAt = Date()
                 self?.resumeIfIntended()
             }
         }
@@ -1675,6 +1712,27 @@ final class PlayerEngine: NSObject, ObservableObject {
       send({ event: 'ready' });
     })();
     """#
+}
+
+// MARK: - Web content process recovery
+
+extension PlayerEngine: WKNavigationDelegate {
+    /// iOS killed the web view's content process (memory pressure). Without
+    /// this the page stays dead for the rest of the session and nothing plays
+    /// until the app is relaunched.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        Log.player.error("web content process TERMINATED — reloading site")
+        reloadSite()
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        Log.player.error("site navigation failed: \(error.localizedDescription)")
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
+                 withError error: Error) {
+        Log.player.error("site load failed: \(error.localizedDescription)")
+    }
 }
 
 private final class BridgeHandler: NSObject, WKScriptMessageHandler {

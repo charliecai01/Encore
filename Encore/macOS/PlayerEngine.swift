@@ -108,6 +108,10 @@ final class PlayerEngine: NSObject, ObservableObject {
     private var unshuffledQueue: [Track]?
     private var lyricsRequestId = 0
     private var lastEpisodeSaveAt = Date.distantPast
+    /// Last time ANY bridge message arrived. The page reports 4x/second while
+    /// alive, so prolonged silence means its web content process was killed.
+    private var lastBridgeAt = Date()
+    private var livenessTimer: Timer?
     /// Unplayable-track handling: skip once per load on a player error, and
     /// give up pulling the site back after a few failed re-engages.
     private var unplayableSkipped = false
@@ -158,8 +162,10 @@ final class PlayerEngine: NSObject, ObservableObject {
         webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
         super.init()
         config.userContentController.add(BridgeHandler(engine: self), name: "bridge")
+        webView.navigationDelegate = self
         webView.load(URLRequest(url: URL(string: "https://music.youtube.com/")!))
         setupRemoteCommands()
+        startLivenessWatch()
         if UserDefaults.standard.object(forKey: "autoplayEnabled") != nil {
             autoplayEnabled = UserDefaults.standard.bool(forKey: "autoplayEnabled")
         }
@@ -512,9 +518,28 @@ final class PlayerEngine: NSObject, ObservableObject {
         return false
     }
 
-    /// Reload the hidden site after the session changes (sign-in/out).
+    /// WebKit can kill the web view's content process (memory pressure). Then
+    /// `window.__encore` is gone, every js() call silently no-ops, and NO
+    /// bridge messages arrive — so the stall watchdog, which is driven BY those
+    /// messages, can't fire either. Nothing plays until the app restarts.
+    private func startLivenessWatch() {
+        livenessTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.checkPageLiveness() }
+        }
+    }
+
+    private func checkPageLiveness() {
+        // playerReady gates re-entry: reloadSite() clears it until `ready`.
+        guard playerReady, Date().timeIntervalSince(lastBridgeAt) > 15 else { return }
+        Log.player.error("no bridge messages for 15s — page is dead; reloading site")
+        reloadSite()
+    }
+
+    /// Reload the hidden site after the session changes (sign-in/out) or to
+    /// recover a dead web content process.
     func reloadSite() {
         playerReady = false
+        lastBridgeAt = Date()   // grace period while the reload runs
         webView.load(URLRequest(url: URL(string: "https://music.youtube.com/")!))
     }
 
@@ -802,6 +827,7 @@ final class PlayerEngine: NSObject, ObservableObject {
     // MARK: - Bridge events
 
     fileprivate func handleBridge(_ body: [String: Any]) {
+        lastBridgeAt = Date()   // proof the page is alive (see checkPageLiveness)
         guard let event = body["event"] as? String else { return }
         switch event {
         case "ready":
@@ -1231,6 +1257,20 @@ final class PlayerEngine: NSObject, ObservableObject {
       send({ event: 'ready' });
     })();
     """#
+}
+
+// MARK: - Web content process recovery
+
+extension PlayerEngine: WKNavigationDelegate {
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        Log.player.error("web content process TERMINATED — reloading site")
+        reloadSite()
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
+                 withError error: Error) {
+        Log.player.error("site load failed: \(error.localizedDescription)")
+    }
 }
 
 /// Separate handler object so the engine isn't retained by the user content controller.
