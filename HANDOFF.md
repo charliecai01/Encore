@@ -341,6 +341,24 @@ with the Co-Authored-By: Claude line.
   at `restoreSeekTime ?? currentTime` — it used to pass `0`, restarting the
   song from the top on every mid-song recovery. Both engines.
   **Don't reintroduce a bare `?? 0` there, and don't drop the re-arm.**
+- **Weak cellular: never reload a BUFFERING stream (fixed 2026-08-05).**
+  Charlie's read was right — iOS is fine on wifi and bad on poor cell, and
+  the Mac (always wifi) is fine because the macOS engine has **no stall
+  watchdog at all**. The iOS watchdog was the cause, not a mitigation: the old
+  rule was a flat "position frozen >9s -> ensureJS" with no idea the player was
+  buffering. On a slow link the reload discards the buffer and restarts the
+  download, re-buffering takes longer than 9s, and it reloads again — a loop
+  that never plays a note. Decision now lives in `EncoreCore/StallPolicy`
+  (unit-tested): never reload while buffering (45s escape hatch for a wedged
+  stream), and exponential backoff 9/18/36s capped at 60s, reset when the
+  position actually advances. The engine had no `case 3` in its state switch,
+  so it now tracks `isBuffering` and feeds it in.
+  VERIFIED under `scripts/poor_cell.sh` (256 Kbit/s, 400ms, 6% loss): 20
+  minutes of playback, **5 tracks played through**, 82 buffering events, and
+  only **2 stall reloads — both `buffering=true` after the full 45s wait, and
+  never a #2**. The old flat-9s rule would have fired ~5 self-defeating
+  reloads per stall. TELL: music that never starts on a bad signal but is fine
+  the moment you're on wifi.
 - **Site autoplay HIJACKS our load at track transitions (fixed 2026-07-30):**
   when a song ends, the site queues ITS OWN next track and calls
   loadVideoById a beat AFTER ours — so the wrong song plays until the slow
