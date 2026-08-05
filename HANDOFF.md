@@ -301,8 +301,23 @@ with the Co-Authored-By: Claude line.
   `webViewWebContentProcessDidTerminate` -> `reloadSite()`, and (b) run a 5s
   liveness timer that reloads when no bridge message has arrived for 15s
   (`lastBridgeAt`, reset on foreground since timers don't fire while
-  suspended). `reloadSite()` keeps the queue; `ready` re-engages, paused.
+  suspended). `reloadSite()` keeps the queue/index/current.
   TELL: playback works right after every relaunch and degrades over a session.
+- **A recovery reload must not start audio (fixed 2026-08-05, same day).**
+  The recovery above shipped believing `ready` re-engaged *paused*. It did
+  not: `ready` calls `startPlayback`/`ensureJS` unconditionally when
+  `loadedOnce`, and `suppressSiteAutoplay` is set to `false` on the first
+  play and **never re-armed** — so a process death while PAUSED came back
+  **playing**, and the rebuilt page also auto-resumes the *account's* last
+  track (a song that isn't even in the queue). That is "it randomly starts
+  playing by itself in my pocket". Verified in the simulator by `kill -9`ing
+  the sim's `WebContentExtension` while paused: before, it ended `state=1`;
+  after, `state=1` → force-paused to `state=2`. Fix: `reloadSite()` sets
+  `suppressSiteAutoplay = !isPlaying`, so the existing state-1 guard pauses
+  whatever starts, and playing sessions still resume. `ready` also re-engages
+  at `restoreSeekTime ?? currentTime` — it used to pass `0`, restarting the
+  song from the top on every mid-song recovery. Both engines.
+  **Don't reintroduce a bare `?? 0` there, and don't drop the re-arm.**
 - **Site autoplay HIJACKS our load at track transitions (fixed 2026-07-30):**
   when a song ends, the site queues ITS OWN next track and calls
   loadVideoById a beat AFTER ours — so the wrong song plays until the slow

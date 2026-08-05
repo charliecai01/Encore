@@ -587,6 +587,12 @@ final class PlayerEngine: NSObject, ObservableObject {
     func reloadSite() {
         playerReady = false
         lastBridgeAt = Date()   // grace period while the reload runs
+        // A rebuilt page auto-resumes the ACCOUNT's last track, and `ready`
+        // re-engages ours — either one would start audio the user never asked
+        // for when the process died while paused. Re-arm the launch guard so
+        // the state-1 handler force-pauses whatever starts; playing sessions
+        // keep it off so they resume normally.
+        suppressSiteAutoplay = !isPlaying
         webView.load(URLRequest(url: URL(string: "https://music.youtube.com/")!))
     }
 
@@ -954,7 +960,9 @@ final class PlayerEngine: NSObject, ObservableObject {
             Log.player.notice("ready: loadedOnce=\(self.loadedOnce) current=\(self.current?.videoId ?? "nil")")
             applyEqualizer()
             if loadedOnce, let track = current {
-                startPlayback(track, startAt: restoreSeekTime ?? 0)
+                // Re-engage at where we actually were: a recovery reload mid-song
+                // used to hand back startAt 0 and restart the track.
+                startPlayback(track, startAt: restoreSeekTime ?? currentTime)
             }
         case "engage":
             // Diagnostic: what the web player already had loaded (the site's
