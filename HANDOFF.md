@@ -359,6 +359,20 @@ with the Co-Authored-By: Claude line.
   never a #2**. The old flat-9s rule would have fired ~5 self-defeating
   reloads per stall. TELL: music that never starts on a bad signal but is fine
   the moment you're on wifi.
+- **"Jumping around / not playing what I selected" = a run of UNAVAILABLE
+  tracks (fixed 2026-08-05).** YouTube greys out tracks it won't serve, and
+  playing one returns player error 150 → skip. Three in a row in "Favorite
+  Songs" produced three errors in 1.2s, which reads as the player skipping on
+  its own. The signal is on the row all along:
+  `musicItemRendererDisplayPolicy = MUSIC_ITEM_RENDERER_DISPLAY_POLICY_GREY_OUT`
+  — the same field YT Music's own UI dims with. **It only appears on rows that
+  are actually dead, so a first-page probe of a playlist finds nothing** (in
+  Charlie's library they're on pages 2 and 4); page through with
+  `P.continuationToken` before concluding the field is absent.
+  `Track.isUnavailable` carries it; both apps dim the row and swallow the tap;
+  `EncoreCore/PlayableQueue` drops them at queue-build time and remaps the
+  start index so auto-advance can't walk into a run. The health sweep prints
+  the per-playlist count — a sudden 0 everywhere means the policy key moved.
 - **Site autoplay HIJACKS our load at track transitions (fixed 2026-07-30):**
   when a song ends, the site queues ITS OWN next track and calls
   loadVideoById a beat AFTER ours — so the wrong song plays until the slow
