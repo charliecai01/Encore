@@ -147,7 +147,10 @@ struct TrackRowView: View {
         }
         .padding(.vertical, 5)
         .contentShape(Rectangle())
-        .onTapGesture { onPlay() }
+        // YouTube already told us it won't play this one (grey row). Dim it and
+        // swallow the tap: playing it only ever yields error 150 and a skip.
+        .opacity(track.isUnavailable ? 0.4 : 1)
+        .onTapGesture { if !track.isUnavailable { onPlay() } }
         .gesture(playNextSwipe)
         .onAppear { if PodcastFeature.enabled, track.isEpisode { played = PlayedEpisodes.isPlayed(track.videoId) } }
     }

@@ -159,9 +159,17 @@ public enum P {
             $0.range(of: #"^[\d][\d.,]*\s*[KMBkmb]?\s*plays?$"#, options: .regularExpression) != nil
         }
 
+        // YouTube marks rows it won't play (removed / region-blocked / rights
+        // pulled) with a GREY_OUT display policy — the same field its own web
+        // UI dims the row with. Playing one only ever returns player error 150,
+        // and a run of them reads as the player "jumping around", so carry the
+        // flag through and let the apps refuse the tap.
+        let isUnavailable = (r["musicItemRendererDisplayPolicy"].string ?? "").contains("GREY_OUT")
+
         return Track(videoId: videoId, title: title, artists: artists, artistLine: artistLine,
                      album: albumRef ?? fallbackAlbum, durationSeconds: duration, thumbnailURL: thumb,
-                     setVideoId: setVideoId, isEpisode: isEpisode, isVideo: isVideo, playsText: playsText)
+                     setVideoId: setVideoId, isEpisode: isEpisode, isVideo: isVideo, playsText: playsText,
+                     isUnavailable: isUnavailable)
     }
 
     static func cardKind(forBrowseId browseId: String, pageType: String?) -> CardItem.Kind {

@@ -91,6 +91,13 @@ final class HealthSweepTests: XCTestCase {
                 }
             }
             if let tracks = page?.tracks {
+                // Greyed-out rows YouTube won't play. Expected to be small and
+                // non-zero on a real library; a sudden 0 across every playlist
+                // means the GREY_OUT policy moved and the parse went blind.
+                let dead = tracks.filter(\.isUnavailable)
+                if !dead.isEmpty {
+                    print("NOTE '\(p.title)' has \(dead.count) unavailable: \(dead.prefix(5).map(\.title))")
+                }
                 let noId = tracks.filter { $0.videoId.isEmpty }.count
                 if noId > 0 { print("SUSPECT '\(p.title)' has \(noId) tracks with no videoId") }
                 let noSet = tracks.filter { ($0.setVideoId ?? "").isEmpty }.count

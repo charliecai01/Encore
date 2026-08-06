@@ -256,11 +256,16 @@ struct TrackRow: View {
                 }
             }
         }
-        .onTapGesture(count: 2) { onPlay() }
+        // YouTube already told us it won't play this one (grey row). Dim it and
+        // swallow the tap: playing it only ever yields error 150 and a skip.
+        .opacity(track.isUnavailable ? 0.4 : 1)
+        .help(track.isUnavailable ? "Unavailable on YouTube Music" : "")
+        .onTapGesture(count: 2) { if !track.isUnavailable { onPlay() } }
         .onTapGesture {
             // Pull keyboard focus out of any text field so Space reliably
             // toggles playback after interacting with lists.
             NSApp.keyWindow?.makeFirstResponder(nil)
+            guard !track.isUnavailable else { return }
             if isCurrent { player.togglePlay() } else { onPlay() }
         }
         .contextMenu {

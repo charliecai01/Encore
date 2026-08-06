@@ -35,13 +35,20 @@ public struct Track: Identifiable, Hashable, Codable {
     /// Global play-count label from YouTube, e.g. "102M plays" (nil when the
     /// source — artist Top songs, song search — doesn't provide one).
     public var playsText: String?
+    /// YouTube says this track can't be played (removed, region-blocked, or
+    /// rights-pulled) via `MUSIC_ITEM_RENDERER_DISPLAY_POLICY_GREY_OUT` — the
+    /// same signal YT Music's own web UI greys the row out with. Playing one
+    /// only ever yields player error 150, so the apps show it dimmed and
+    /// unplayable and skip past it when building queues.
+    public var isUnavailable: Bool
 
     public var id: String { videoId }
 
     public init(videoId: String, title: String, artists: [Ref] = [], artistLine: String = "",
                 album: Ref? = nil, durationSeconds: Int? = nil, thumbnailURL: URL? = nil,
                 setVideoId: String? = nil, isEpisode: Bool = false, isVideo: Bool = false,
-                dateText: String? = nil, details: String? = nil, playsText: String? = nil) {
+                dateText: String? = nil, details: String? = nil, playsText: String? = nil,
+                isUnavailable: Bool = false) {
         self.videoId = videoId
         self.title = title
         self.artists = artists
@@ -55,6 +62,7 @@ public struct Track: Identifiable, Hashable, Codable {
         self.dateText = dateText
         self.details = details
         self.playsText = playsText
+        self.isUnavailable = isUnavailable
     }
 
     // Tolerant decoder so older cached payloads (without the episode fields)
@@ -74,6 +82,7 @@ public struct Track: Identifiable, Hashable, Codable {
         dateText = try? c.decode(String.self, forKey: .dateText)
         details = try? c.decode(String.self, forKey: .details)
         playsText = try? c.decode(String.self, forKey: .playsText)
+        isUnavailable = (try? c.decode(Bool.self, forKey: .isUnavailable)) ?? false
     }
 
     /// `playsText` parsed to a number, for ranking (e.g. "1.1M plays" → 1_100_000).

@@ -276,14 +276,22 @@ final class PlayerEngine: NSObject, ObservableObject {
 
     func playCollection(_ tracks: [Track], startAt: Int, playlistId: String? = nil) {
         guard !tracks.isEmpty, startAt < tracks.count else { return }
+        // Keep YouTube's greyed-out tracks out of the queue entirely, so
+        // auto-advance never walks into a run of them (error 150 → skip, over
+        // and over, which reads as the player jumping around).
+        let (playable, start) = PlayableQueue.build(tracks, startAt: startAt)
+        guard !playable.isEmpty else {
+            showToast("Nothing here is available on YouTube Music")
+            return
+        }
         unshuffledQueue = nil
         shuffleOn = false
         playlistContextId = playlistId
         radioContinuation = nil // finite context; radio is seeded fresh when it ends
         autoplayTailIds = []
-        queue = tracks
-        index = startAt
-        load(tracks[startAt])
+        queue = playable
+        index = start
+        load(playable[start])
     }
 
     func playShuffled(_ tracks: [Track], playlistId: String? = nil) {
