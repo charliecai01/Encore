@@ -269,25 +269,6 @@ struct CardCircleOrSquare: View {
     }
 }
 
-struct PlaylistShelf: View {
-    let title: String
-    let playlists: [CardItem]
-    @EnvironmentObject var nav: Nav
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.system(size: 19, weight: .bold))
-                .foregroundStyle(Theme.textPrimary).padding(.horizontal, 16)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 12) {
-                    ForEach(playlists) { pl in CardCircleOrSquare(item: pl).frame(width: 118) }
-                }
-                .padding(.horizontal, 16)
-            }
-        }
-    }
-}
-
 struct ShelfRow: View {
     let shelf: Shelf
     @EnvironmentObject var player: PlayerEngine
@@ -430,8 +411,6 @@ struct HomeScreen: View {
                         }
                         .padding(.horizontal, 16)
                     }
-
-                    PlaylistShelf(title: "Your Playlists", playlists: playlists)
                 }
                 if loading { ProgressView().frame(maxWidth: .infinity).padding(.top, 60) }
                 if let podcastShelf { ShelfRow(shelf: podcastShelf) }
