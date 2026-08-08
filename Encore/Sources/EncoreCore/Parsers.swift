@@ -255,9 +255,15 @@ public enum P {
                                   fallbackAlbum: Ref?) -> ShelfItem? {
         let mrlir = c["musicResponsiveListItemRenderer"]
             if mrlir.exists {
-                let hasVideo = mrlir["playlistItemData"]["videoId"].exists
-                    || mrlir["overlay"].findFirst("watchEndpoint") != nil
-                if !hasVideo, let card = card(fromMRLIR: mrlir) {
+                // A row that NAVIGATES to a browse page is an album/artist/
+                // playlist card — even though album rows ALSO carry a play
+                // overlay. Testing the overlay first made every album search
+                // result parse as a track, which dropped its browseId and left
+                // album results unopenable. Real track rows carry
+                // playlistItemData and no top-level browseEndpoint, so they
+                // still fall through to track() below.
+                let isTrackRow = mrlir["playlistItemData"]["videoId"].exists
+                if !isTrackRow, let card = card(fromMRLIR: mrlir) {
                     return .card(card)
                 }
                 if let t = track(fromMRLIR: mrlir, fallbackThumb: fallbackThumb, fallbackAlbum: fallbackAlbum) {
