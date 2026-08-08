@@ -511,19 +511,22 @@ struct ExploreScreen: View {
         // then the long DJ remix mixes. (macOS gets this by inserting the
         // genre shelves at 0 *after* the remixes; iOS builds the list
         // directly, so keep the two in step if either changes.)
+        // These pages are editorial and barely change, so rotate weekly rather
+        // than staring at the same lead track for days.
         var built: [Shelf] = []
-        for shelf in await genreTask.prefix(4) where !shelf.items.isEmpty {
+        for shelf in WeeklyRotation.rotateItems(in: Array(await genreTask.prefix(4)))
+        where !shelf.items.isEmpty {
             built.append(Shelf(title: shelf.title.localizedCaseInsensitiveContains("r&b")
                                ? shelf.title : "R&B · \(shelf.title)",
                                items: shelf.items, moreBrowseId: shelf.moreBrowseId))
         }
-        let remixes = await remixTask
+        // Rotate BEFORE trimming, so the 15 shown are a different slice each
+        // week rather than the same 15 reordered.
+        let remixes = WeeklyRotation.rotate(await remixTask)
         if !remixes.isEmpty {
             built.append(Shelf(title: "R&B Remixes & DJ Mixes", items: Array(remixes.prefix(15))))
         }
-        // These pages are editorial and barely change, so rotate weekly rather
-        // than staring at the same lead track for days.
-        if !built.isEmpty { rnbShelves = WeeklyRotation.rotateItems(in: built) }
+        if !built.isEmpty { rnbShelves = built }
 
         let classics = (try? await YTM.shared.classics()) ?? []
         if !classics.isEmpty { classicsShelves = WeeklyRotation.rotateItems(in: classics) }

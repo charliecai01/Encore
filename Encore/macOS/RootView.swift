@@ -217,7 +217,9 @@ struct ContentRouter: View {
                     if !classics.isEmpty {
                         shelves.insert(contentsOf: WeeklyRotation.rotateItems(in: classics), at: 0)
                     }
-                    let remixes = await remixTask
+                    // Rotate BEFORE trimming, so the 20 shown are a different
+                    // slice each week rather than the same 20 reordered.
+                    let remixes = WeeklyRotation.rotate(await remixTask)
                     if !remixes.isEmpty {
                         shelves.insert(Shelf(title: "R&B Remixes & DJ Mixes",
                                              items: Array(remixes.prefix(20))), at: 0)
