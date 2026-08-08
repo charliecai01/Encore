@@ -27,19 +27,40 @@ final class WeeklyRotationTests: XCTestCase {
 
     // MARK: - It actually moves week to week
 
-    func testNextWeekAdvancesByOne() {
+    func testNextWeekAdvancesByAStride() {
         let next = friday.addingTimeInterval(7 * 24 * 3600)
         let a = WeeklyRotation.rotate(items, at: friday)
         let b = WeeklyRotation.rotate(items, at: next)
         XCTAssertNotEqual(a, b)
-        // Rotation is by exactly one position per week.
-        XCTAssertEqual(b.first, a[1])
+        // Moves by stride, not by one.
+        XCTAssertEqual(b.first, a[WeeklyRotation.stride(forCount: items.count)])
     }
 
-    func testFullCycleReturnsToStart() {
-        let after = friday.addingTimeInterval(Double(items.count) * 7 * 24 * 3600)
-        XCTAssertEqual(WeeklyRotation.rotate(items, at: friday),
-                       WeeklyRotation.rotate(items, at: after))
+    /// The regression that motivated the stride: a 50-song shelf showing 30 of
+    /// them must not hand back essentially the same 30 next week.
+    func testVisibleWindowActuallyTurnsOverWeekToWeek() {
+        let fifty = (0..<50).map { $0 }
+        let next = friday.addingTimeInterval(7 * 24 * 3600)
+        let thisWeek = Set(WeeklyRotation.rotate(fifty, at: friday).prefix(30))
+        let nextWeek = Set(WeeklyRotation.rotate(fifty, at: next).prefix(30))
+        let carriedOver = thisWeek.intersection(nextWeek).count
+        // Stepping by one would leave 29 of 30 in place.
+        XCTAssertLessThanOrEqual(carriedOver, 20, "window barely moved: \(carriedOver)/30 repeated")
+    }
+
+    func testWholeShelfIsReachableWithinAFewWeeks() {
+        let fifty = (0..<50).map { $0 }
+        var seen = Set<Int>()
+        for week in 0..<3 {
+            let d = friday.addingTimeInterval(Double(week) * 7 * 24 * 3600)
+            seen.formUnion(WeeklyRotation.rotate(fifty, at: d).prefix(30))
+        }
+        XCTAssertEqual(seen.count, 50, "some songs never surface")
+    }
+
+    func testStrideIsAtLeastOneForTinyShelves() {
+        XCTAssertEqual(WeeklyRotation.stride(forCount: 2), 1)
+        XCTAssertEqual(WeeklyRotation.stride(forCount: 0), 1)
     }
 
     // MARK: - Nothing is lost

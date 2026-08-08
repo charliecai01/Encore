@@ -443,10 +443,12 @@ struct ExploreScreen: View {
                     }
                 }
                 if loading { ProgressView().frame(maxWidth: .infinity).padding(.top, 60) }
-                if let podcastShelf { ShelfRow(shelf: podcastShelf) }
-                if let discoverShelf { ShelfRow(shelf: discoverShelf) }
+                // R&B leads, with Classics kept next to it as one curated
+                // block; Discover and the YouTube feed follow.
                 ForEach(rnbShelves) { ShelfRow(shelf: $0) }
                 ForEach(classicsShelves) { ShelfRow(shelf: $0) }
+                if let podcastShelf { ShelfRow(shelf: podcastShelf) }
+                if let discoverShelf { ShelfRow(shelf: discoverShelf) }
                 ForEach(shelves) { ShelfRow(shelf: $0) }
                 Color.clear.frame(height: 80)
             }

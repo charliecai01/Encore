@@ -22,11 +22,22 @@ public enum WeeklyRotation {
         Int((date.timeIntervalSince1970 / week).rounded(.down))
     }
 
+    /// How far the window moves each week: a third of the shelf.
+    ///
+    /// Stepping by ONE position — the obvious choice — is useless in practice:
+    /// a shelf of 50 songs showing 30 of them would share 29 with last week,
+    /// which is indistinguishable from not rotating at all. A third means
+    /// roughly half a visible page turns over each week and the whole shelf is
+    /// seen within three.
+    public static func stride(forCount count: Int) -> Int {
+        max(1, count / 3)
+    }
+
     /// `items` rotated left by a week-stable offset. Same contents, different
     /// starting point each week.
     public static func rotate<T>(_ items: [T], at date: Date = Date()) -> [T] {
         guard items.count > 1 else { return items }
-        let raw = weekIndex(at: date) % items.count
+        let raw = (weekIndex(at: date) * stride(forCount: items.count)) % items.count
         let offset = (raw + items.count) % items.count   // negative-safe
         guard offset != 0 else { return items }
         return Array(items[offset...]) + Array(items[..<offset])
