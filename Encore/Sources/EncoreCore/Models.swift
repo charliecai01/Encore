@@ -35,6 +35,12 @@ public struct Track: Identifiable, Hashable, Codable {
     /// Global play-count label from YouTube, e.g. "102M plays" (nil when the
     /// source — artist Top songs, song search — doesn't provide one).
     public var playsText: String?
+    /// Thumbs-up state straight from the row's own `likeStatus`, when the
+    /// payload carries one. This is the ONLY trustworthy source: library feeds
+    /// like `FEmusic_liked_videos` also contain every track of every album you
+    /// saved, so membership there does not mean the song was liked.
+    /// nil when the payload didn't say.
+    public var isLiked: Bool?
     /// YouTube says this track can't be played (removed, region-blocked, or
     /// rights-pulled) via `MUSIC_ITEM_RENDERER_DISPLAY_POLICY_GREY_OUT` — the
     /// same signal YT Music's own web UI greys the row out with. Playing one
@@ -48,7 +54,8 @@ public struct Track: Identifiable, Hashable, Codable {
                 album: Ref? = nil, durationSeconds: Int? = nil, thumbnailURL: URL? = nil,
                 setVideoId: String? = nil, isEpisode: Bool = false, isVideo: Bool = false,
                 dateText: String? = nil, details: String? = nil, playsText: String? = nil,
-                isUnavailable: Bool = false) {
+                isUnavailable: Bool = false, isLiked: Bool? = nil) {
+        self.isLiked = isLiked
         self.videoId = videoId
         self.title = title
         self.artists = artists
@@ -82,6 +89,7 @@ public struct Track: Identifiable, Hashable, Codable {
         dateText = try? c.decode(String.self, forKey: .dateText)
         details = try? c.decode(String.self, forKey: .details)
         playsText = try? c.decode(String.self, forKey: .playsText)
+        isLiked = try? c.decode(Bool.self, forKey: .isLiked)
         isUnavailable = (try? c.decode(Bool.self, forKey: .isUnavailable)) ?? false
     }
 

@@ -94,7 +94,7 @@ public final class YTM: @unchecked Sendable {
 
     public func album(browseId: String) async throws -> CollectionPage {
         let r = try await net.post("browse", body: ["browseId": browseId])
-        return P.collectionPage(from: r, isAlbum: true)
+        return P.collectionPage(from: r, isAlbum: true, albumBrowseId: browseId)
     }
 
     public func playlist(id: String) async throws -> CollectionPage {

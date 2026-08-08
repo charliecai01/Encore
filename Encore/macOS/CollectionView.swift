@@ -358,6 +358,7 @@ struct CollectionView: View {
                 page = fresh
                 applyDefaultSort(fresh.tracks)
                 PageCache.shared.collections[cacheKey] = fresh
+                player.reconcileLikes(from: fresh.tracks)
             }
             await refreshSavedState()
             return
@@ -369,6 +370,7 @@ struct CollectionView: View {
             page = result
             applyDefaultSort(result.tracks)
             PageCache.shared.collections[cacheKey] = result
+            player.reconcileLikes(from: result.tracks)
             loading = false
             palette = await ArtworkPalette.shared.palette(for: Artwork.upscale(result.thumbnailURL, to: 336))
             await refreshSavedState()

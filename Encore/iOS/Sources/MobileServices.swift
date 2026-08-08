@@ -221,7 +221,11 @@ final class LibraryStore: ObservableObject {
         let result = await task.value
         songsCache = result
         songsTask = nil
-        PlayerEngine.shared.likedIds.formUnion(result.map(\.videoId))
+        // Seed liked state from the rows' own likeStatus. Do NOT assume every
+        // track in this feed is liked: FEmusic_liked_videos also contains every
+        // track of every album added to the library, so saving one album lit up
+        // a heart on all 30 of its songs.
+        PlayerEngine.shared.reconcileLikes(from: result)
         return result
     }
 

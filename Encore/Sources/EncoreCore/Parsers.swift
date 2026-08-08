@@ -166,10 +166,14 @@ public enum P {
         // flag through and let the apps refuse the tap.
         let isUnavailable = (r["musicItemRendererDisplayPolicy"].string ?? "").contains("GREY_OUT")
 
+        // Thumbs-up state from the row's own menu. Only LIKE counts; the rest
+        // (INDIFFERENT, DISLIKE) mean not liked. Absent => nil, "don't know".
+        let isLiked = r.findAll("likeStatus").compactMap(\.string).first.map { $0 == "LIKE" }
+
         return Track(videoId: videoId, title: title, artists: artists, artistLine: artistLine,
                      album: albumRef ?? fallbackAlbum, durationSeconds: duration, thumbnailURL: thumb,
                      setVideoId: setVideoId, isEpisode: isEpisode, isVideo: isVideo, playsText: playsText,
-                     isUnavailable: isUnavailable)
+                     isUnavailable: isUnavailable, isLiked: isLiked)
     }
 
     static func cardKind(forBrowseId browseId: String, pageType: String?) -> CardItem.Kind {
@@ -372,7 +376,13 @@ public enum P {
         return (title, subtitle, second, description, thumb, playlistId)
     }
 
-    public static func collectionPage(from root: JSONValue, isAlbum: Bool) -> CollectionPage {
+    /// - Parameter albumBrowseId: the album's own browseId. Album rows don't
+    ///   repeat the album name, so their `album` ref comes from `fallbackAlbum`
+    ///   below — and without this it had a nil id, which is what made "tap the
+    ///   song title in the player bar to open its album" silently do nothing
+    ///   for anything played off an album page.
+    public static func collectionPage(from root: JSONValue, isAlbum: Bool,
+                                      albumBrowseId: String? = nil) -> CollectionPage {
         let info = headerInfo(from: root)
         var page = CollectionPage(title: info.title, subtitle: info.subtitle,
                                   secondSubtitle: info.second, description: info.description,
@@ -391,7 +401,7 @@ public enum P {
         // the library album list instead.
         page.libraryTargetPlaylistId = isAlbum ? page.playlistId : nil
 
-        let fallbackAlbum = isAlbum ? Ref(name: info.title, id: nil) : nil
+        let fallbackAlbum = isAlbum ? Ref(name: info.title, id: albumBrowseId) : nil
         let fallbackThumb = isAlbum ? info.thumb : nil
         page.tracks = (shelf["contents"].array ?? []).compactMap {
             track(fromMRLIR: $0["musicResponsiveListItemRenderer"],

@@ -1004,7 +1004,12 @@ struct CollectionScreen: View {
         case .playlist(let id): fresh = try? await YTM.shared.playlist(id: id)
         case .podcast(let id): fresh = try? await YTM.shared.podcastShow(browseId: id)
         }
-        if let fresh { page = fresh; applyDefaultSort(fresh.tracks); PageCache.shared.collections[cacheKey] = fresh }
+        if let fresh {
+            page = fresh
+            applyDefaultSort(fresh.tracks)
+            PageCache.shared.collections[cacheKey] = fresh
+            player.reconcileLikes(from: fresh.tracks)
+        }
         loading = false
         await refreshSavedState()
     }

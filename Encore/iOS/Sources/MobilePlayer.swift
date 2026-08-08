@@ -585,6 +585,16 @@ final class PlayerEngine: NSObject, ObservableObject {
         persistSnapshot()
     }
 
+    /// Fold authoritative per-row thumbs-up state into `likedIds`. Tracks whose
+    /// payload didn't say are left alone, so a page that omits likeStatus can't
+    /// wipe state we already know.
+    func reconcileLikes(from tracks: [Track]) {
+        for track in tracks {
+            guard let liked = track.isLiked else { continue }
+            if liked { likedIds.insert(track.videoId) } else { likedIds.remove(track.videoId) }
+        }
+    }
+
     func toggleLike(_ track: Track) {
         let liked = likedIds.contains(track.videoId)
         if liked {
