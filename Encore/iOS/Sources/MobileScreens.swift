@@ -270,9 +270,10 @@ struct CardCircleOrSquare: View {
 }
 
 struct ShelfRow: View {
-    /// Rows shown for a vertical song shelf before it's truncated. Enough to
-    /// browse, short enough that the next shelf is still reachable by thumb.
-    static let verticalTrackLimit = 12
+    /// Rows shown for a vertical song shelf before it's truncated (YouTube
+    /// returns 50). Charlie's call — enough to actually browse, still short of
+    /// the 50-row walls that buried everything below them.
+    static let verticalTrackLimit = 30
 
     let shelf: Shelf
     @EnvironmentObject var player: PlayerEngine
