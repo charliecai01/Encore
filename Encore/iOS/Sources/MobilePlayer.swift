@@ -1013,6 +1013,22 @@ final class PlayerEngine: NSObject, ObservableObject {
                     isPlaying = false
                     break
                 }
+                // The site queues ITS OWN next track at a transition and can win
+                // the race to start playing. Never accept audio that isn't ours:
+                // silence it and re-assert now. The mismatch recovery in the
+                // `time` handler only acts after 6s of grace plus 8 ticks, which
+                // is long enough to hear a chunk of a song nobody queued — the
+                // "plays something random for a few seconds" report.
+                if !reportedMatchesCurrent(body),
+                   Date().timeIntervalSince(lastLoadAt) > 0.5,
+                   let playId = activePlaybackId {
+                    Log.player.notice("site autoplay started \(body["vid"] as? String ?? "?") over \(playId) — silencing and re-asserting")
+                    js("window.__encore && __encore.pause()")
+                    isPlaying = false
+                    lastLoadAt = Date()
+                    ensureJS(playId, startAt: currentTime)
+                    break
+                }
                 isPlaying = true
                 stopKeepAlive() // real audio is playing now
                 backgroundResumeNudges = 0 // lock-pause recovery succeeded/reset

@@ -888,6 +888,22 @@ final class PlayerEngine: NSObject, ObservableObject {
                     isPlaying = false
                     break
                 }
+                // The site queues ITS OWN next track at a transition and can win
+                // the race to start playing. Never accept audio that isn't ours:
+                // silence it and re-assert now. The mismatch recovery in the
+                // `time` handler only acts after 6s of grace plus 8 ticks, which
+                // is long enough to hear a chunk of a song nobody queued — the
+                // "plays something random for a few seconds" report.
+                if !reportedMatchesCurrent(body),
+                   Date().timeIntervalSince(lastLoadAt) > 0.5,
+                   let track = current {
+                    Log.player.notice("site autoplay started \(body["vid"] as? String ?? "?") over \(track.videoId) — silencing and re-asserting")
+                    js("window.__encore && __encore.pause()")
+                    isPlaying = false
+                    lastLoadAt = Date()
+                    ensureJS(track.videoId, startAt: currentTime)
+                    break
+                }
                 isPlaying = true
                 // Playback speed applies to podcast episodes only. Songs always
                 // play at 1× — otherwise the web player carries an episode's
