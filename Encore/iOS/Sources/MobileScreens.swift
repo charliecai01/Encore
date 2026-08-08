@@ -851,6 +851,7 @@ struct CollectionScreen: View {
     @State private var sort: SortMode = .recent
     @State private var showEdit = false
     @State private var appliedDefaultSort = false
+    @State private var savingToLibrary = false
 
     private var cacheKey: String {
         switch kind {
@@ -863,6 +864,24 @@ struct CollectionScreen: View {
     private var sortStorageKey: String { "sort-\(cacheKey)" }
     private var isAlbum: Bool { if case .album = kind { return true }; return false }
     private var isPlaylist: Bool { if case .playlist = kind { return true }; return false }
+    /// Save/remove this album in the library. Flips the local state first so the
+    /// button responds immediately, and rolls back if YouTube rejects it.
+    private func setSaved(_ saved: Bool, target: String) {
+        guard !savingToLibrary else { return }
+        savingToLibrary = true
+        page?.savedToLibrary = saved
+        Task {
+            defer { savingToLibrary = false }
+            do {
+                try await YTM.shared.setAlbumSaved(playlistId: target, saved: saved)
+                player.showToast(saved ? "Saved to library" : "Removed from library")
+            } catch {
+                page?.savedToLibrary = !saved
+                player.showToast("Couldn't update your library")
+            }
+        }
+    }
+
     private func shownTracks(_ page: CollectionPage) -> [Track] {
         TrackSort.apply(page.tracks, filter: filter, sort: sort, keepOrder: sort == .recent)
     }
@@ -902,6 +921,16 @@ struct CollectionScreen: View {
                         Button { player.playShuffled(shown, playlistId: playlistId) } label: {
                             Label("Shuffle", systemImage: "shuffle").frame(maxWidth: .infinity)
                         }.buttonStyle(.bordered)
+                        // Albums carry a library toggle; playlists don't.
+                        if let saved = page.savedToLibrary, let target = page.libraryTargetPlaylistId {
+                            Button { setSaved(!saved, target: target) } label: {
+                                Image(systemName: saved ? "checkmark" : "plus")
+                                    .frame(minWidth: 28)
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(savingToLibrary)
+                            .accessibilityLabel(saved ? "Remove album from library" : "Save album to library")
+                        }
                     }.padding(.horizontal, 16)
                     SortFilterBar(filter: $filter, sort: $sort,
                                   sortOptions: sortOptions,

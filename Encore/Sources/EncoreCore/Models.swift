@@ -236,10 +236,18 @@ public struct CollectionPage: Codable {
     public var thumbnailURL: URL?
     public var tracks: [Track]
     public var playlistId: String?
+    /// Album pages carry a "Save album to library / Remove album from library"
+    /// toggle. `nil` when the page has no such toggle (playlists, or a signed
+    /// -out page); otherwise the album's current library state.
+    public var savedToLibrary: Bool?
+    /// The playlist the library toggle acts on (an `OLAK5uy_…` audio playlist,
+    /// which is not always the same as `playlistId`).
+    public var libraryTargetPlaylistId: String?
 
     public init(title: String = "", subtitle: String = "", secondSubtitle: String = "",
                 description: String? = nil, thumbnailURL: URL? = nil,
-                tracks: [Track] = [], playlistId: String? = nil) {
+                tracks: [Track] = [], playlistId: String? = nil,
+                savedToLibrary: Bool? = nil, libraryTargetPlaylistId: String? = nil) {
         self.title = title
         self.subtitle = subtitle
         self.secondSubtitle = secondSubtitle
@@ -247,6 +255,8 @@ public struct CollectionPage: Codable {
         self.thumbnailURL = thumbnailURL
         self.tracks = tracks
         self.playlistId = playlistId
+        self.savedToLibrary = savedToLibrary
+        self.libraryTargetPlaylistId = libraryTargetPlaylistId
     }
 }
 

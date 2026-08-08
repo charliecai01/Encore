@@ -29,6 +29,7 @@ struct CollectionView: View {
     @State private var filterText = ""
     @State private var showEdit = false
     @State private var appliedDefaultSort = false
+    @State private var savingToLibrary = false
 
     /// "Plays" only makes sense on play-count-ranked lists (e.g. Top songs).
     private var availableSorts: [CollectionSort] {
@@ -68,6 +69,25 @@ struct CollectionView: View {
         case .album(let id): return "sort-album-\(id)"
         case .playlist(let id): return "sort-playlist-\(id)"
         case .podcast(let id): return "sort-podcast-\(id)"
+        }
+    }
+
+    /// Save/remove this album in the library. Flips the local state first so the
+    /// button responds immediately, and rolls back if YouTube rejects it.
+    private func setSaved(_ saved: Bool, target: String) {
+        guard !savingToLibrary else { return }
+        savingToLibrary = true
+        page?.savedToLibrary = saved
+        Task {
+            defer { savingToLibrary = false }
+            do {
+                try await YTM.shared.setAlbumSaved(playlistId: target, saved: saved)
+                player.showToast(saved ? "Saved to library" : "Removed from library")
+                PageCache.shared.collections[cacheKey] = page
+            } catch {
+                page?.savedToLibrary = !saved
+                player.showToast("Couldn't update your library")
+            }
         }
     }
 
@@ -183,6 +203,14 @@ struct CollectionView: View {
                         PillButton(title: "Radio", icon: "dot.radiowaves.left.and.right") {
                             player.playRadio(from: first)
                         }
+                    }
+                    // Albums carry a library toggle; playlists don't (savedToLibrary is nil).
+                    if let saved = page.savedToLibrary, let target = page.libraryTargetPlaylistId {
+                        PillButton(title: saved ? "Saved" : "Save",
+                                   icon: saved ? "checkmark" : "plus") {
+                            setSaved(!saved, target: target)
+                        }
+                        .disabled(savingToLibrary)
                     }
                     if isPlaylist {
                         PillButton(title: "Edit", icon: "pencil") { showEdit = true }

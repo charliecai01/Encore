@@ -375,6 +375,11 @@ public enum P {
         let shelf = root.findFirst("musicPlaylistShelfRenderer") ?? root.findFirst("musicShelfRenderer") ?? .null
         page.playlistId = shelf["playlistId"].string ?? info.playlistId
 
+        if let toggle = libraryToggle(in: root) {
+            page.savedToLibrary = toggle.saved
+            page.libraryTargetPlaylistId = toggle.playlistId
+        }
+
         let fallbackAlbum = isAlbum ? Ref(name: info.title, id: nil) : nil
         let fallbackThumb = isAlbum ? info.thumb : nil
         page.tracks = (shelf["contents"].array ?? []).compactMap {
@@ -382,6 +387,28 @@ public enum P {
                   fallbackThumb: fallbackThumb, fallbackAlbum: fallbackAlbum)
         }
         return page
+    }
+
+    /// The album header's "Save album to library / Remove album from library"
+    /// toggle. It's a `likeEndpoint` (NOT a feedback token) whose target is an
+    /// `OLAK5uy_…` audio playlist, and the toggle's *default* action is the one
+    /// currently offered — so "Save…" being default means it isn't saved yet.
+    static func libraryToggle(in root: JSONValue) -> (saved: Bool, playlistId: String)? {
+        for t in root.findAll("toggleMenuServiceItemRenderer") {
+            let defaultText = t["defaultText"].runsText ?? ""
+            let toggledText = t["toggledText"].runsText ?? ""
+            // Match on the endpoints rather than the words where possible, but
+            // both labels mention "library" and nothing else on the page does.
+            guard defaultText.localizedCaseInsensitiveContains("library")
+                    || toggledText.localizedCaseInsensitiveContains("library") else { continue }
+            let defaultStatus = t["defaultServiceEndpoint"]["likeEndpoint"]["status"].string
+            guard let pid = t["defaultServiceEndpoint"]["likeEndpoint"]["target"]["playlistId"].string
+                    ?? t["toggledServiceEndpoint"]["likeEndpoint"]["target"]["playlistId"].string
+            else { continue }
+            // Default action LIKE => not yet saved; INDIFFERENT => already saved.
+            return (saved: defaultStatus != "LIKE", playlistId: pid)
+        }
+        return nil
     }
 
     /// Continuation responses also carry suggestion/related sections; scope

@@ -364,6 +364,16 @@ public final class YTM: @unchecked Sendable {
         _ = try await net.post(endpoint, body: ["target": ["videoId": videoId]], idempotent: false)
     }
 
+    /// Save an album to (or remove it from) the library. YouTube models this as
+    /// liking the album's audio playlist — the same `like/like` endpoint as a
+    /// track, with a playlist target instead of a video one. Pass the id from
+    /// `CollectionPage.libraryTargetPlaylistId`, which is the album's
+    /// `OLAK5uy_…` playlist and not necessarily its `playlistId`.
+    public func setAlbumSaved(playlistId: String, saved: Bool) async throws {
+        let endpoint = saved ? "like/like" : "like/removelike"
+        _ = try await net.post(endpoint, body: ["target": ["playlistId": playlistId]], idempotent: false)
+    }
+
     // MARK: - Playlist management
 
     /// Returns the new playlist's id.
