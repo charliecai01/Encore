@@ -270,6 +270,10 @@ struct CardCircleOrSquare: View {
 }
 
 struct ShelfRow: View {
+    /// Rows shown for a vertical song shelf before it's truncated. Enough to
+    /// browse, short enough that the next shelf is still reachable by thumb.
+    static let verticalTrackLimit = 12
+
     let shelf: Shelf
     @EnvironmentObject var player: PlayerEngine
     @EnvironmentObject var nav: Nav
@@ -299,42 +303,66 @@ struct ShelfRow: View {
                 }
                 .padding(.horizontal, 16)
             }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 12) {
-                    ForEach(Array(shelf.items.enumerated()), id: \.offset) { _, item in
-                        if case .card(let card) = item {
-                            CardCircleOrSquare(item: card).frame(width: 118)
-                        } else if case .track(let track) = item {
-                            Button {
-                                if track.isEpisode {
-                                    // Episodes: play directly with the shelf as
-                                    // the queue — an RDAMVM "episode radio" is
-                                    // junk that errors through items (songs
-                                    // keep YT's tap-starts-radio behavior).
-                                    let episodes = shelf.items.compactMap { item -> Track? in
-                                        if case .track(let t) = item, t.isEpisode { return t }
-                                        return nil
-                                    }
-                                    let start = episodes.firstIndex { $0.videoId == track.videoId } ?? 0
-                                    player.playCollection(episodes, startAt: start)
-                                } else {
-                                    player.playRadio(from: track)
-                                }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    ArtworkView(url: Artwork.upscale(track.thumbnailURL, to: 300), corner: 8)
-                                        .frame(width: 118, height: 118)
-                                    Text(track.title).font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(Theme.textPrimary).lineLimit(1).frame(width: 118, alignment: .leading)
-                                    Text(track.playsText ?? track.artistLine).font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
-                                        .lineLimit(1).frame(width: 118, alignment: .leading)
-                                }
+            if shelf.isTrackShelf {
+                // Song shelves read as a vertical list, same as macOS: a row per
+                // track, and tapping one plays the shelf from there rather than
+                // starting a radio off it. Unlike macOS these are capped —
+                // YouTube returns 50 per shelf, and several stacked 50-row walls
+                // bury everything below them on a phone. Tapping still queues the
+                // WHOLE shelf, and the weekly rotation brings the rest around.
+                let tracks = shelf.tracks
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(shelf.items.prefix(Self.verticalTrackLimit).enumerated()), id: \.offset) { _, item in
+                        switch item {
+                        case .track(let track):
+                            TrackRowView(track: track, onRemoveFromPlaylist: nil) {
+                                let start = tracks.firstIndex(of: track) ?? 0
+                                player.playCollection(tracks, startAt: start)
                             }
-                            .buttonStyle(.plain)
+                        case .card(let card):
+                            CardCircleOrSquare(item: card).frame(width: 118)
                         }
                     }
                 }
                 .padding(.horizontal, 16)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(Array(shelf.items.enumerated()), id: \.offset) { _, item in
+                            if case .card(let card) = item {
+                                CardCircleOrSquare(item: card).frame(width: 118)
+                            } else if case .track(let track) = item {
+                                Button {
+                                    if track.isEpisode {
+                                        // Episodes: play directly with the shelf as
+                                        // the queue — an RDAMVM "episode radio" is
+                                        // junk that errors through items (songs
+                                        // keep YT's tap-starts-radio behavior).
+                                        let episodes = shelf.items.compactMap { item -> Track? in
+                                            if case .track(let t) = item, t.isEpisode { return t }
+                                            return nil
+                                        }
+                                        let start = episodes.firstIndex { $0.videoId == track.videoId } ?? 0
+                                        player.playCollection(episodes, startAt: start)
+                                    } else {
+                                        player.playRadio(from: track)
+                                    }
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        ArtworkView(url: Artwork.upscale(track.thumbnailURL, to: 300), corner: 8)
+                                            .frame(width: 118, height: 118)
+                                        Text(track.title).font(.system(size: 13, weight: .semibold))
+                                            .foregroundStyle(Theme.textPrimary).lineLimit(1).frame(width: 118, alignment: .leading)
+                                        Text(track.playsText ?? track.artistLine).font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
+                                            .lineLimit(1).frame(width: 118, alignment: .leading)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
             }
         }
     }
@@ -342,7 +370,7 @@ struct ShelfRow: View {
 
 // MARK: - Home
 
-struct HomeScreen: View {
+struct ExploreScreen: View {
     @EnvironmentObject var auth: AuthManager
     @EnvironmentObject var library: LibraryStore
     @EnvironmentObject var nav: Nav
@@ -355,6 +383,7 @@ struct HomeScreen: View {
     /// R&B — Charlie's genre. iOS has no Explore tab, so it rides on Home:
     /// the long DJ remix mixes (videos) + YouTube's own "R&B & soul" shelves.
     @State private var rnbShelves: [Shelf] = []
+    @State private var classicsShelves: [Shelf] = []
     @State private var loading = true
     @State private var editingShortcuts = false
     @State private var shortcutOrder: [String] = UserDefaults.standard.stringArray(forKey: "homeShortcutOrder") ?? []
@@ -416,13 +445,14 @@ struct HomeScreen: View {
                 if let podcastShelf { ShelfRow(shelf: podcastShelf) }
                 if let discoverShelf { ShelfRow(shelf: discoverShelf) }
                 ForEach(rnbShelves) { ShelfRow(shelf: $0) }
+                ForEach(classicsShelves) { ShelfRow(shelf: $0) }
                 ForEach(shelves) { ShelfRow(shelf: $0) }
                 Color.clear.frame(height: 80)
             }
             .padding(.top, 8)
         }
         .background(Theme.bg)
-        .navigationTitle("Home")
+        .navigationTitle("Explore")
         .toolbar { accountButton }
         .refreshable { await load() }
         .task(id: auth.isSignedIn) { await load() }
@@ -491,7 +521,12 @@ struct HomeScreen: View {
         if !remixes.isEmpty {
             built.append(Shelf(title: "R&B Remixes & DJ Mixes", items: Array(remixes.prefix(15))))
         }
-        if !built.isEmpty { rnbShelves = built }
+        // These pages are editorial and barely change, so rotate weekly rather
+        // than staring at the same lead track for days.
+        if !built.isEmpty { rnbShelves = WeeklyRotation.rotateItems(in: built) }
+
+        let classics = (try? await YTM.shared.classics()) ?? []
+        if !classics.isEmpty { classicsShelves = WeeklyRotation.rotateItems(in: classics) }
     }
 
     /// One full-width shortcut box (artwork + title).
@@ -845,7 +880,7 @@ struct CollectionScreen: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let page {
                     ArtworkView(url: Artwork.upscale(page.thumbnailURL, to: 500), corner: 12)
-                        .frame(width: 200, height: 200).frame(maxWidth: .infinity)
+                        .frame(width: 140, height: 140).frame(maxWidth: .infinity)
                         .shadow(color: .black.opacity(0.4), radius: 16, y: 6).padding(.top, 8)
                     VStack(spacing: 4) {
                         Text(page.title).font(.system(size: 22, weight: .bold)).multilineTextAlignment(.center)

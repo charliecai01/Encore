@@ -208,8 +208,15 @@ struct ContentRouter: View {
                     async let rnbTask = (try? await YTM.shared.genre(params: YTM.Genre.rnbParams)) ?? []
                     async let remixTask = (try? await YTM.shared.search("R&B remix mix", filter: .videos))?
                         .shelves.flatMap(\.items) ?? []
+                    async let classicsTask = (try? await YTM.shared.classics()) ?? []
 
                     var shelves = await baseTask
+                    // Classics (the Queen / Michael Jackson era) sit under the
+                    // whole R&B block, which is inserted above them below.
+                    let classics = await classicsTask
+                    if !classics.isEmpty {
+                        shelves.insert(contentsOf: WeeklyRotation.rotateItems(in: classics), at: 0)
+                    }
                     let remixes = await remixTask
                     if !remixes.isEmpty {
                         shelves.insert(Shelf(title: "R&B Remixes & DJ Mixes",
@@ -217,7 +224,9 @@ struct ContentRouter: View {
                     }
                     // Genre shelves already carry their own titles; prefix them
                     // so they read as one R&B section rather than generic rows.
-                    let rnb = await rnbTask
+                    // Rotated weekly — these pages are editorial and otherwise
+                    // show the same lead track for days.
+                    let rnb = WeeklyRotation.rotateItems(in: await rnbTask)
                     for shelf in rnb.prefix(4).reversed() {
                         let titled = Shelf(title: shelf.title.localizedCaseInsensitiveContains("r&b")
                                            ? shelf.title : "R&B · \(shelf.title)",

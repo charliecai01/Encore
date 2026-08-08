@@ -344,15 +344,18 @@ enum Route: Hashable {
 @MainActor
 final class Nav: ObservableObject {
     static let shared = Nav()
+    /// Tab 0 is Favorites — the app opens straight into it.
     @Published var selectedTab = 0
-    @Published var homePath = NavigationPath()
+    @Published var favoritesPath = NavigationPath()
+    @Published var explorePath = NavigationPath()
     @Published var searchPath = NavigationPath()
     @Published var libraryPath = NavigationPath()
 
     func go(_ route: Route) {
         switch selectedTab {
-        case 0: homePath.append(route)
-        case 1: searchPath.append(route)
+        case 0: favoritesPath.append(route)
+        case 1: explorePath.append(route)
+        case 2: searchPath.append(route)
         default: libraryPath.append(route)
         }
     }
@@ -361,8 +364,9 @@ final class Nav: ObservableObject {
     /// playlist was just deleted).
     func pop() {
         switch selectedTab {
-        case 0: if !homePath.isEmpty { homePath.removeLast() }
-        case 1: if !searchPath.isEmpty { searchPath.removeLast() }
+        case 0: if !favoritesPath.isEmpty { favoritesPath.removeLast() }
+        case 1: if !explorePath.isEmpty { explorePath.removeLast() }
+        case 2: if !searchPath.isEmpty { searchPath.removeLast() }
         default: if !libraryPath.isEmpty { libraryPath.removeLast() }
         }
     }

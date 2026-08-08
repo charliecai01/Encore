@@ -146,6 +146,30 @@ public final class YTM: @unchecked Sendable {
         /// "R&B & soul" (verified live 2026-08-04).
         public static let rnbParams = "ggMPOg1uX2JxQ2hxc2J5UFhR"
         public static let hipHopParams = "ggMPOg1uX01sVVAwVmNXcEIx"
+        /// "Decades" — one shelf per decade, 2010s down to 1960s
+        /// (verified live 2026-08-07).
+        public static let decadesParams = "ggMPOg1uX3NjZllsNGVEMkZo"
+        /// The decades we surface as "Classics": Charlie's taste here is Queen
+        /// and Michael Jackson, whose peaks straddle these two.
+        public static let classicDecades = ["1970s", "1980s"]
+
+        /// Picks the classic-decade shelves out of a Decades category page and
+        /// retitles them so they read as one section. Order follows
+        /// `classicDecades`, not YouTube's (which runs newest-first).
+        public static func classicShelves(from shelves: [Shelf]) -> [Shelf] {
+            classicDecades.compactMap { decade in
+                guard let match = shelves.first(where: { $0.title.contains(decade) }),
+                      !match.items.isEmpty else { return nil }
+                return Shelf(title: "Classics · \(match.title)",
+                             items: match.items,
+                             moreBrowseId: match.moreBrowseId)
+            }
+        }
+    }
+
+    /// The 1970s/1980s shelves from YouTube's "Decades" category.
+    public func classics() async throws -> [Shelf] {
+        Genre.classicShelves(from: try await genre(params: Genre.decadesParams))
     }
 
     /// Shelves for a genre category page (playlists/mixes YouTube curates).
