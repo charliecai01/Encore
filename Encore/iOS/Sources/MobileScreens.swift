@@ -477,15 +477,19 @@ struct HomeScreen: View {
             .shelves.flatMap(\.items) ?? []
         async let genreTask = (try? await YTM.shared.genre(params: YTM.Genre.rnbParams)) ?? []
 
+        // Order matches macOS Explore: the "R&B & soul" song shelves lead,
+        // then the long DJ remix mixes. (macOS gets this by inserting the
+        // genre shelves at 0 *after* the remixes; iOS builds the list
+        // directly, so keep the two in step if either changes.)
         var built: [Shelf] = []
-        let remixes = await remixTask
-        if !remixes.isEmpty {
-            built.append(Shelf(title: "R&B Remixes & DJ Mixes", items: Array(remixes.prefix(15))))
-        }
         for shelf in await genreTask.prefix(4) where !shelf.items.isEmpty {
             built.append(Shelf(title: shelf.title.localizedCaseInsensitiveContains("r&b")
                                ? shelf.title : "R&B · \(shelf.title)",
                                items: shelf.items, moreBrowseId: shelf.moreBrowseId))
+        }
+        let remixes = await remixTask
+        if !remixes.isEmpty {
+            built.append(Shelf(title: "R&B Remixes & DJ Mixes", items: Array(remixes.prefix(15))))
         }
         if !built.isEmpty { rnbShelves = built }
     }
