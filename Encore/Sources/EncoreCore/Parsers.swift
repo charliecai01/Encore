@@ -375,10 +375,15 @@ public enum P {
         let shelf = root.findFirst("musicPlaylistShelfRenderer") ?? root.findFirst("musicShelfRenderer") ?? .null
         page.playlistId = shelf["playlistId"].string ?? info.playlistId
 
-        if let toggle = libraryToggle(in: root) {
-            page.savedToLibrary = toggle.saved
-            page.libraryTargetPlaylistId = toggle.playlistId
-        }
+        // The album's own audio playlist (OLAK5uy_…) is what "save to library"
+        // likes. Do NOT go looking for the header's toggle menu: an album page
+        // carries ~11 "Save album to library" toggles, one per related-album
+        // card, and picking one by text saves a DIFFERENT album (it put "Bad"
+        // and "Stayin' Alive" in Charlie's library instead of HIStory). The
+        // toggles also all read "Save…" regardless of what's already saved, so
+        // they can't be trusted for state either — callers resolve that against
+        // the library album list instead.
+        page.libraryTargetPlaylistId = isAlbum ? page.playlistId : nil
 
         let fallbackAlbum = isAlbum ? Ref(name: info.title, id: nil) : nil
         let fallbackThumb = isAlbum ? info.thumb : nil
@@ -389,27 +394,6 @@ public enum P {
         return page
     }
 
-    /// The album header's "Save album to library / Remove album from library"
-    /// toggle. It's a `likeEndpoint` (NOT a feedback token) whose target is an
-    /// `OLAK5uy_…` audio playlist, and the toggle's *default* action is the one
-    /// currently offered — so "Save…" being default means it isn't saved yet.
-    static func libraryToggle(in root: JSONValue) -> (saved: Bool, playlistId: String)? {
-        for t in root.findAll("toggleMenuServiceItemRenderer") {
-            let defaultText = t["defaultText"].runsText ?? ""
-            let toggledText = t["toggledText"].runsText ?? ""
-            // Match on the endpoints rather than the words where possible, but
-            // both labels mention "library" and nothing else on the page does.
-            guard defaultText.localizedCaseInsensitiveContains("library")
-                    || toggledText.localizedCaseInsensitiveContains("library") else { continue }
-            let defaultStatus = t["defaultServiceEndpoint"]["likeEndpoint"]["status"].string
-            guard let pid = t["defaultServiceEndpoint"]["likeEndpoint"]["target"]["playlistId"].string
-                    ?? t["toggledServiceEndpoint"]["likeEndpoint"]["target"]["playlistId"].string
-            else { continue }
-            // Default action LIKE => not yet saved; INDIFFERENT => already saved.
-            return (saved: defaultStatus != "LIKE", playlistId: pid)
-        }
-        return nil
-    }
 
     /// Continuation responses also carry suggestion/related sections; scope
     /// item extraction to the appended-items payload so those never leak in.

@@ -1006,6 +1006,16 @@ struct CollectionScreen: View {
         }
         if let fresh { page = fresh; applyDefaultSort(fresh.tracks); PageCache.shared.collections[cacheKey] = fresh }
         loading = false
+        await refreshSavedState()
+    }
+
+    /// Is this album in the library? Resolved against the library album list,
+    /// which is authoritative — the page's own toggle menus are not (they read
+    /// "Save album to library" even for albums already saved).
+    private func refreshSavedState() async {
+        guard case .album(let browseId) = kind else { return }
+        guard let albums = try? await YTM.shared.libraryAlbums() else { return }
+        page?.savedToLibrary = albums.contains { $0.browseId == browseId }
     }
 
     private func remove(_ track: Track) {

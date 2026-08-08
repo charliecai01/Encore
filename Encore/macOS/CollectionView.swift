@@ -338,6 +338,15 @@ struct CollectionView: View {
         }
     }
 
+    /// Is this album in the library? Resolved against the library album list,
+    /// which is authoritative — the page's own toggle menus are not (they read
+    /// "Save album to library" even for albums already saved).
+    private func refreshSavedState() async {
+        guard case .album(let browseId) = kind else { return }
+        guard let albums = try? await YTM.shared.libraryAlbums() else { return }
+        page?.savedToLibrary = albums.contains { $0.browseId == browseId }
+    }
+
     private func load() async {
         // Serve from the session cache instantly, then refresh silently.
         if let cached = PageCache.shared.collections[cacheKey] {
@@ -350,6 +359,7 @@ struct CollectionView: View {
                 applyDefaultSort(fresh.tracks)
                 PageCache.shared.collections[cacheKey] = fresh
             }
+            await refreshSavedState()
             return
         }
         loading = true
@@ -361,6 +371,7 @@ struct CollectionView: View {
             PageCache.shared.collections[cacheKey] = result
             loading = false
             palette = await ArtworkPalette.shared.palette(for: Artwork.upscale(result.thumbnailURL, to: 336))
+            await refreshSavedState()
         } catch {
             self.error = error.localizedDescription
             loading = false
