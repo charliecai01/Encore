@@ -102,6 +102,9 @@ final class PlayerEngine: NSObject, ObservableObject {
     /// Last time ANY bridge message arrived. The page reports 4×/second while
     /// alive, so prolonged silence means its web content process was killed.
     private var lastBridgeAt = Date()
+    /// When reloadSite() last ran, so a reload that never reports `ready` can
+    /// be retried instead of wedging playback until the app is restarted.
+    private var lastReloadAt = Date.distantPast
     private var livenessTimer: Timer?
     /// Unplayable-track handling: skip once per load on a player error, and
     /// give up pulling the site back after a few failed re-engages.
@@ -543,10 +546,21 @@ final class PlayerEngine: NSObject, ObservableObject {
     }
 
     private func checkPageLiveness() {
-        // playerReady gates re-entry: reloadSite() clears it until `ready`.
-        guard playerReady, Date().timeIntervalSince(lastBridgeAt) > 15 else { return }
-        Log.player.error("no bridge messages for 15s — page is dead; reloading site")
-        reloadSite()
+        switch PageLiveness.action(playerReady: playerReady,
+                                   sinceLastBridge: Date().timeIntervalSince(lastBridgeAt),
+                                   sinceLastReload: Date().timeIntervalSince(lastReloadAt)) {
+        case .none:
+            return
+        case .reloadDeadPage:
+            Log.player.error("no bridge messages for \(Int(PageLiveness.deadAfter))s — page is dead; reloading site")
+            reloadSite()
+        case .retryFailedReload:
+            // Without this the engine stays un-ready forever: load()'s engage is
+            // gated on playerReady, so every track falls back to the slow
+            // mismatch recovery and only an app restart fixes it.
+            Log.player.error("reload never became ready after \(Int(Date().timeIntervalSince(lastReloadAt)))s — reloading site again")
+            reloadSite()
+        }
     }
 
     /// Push the current EQ settings into the page's Web Audio graph. No-op
@@ -612,6 +626,7 @@ final class PlayerEngine: NSObject, ObservableObject {
     func reloadSite() {
         playerReady = false
         lastBridgeAt = Date()   // grace period while the reload runs
+        lastReloadAt = Date()   // so a reload that never becomes ready is retried
         // A rebuilt page auto-resumes the ACCOUNT's last track, and `ready`
         // re-engages ours — either one would start audio the user never asked
         // for when the process died while paused. Re-arm the launch guard so
