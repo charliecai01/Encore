@@ -50,8 +50,10 @@ picking up the work without the original chat history.
     │   │   ├── PlayedEpisodes.swift           ← episode played-state store (UserDefaults)
     │   │   ├── EpisodeProgress.swift          ← episode resume positions (UserDefaults, unit-tested)
     │   │   ├── Equalizer.swift                 ← 10-band EQ model + presets + JS payload (unit-tested)
-    │   │   └── ArtistInfo.swift                ← Wikidata bio resolver → 4-sentence artist summary (+ band members)
-    │   └── encore-smoke/                      ← CLI: `swift run encore-smoke` hits the LIVE API unauthenticated
+    │   │   ├── ArtistInfo.swift                ← Wikidata bio resolver → 4-sentence artist summary (+ band members)
+    │   │   └── WeeklyRotation.swift, MonthlyRotation.swift ← shelf/playlist rotation-window helpers (unit-tested)
+    │   ├── encore-smoke/                      ← CLI: `swift run encore-smoke` hits the LIVE API unauthenticated
+    │   └── encore-playlist-tool/              ← CLI: creates/rotates the "R&B by Sonnet5" playlist — see §12
     ├── macOS/                                 ← macOS SwiftUI app (AppKit) — Package target `Encore`, path "macOS"
     ├── Tests/EncoreCoreTests/                 ← XCTest for the shared core (run: `swift test`) — covers BOTH apps' logic; incl. live-API checks that auto-skip offline
     └── iOS/                                   ← iOS app (folder; Xcode project/scheme still named EncoreiOS)
@@ -633,3 +635,50 @@ deploy). Keep it updated; it loads each session.
    verify, then **commit + push** (§4).
 5. Keep responses tight; act when you have enough info; don't burn tokens
    re-verifying things that compiled and are low-risk.
+
+---
+
+## 12. Maintenance tools
+
+- **`encore-playlist-tool`** (`Sources/encore-playlist-tool/`, run via `swift
+  run encore-playlist-tool` from `Encore/`) — creates/rotates the **"R&B by
+  Sonnet5"** library playlist for Charlie: curates ~100 songs from the live
+  "R&B & soul" genre page plus its sub-playlists/mixes, applies
+  `MonthlyRotation` (same algorithm as `WeeklyRotation`, keyed to the
+  calendar month instead of the week) to pick a fresh ~100-song window each
+  month, and find-or-creates the playlist by title. Re-run it anytime —
+  same calendar month is a cached no-op, a new month re-derives and
+  reconciles. `--dry-run` previews without touching the account; `--check=
+  <playlistId>` and `--list-playlists` are read-only diagnostics. No
+  scheduled trigger is installed (Charlie's call, 2026-08-13) — cloud
+  routines can't see the local-only auth cookie this depends on, and
+  session-based cron jobs expire long before a month is up, so a local
+  launchd job was the only real automation option and he preferred none.
+  Rotate it by just asking the next agent to run it.
+
+  **Never removes a track it didn't add itself.** A local gitignored state
+  file (`Encore/.encore-playlist-tool-state.json`) records exactly which
+  videoIds the tool selected last time; only those are ever candidates for
+  removal, and only if this month's rotation dropped them. Anything else in
+  the playlist — hand-added, or from anywhere else — is left alone,
+  permanently. This was a real bug on the first build (reconciling against
+  "whatever's live" instead of "what I previously added" would eventually
+  have deleted hand-added tracks) and is worth keeping if this tool is ever
+  extended to manage another playlist.
+
+  Two things learned live while standing this up, relevant if `YTM.genre`/
+  `YTM.playlist` misbehave again elsewhere:
+  - The live genre page — and the sub-playlists it expands into — is **not
+    stable across fetches**: two calls minutes apart returned different
+    content and ordering. Re-deriving the selection on every run (instead of
+    caching it per month) is what ballooned the playlist to 173 songs before
+    it was caught — each re-run added a different fresh ~100 on top instead
+    of recognizing "nothing changed."
+  - `YTM.playlist(id:)` can hand back rows from YouTube's own "suggested
+    songs" shelf mixed into `page.tracks` — a separate continuation from the
+    real track list that the parser doesn't currently distinguish. The tell:
+    a real playlist entry always has a `setVideoId`; a suggestion row has
+    `nil` and silently no-ops on removal (it isn't actually in the
+    playlist). This is why an early live check appeared to show 7
+    mystery tracks Charlie never added — they were never really there.
+    `--check` now reports a `REAL COUNT` that filters these out.

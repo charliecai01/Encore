@@ -71,6 +71,7 @@ Encore/
 │   ├── LRCLib.swift         # synced-lyrics fallback provider
 │   └── Models.swift, JSONValue.swift, CJK.swift
 ├── Sources/encore-smoke/    # live API smoke test: swift run encore-smoke
+├── Sources/encore-playlist-tool/  # creates/rotates the "R&B by Sonnet5" playlist — see HANDOFF.md §12
 ├── macOS/                   # macOS SwiftUI app (SwiftPM target "Encore")
 │   ├── PlayerEngine.swift   # hidden WKWebView driving music.youtube.com's player
 │   ├── AuthManager.swift    # in-app Google sign-in (WKWebView cookie store)
