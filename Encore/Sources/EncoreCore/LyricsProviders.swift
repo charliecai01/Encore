@@ -6,6 +6,34 @@ let lyricsBrowserUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebK
 /// NetEase Cloud Music — free keyless API with strong synced-lyrics coverage
 /// (notably the Chinese catalog).
 public enum NetEase {
+    /// Picks the search result actually likely to be `track`: an exact
+    /// duration match, or a title+artist text match. Returns nil rather than
+    /// falling back to "whatever the top hit was" — a free-text search for
+    /// an obscure/indie track still returns *something*, and blindly
+    /// trusting it showed a completely unrelated song's (Chinese-language)
+    /// lyrics under an indie artist's English track (reported live,
+    /// 2026-08-14: searching "Take Off" + "Jackson Whalan" returned five
+    /// different "Take Off"s by other, unrelated artists, none matching in
+    /// duration either — better to show no lyrics than wrong ones).
+    static func pickBestMatch(_ songs: [JSONValue], for track: Track) -> Int? {
+        let wantedTitle = track.title.matchNormalized
+        let wantedArtist = (track.artists.first?.name ?? track.artistLine).matchNormalized
+
+        func isPlausible(_ song: JSONValue) -> Bool {
+            if let ms = song["duration"].int, let wanted = track.durationSeconds,
+               abs(ms / 1000 - wanted) <= 4 {
+                return true
+            }
+            guard !wantedTitle.isEmpty else { return false }
+            let name = (song["name"].string ?? "").matchNormalized
+            guard !name.isEmpty, name.contains(wantedTitle) || wantedTitle.contains(name) else { return false }
+            guard !wantedArtist.isEmpty else { return true }
+            let artistNames = (song["artists"].array ?? []).compactMap { $0["name"].string?.matchNormalized }
+            return artistNames.contains { !$0.isEmpty && ($0.contains(wantedArtist) || wantedArtist.contains($0)) }
+        }
+        return songs.first(where: isPlausible)?["id"].int
+    }
+
     public static func fetch(track: Track) async -> LyricsResult? {
         let query = "\(track.title) \(track.artists.first?.name ?? track.artistLine)"
         var comps = URLComponents(string: "https://music.163.com/api/search/get")!
@@ -22,18 +50,7 @@ public enum NetEase {
 
         let songs = JSONValue.parse(data)["result"]["songs"].array ?? []
         guard !songs.isEmpty else { return nil }
-
-        // Prefer the duration-matched hit; fall back to the top result.
-        var songId = songs.first?["id"].int
-        if let wanted = track.durationSeconds {
-            for song in songs {
-                if let ms = song["duration"].int, abs(ms / 1000 - wanted) <= 4 {
-                    songId = song["id"].int
-                    break
-                }
-            }
-        }
-        guard let songId else { return nil }
+        guard let songId = pickBestMatch(songs, for: track) else { return nil }
 
         var lyricComps = URLComponents(string: "https://music.163.com/api/song/lyric")!
         lyricComps.queryItems = [
