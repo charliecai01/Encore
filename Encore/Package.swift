@@ -26,6 +26,13 @@ let package = Package(
             dependencies: ["EncoreCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        // Create/rotate the "R&B by Sonnet5" generated playlist. Needs a real
+        // account cookie (see main.swift) — not part of the shipped apps.
+        .executableTarget(
+            name: "encore-playlist-tool",
+            dependencies: ["EncoreCore"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
         // Shared-core unit tests. EncoreCore is the brain both the macOS and
         // iOS apps link, so these cover logic for both platforms. Run: swift test
         .testTarget(

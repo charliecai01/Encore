@@ -9,3 +9,6 @@ Encore/iOS/*.xcodeproj
 .swiftpm/
 Encore/iOS/Info.plist
 Encore/iOS/Encore.entitlements
+# Local runtime state for encore-playlist-tool (which videoIds it manages per
+# playlist) — machine-local bookkeeping, not source.
+Encore/.encore-playlist-tool-state.json
