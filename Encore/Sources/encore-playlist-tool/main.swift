@@ -1,20 +1,23 @@
-// Creates (or, on later runs, rotates) the "R&B by Sonnet5" playlist: ~100
-// songs curated from YouTube Music's live "R&B & soul" genre page, refreshed
-// to a different ~100 window once a month via MonthlyRotation.
+// Creates (or, on later runs, rotates) the "R&B by Sonnet5" playlist: 100
+// songs — 80 R&B songs split evenly across five decades (1980s–2020s, 16
+// each), plus fixed quotas of 15 Taylor Swift songs and 5 Olivia Dean songs
+// (Charlie's rule, 2026-08-13). Refreshed to a different window once a
+// month via MonthlyRotation.
 //
 // Idempotent by design: finds the playlist by title in the signed-in
 // library. Missing → create + populate. Present → reconcile (add whatever
 // this month's selection is missing, remove whatever it dropped). The same
 // invocation is meant to be re-run monthly.
 //
-// Stability: the live genre page (direct shelves + the sub-playlists/mixes
-// it expands into) is NOT stable across fetches — two calls minutes apart
-// can return different content. So the chosen 100 for a given calendar
-// month is cached to a local state file on first derivation and REUSED
-// verbatim on every later run within that same month — the pool is only
-// re-fetched when the month actually changes. Without this, re-running the
-// tool mid-month (e.g. while testing) would each time add a different fresh
-// ~100, ballooning the playlist instead of leaving it alone.
+// Stability: the live catalog (search results, genre pages, sub-playlists)
+// is NOT stable across fetches — two calls minutes apart can return
+// different content. So the chosen 100 for a given calendar month is
+// cached to a local state file on first derivation and REUSED verbatim on
+// every later run within that same month — the pool is only re-fetched
+// when the month actually changes (or `--force` is passed, e.g. right
+// after changing the selection rules mid-month). Without this, re-running
+// the tool would each time derive a different fresh selection, ballooning
+// the playlist instead of leaving it alone.
 //
 // Safety: this tool must never remove a track it didn't add itself — a
 // playlist can carry songs the user put there by hand (or from some other
@@ -29,14 +32,33 @@
 // TestCookie, duplicated here because executable targets can't import the
 // test target. Never printed.
 //
-// Usage: swift run encore-playlist-tool [--dry-run]
+// Usage: swift run encore-playlist-tool [--dry-run] [--force]
 import Foundation
 import EncoreCore
 
 let playlistTitle = "R&B by Sonnet5"
-let targetCount = 100
-let maxPerArtist = 4
 let dryRun = CommandLine.arguments.contains("--dry-run")
+let forceRefresh = CommandLine.arguments.contains("--force")
+
+// MARK: - Composition rule
+
+struct EraSpec { let label: String; let query: String }
+let eras: [EraSpec] = [
+    EraSpec(label: "1980s", query: "80s R&B"),
+    EraSpec(label: "1990s", query: "90s R&B"),
+    EraSpec(label: "2000s", query: "2000s R&B"),
+    EraSpec(label: "2010s", query: "2010s R&B"),
+    EraSpec(label: "2020s", query: "2020s R&B"),
+]
+let eraQuota = 16              // 5 eras × 16 = 80
+let maxPerArtistInEra = 2      // keep any one era from being one artist's greatest hits
+
+struct ArtistQuota { let name: String; let count: Int }
+let artistQuotas: [ArtistQuota] = [
+    ArtistQuota(name: "Taylor Swift", count: 15),
+    ArtistQuota(name: "Olivia Dean", count: 5),
+]
+let targetCount = eras.count * eraQuota + artistQuotas.map(\.count).reduce(0, +)   // 100
 
 let repoRoot = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent()   // Sources/encore-playlist-tool
@@ -125,12 +147,105 @@ if CommandLine.arguments.contains("--list-playlists") {
     RunLoop.main.run()
 }
 
-// MARK: - Pool derivation (only runs on a genuine cache miss)
+// MARK: - Pool helpers
 
-func deriveFreshSelection() async throws -> [Track] {
-    let shelves = try await ytm.genre(params: YTM.Genre.rnbParams)
-    print("Fetched \(shelves.count) R&B shelves: \(shelves.map(\.title).joined(separator: ", "))")
+/// Title with any trailing "(...)"/"[...]" qualifier stripped and
+/// lowercased — collapses "Anti-Hero", "Song (Live)", "Song (Acoustic)" and
+/// "Song (Radio Edit)" to the same key so different uploads of the same
+/// song don't each burn a separate dedup/quota slot.
+func normalizedTitle(_ title: String) -> String {
+    var t = title
+    if let i = t.firstIndex(of: "(") { t = String(t[..<i]) }
+    if let i = t.firstIndex(of: "[") { t = String(t[..<i]) }
+    return t.trimmingCharacters(in: .whitespaces).lowercased()
+}
 
+/// Dedupes by videoId AND by (artist, normalized title) — catches both
+/// exact re-uploads and same-song/different-upload duplicates (a studio cut
+/// plus a "(Live)" or "(Acoustic)" version showing up as if they were two
+/// songs, which happened in practice with Olivia Dean's smaller catalog).
+/// Also drops unplayable rows and caps songs per artist. Preserves the
+/// caller's input order — when a pool is built with the more trustworthy
+/// source first (see `eraPool`), first-seen-wins dedup means that source is
+/// what survives.
+func curate(_ pool: [Track], maxPerArtist: Int) -> [Track] {
+    var seenIds = Set<String>()
+    var seenSongs = Set<String>()
+    var perArtist: [String: Int] = [:]
+    var out: [Track] = []
+    for t in pool where !t.isUnavailable {
+        guard seenIds.insert(t.videoId).inserted else { continue }
+        let songKey = t.artistLine.lowercased() + "::" + normalizedTitle(t.title)
+        guard seenSongs.insert(songKey).inserted else { continue }
+        let n = perArtist[t.artistLine, default: 0]
+        guard n < maxPerArtist else { continue }
+        perArtist[t.artistLine] = n + 1
+        out.append(t)
+    }
+    return out
+}
+
+/// A decade+genre query (e.g. "90s R&B"), pulled from human-curated
+/// playlists FIRST and a direct song search second. Editorial decade
+/// playlists turned out to be much more era-disciplined than song search,
+/// which favors semantic/"vibe" relevance and happily pulls in
+/// adjacent-decade tracks (verified live: a plain "90s R&B" song search
+/// included 2003-2004 tracks). Playlist tracks are ordered first so
+/// `curate`'s dedup prefers them over a looser song-search match for the
+/// same artist slot.
+func eraPool(_ query: String) async -> [Track] {
+    async let songsTask: [Track] = (try? await ytm.search(query, filter: .songs))?.shelves.flatMap(\.tracks) ?? []
+    async let playlistsTask: [Track] = {
+        guard let plResults = try? await ytm.search(query, filter: .playlists) else { return [] }
+        let cards = plResults.shelves.flatMap(\.items).compactMap { item -> CardItem? in
+            if case .card(let c) = item, c.kind == .playlist, c.playlistId != nil { return c }
+            return nil
+        }
+        var fetched: [Track] = []
+        await withTaskGroup(of: [Track].self) { group in
+            for card in cards.prefix(6) {
+                guard let pid = card.playlistId else { continue }
+                group.addTask { (try? await ytm.playlist(id: pid))?.tracks ?? [] }
+            }
+            for await tracks in group { fetched.append(contentsOf: tracks) }
+        }
+        return fetched
+    }()
+    let (songs, playlists) = await (songsTask, playlistsTask)
+    return playlists + songs
+}
+
+/// An artist's songs via their artist page (comprehensive, authoritative)
+/// plus a direct song search as a top-up, filtered back down to songs
+/// actually credited to them (a bare name search can surface covers or
+/// "songs like X" results).
+func artistPool(_ name: String) async -> [Track] {
+    var pool: [Track] = []
+    if let results = try? await ytm.search(name, filter: .artists) {
+        var artistId: String?
+        outer: for shelf in results.shelves {
+            for item in shelf.items {
+                if case .card(let c) = item, c.kind == .artist { artistId = c.browseId; break outer }
+            }
+        }
+        if case .card(let c)? = results.top, c.kind == .artist { artistId = artistId ?? c.browseId }
+        if let artistId, let page = try? await ytm.artist(browseId: artistId) {
+            pool.append(contentsOf: page.shelves.flatMap(\.tracks))
+        }
+    }
+    if let songResults = try? await ytm.search(name, filter: .songs) {
+        let byThisArtist = songResults.shelves.flatMap(\.tracks)
+            .filter { $0.artistLine.localizedCaseInsensitiveContains(name) }
+        pool.append(contentsOf: byThisArtist)
+    }
+    return pool
+}
+
+/// The broad "R&B & soul" genre page plus its sub-playlists/mixes — a large
+/// (hundreds of tracks), not era-targeted pool used only as a backfill if
+/// an era search comes up short of its quota.
+func generalRnbPool() async -> [Track] {
+    guard let shelves = try? await ytm.genre(params: YTM.Genre.rnbParams) else { return [] }
     var pool: [Track] = shelves.flatMap(\.tracks)
     var subPlaylists: [CardItem] = []
     for shelf in shelves {
@@ -140,42 +255,80 @@ func deriveFreshSelection() async throws -> [Track] {
             }
         }
     }
-    print("Direct pool: \(pool.count) tracks; \(subPlaylists.count) sub-playlists/mixes available to expand into")
-
-    if pool.count < targetCount * 3, !subPlaylists.isEmpty {
-        let expandInto = Array(subPlaylists.prefix(12))
+    if pool.count < 300, !subPlaylists.isEmpty {
         var fetched: [Track] = []
         await withTaskGroup(of: [Track].self) { group in
-            for card in expandInto {
+            for card in subPlaylists.prefix(12) {
                 guard let pid = card.playlistId else { continue }
                 group.addTask { (try? await ytm.playlist(id: pid))?.tracks ?? [] }
             }
             for await tracks in group { fetched.append(contentsOf: tracks) }
         }
-        print("Expanded into \(expandInto.count) sub-playlists: +\(fetched.count) tracks")
         pool.append(contentsOf: fetched)
     }
+    return pool
+}
 
-    // Dedupe, drop unplayable rows, cap per-artist for variety. Sorted by
-    // videoId first so the rotation window is keyed to a stable order, not
-    // however this particular fetch happened to interleave shelves/mixes.
-    var seenIds = Set<String>()
-    var perArtist: [String: Int] = [:]
-    var curated: [Track] = []
-    for t in pool.sorted(by: { $0.videoId < $1.videoId }) where !t.isUnavailable && seenIds.insert(t.videoId).inserted {
-        let n = perArtist[t.artistLine, default: 0]
-        guard n < maxPerArtist else { continue }
-        perArtist[t.artistLine] = n + 1
-        curated.append(t)
-    }
-    print("Curated pool: \(curated.count) unique playable tracks (max \(maxPerArtist)/artist)")
-    guard curated.count >= 60 else {
-        throw NSError(domain: "encore-playlist-tool", code: 1,
-                       userInfo: [NSLocalizedDescriptionKey: "curated pool too small (\(curated.count))"])
+// MARK: - Selection (only runs on a genuine cache miss, or --force)
+
+func deriveFreshSelection() async -> [Track] {
+    enum SegmentResult { case era(String, [Track]); case artist(String, [Track]) }
+
+    var eraRaw: [String: [Track]] = [:]
+    var artistRaw: [String: [Track]] = [:]
+    await withTaskGroup(of: SegmentResult.self) { group in
+        for era in eras {
+            group.addTask { .era(era.label, await eraPool(era.query)) }
+        }
+        for q in artistQuotas {
+            group.addTask { .artist(q.name, await artistPool(q.name)) }
+        }
+        for await result in group {
+            switch result {
+            case .era(let label, let tracks): eraRaw[label] = tracks
+            case .artist(let name, let tracks): artistRaw[name] = tracks
+            }
+        }
     }
 
-    let rotated = MonthlyRotation.rotate(curated)
-    return Array(rotated.prefix(targetCount))
+    var chosen: [Track] = []
+    var chosenIds = Set<String>()
+    var shortfall = 0
+
+    print("--- R&B eras (target \(eraQuota)/era) ---")
+    for era in eras {
+        let raw = eraRaw[era.label] ?? []
+        let curated = curate(raw, maxPerArtist: maxPerArtistInEra)
+        let rotated = MonthlyRotation.rotate(curated)
+        let picked = Array(rotated.prefix(eraQuota)).filter { chosenIds.insert($0.videoId).inserted }
+        chosen.append(contentsOf: picked)
+        shortfall += max(0, eraQuota - picked.count)
+        print("  \(era.label): raw=\(raw.count) curated=\(curated.count) picked=\(picked.count)")
+    }
+
+    if shortfall > 0 {
+        print("Short by \(shortfall) after era pools — backfilling from the general R&B pool.")
+        let general = curate(await generalRnbPool(), maxPerArtist: maxPerArtistInEra)
+        for t in MonthlyRotation.rotate(general) where shortfall > 0 {
+            guard chosenIds.insert(t.videoId).inserted else { continue }
+            chosen.append(t)
+            shortfall -= 1
+        }
+    }
+
+    print("--- Fixed artists ---")
+    for q in artistQuotas {
+        let raw = artistRaw[q.name] ?? []
+        let curated = curate(raw, maxPerArtist: Int.max)   // single artist — no cap needed
+        let rotated = MonthlyRotation.rotate(curated)
+        let picked = Array(rotated.prefix(q.count)).filter { chosenIds.insert($0.videoId).inserted }
+        chosen.append(contentsOf: picked)
+        let short = picked.count < q.count ? "  ⚠️ short of \(q.count)" : ""
+        print("  \(q.name): raw=\(raw.count) curated=\(curated.count) picked=\(picked.count)\(short)")
+    }
+
+    print("Total selected: \(chosen.count) (target \(targetCount))")
+    return chosen
 }
 
 // MARK: - Main
@@ -186,12 +339,15 @@ Task {
         let previous = loadAllSnapshots()[playlistTitle]
 
         let chosen: [Track]
-        if let previous, previous.monthIndex == nowMonth {
+        if let previous, previous.monthIndex == nowMonth, !forceRefresh {
             chosen = previous.tracks.map { Track(videoId: $0.videoId, title: $0.title, artistLine: $0.artistLine) }
             print("Reusing this month's cached selection (\(chosen.count) songs) — no live re-derive.")
         } else {
-            chosen = try await deriveFreshSelection()
-            print("Derived a fresh selection for month \(nowMonth): \(chosen.count) songs")
+            chosen = await deriveFreshSelection()
+            guard chosen.count >= 50 else {
+                print("FAIL: only derived \(chosen.count)/\(targetCount) songs — aborting rather than syncing a broken selection.")
+                exit(1)
+            }
         }
 
         if dryRun {

@@ -642,19 +642,39 @@ deploy). Keep it updated; it loads each session.
 
 - **`encore-playlist-tool`** (`Sources/encore-playlist-tool/`, run via `swift
   run encore-playlist-tool` from `Encore/`) — creates/rotates the **"R&B by
-  Sonnet5"** library playlist for Charlie: curates ~100 songs from the live
-  "R&B & soul" genre page plus its sub-playlists/mixes, applies
+  Sonnet5"** library playlist for Charlie. Composition rule (Charlie's,
+  2026-08-13): **100 songs** = 80 R&B songs split evenly across five decades
+  — 1980s/1990s/2000s/2010s/2020s, 16 each ("the MJ era (80s) to the curr
+  era") — plus fixed quotas of **15 Taylor Swift** + **5 Olivia Dean** songs.
+  Era pools come from searching `"<decade> R&B"` (e.g. "90s R&B"), preferring
+  human-curated decade playlists over raw song search — verified live that
+  song search alone pulls in adjacent-decade "vibe" matches (a plain "90s
+  R&B" search included 2003-2004 tracks); playlist-sourced tracks are put
+  first in the pool so `curate()`'s dedup favors them. **Era boundaries are
+  still approximate**, not exact — YouTube doesn't expose a per-track release
+  year anywhere `EncoreCore` parses, so there's no ground truth to filter
+  against, only search/playlist relevance as a heuristic. Spot-checks after
+  the fix still found some cross-decade bleed (worse near adjacent decades,
+  e.g. a few 70s/90s tracks in the 80s bucket) — acceptable given Charlie
+  said he doesn't need exact precision on generated content (see
+  [[feedback-precision-and-automation]] in agent memory), but worth knowing
+  if this is ever revisited. Artist quotas come from each artist's page
+  (`ytm.artist(browseId:)`) plus a name-filtered song search as a top-up.
   `MonthlyRotation` (same algorithm as `WeeklyRotation`, keyed to the
-  calendar month instead of the week) to pick a fresh ~100-song window each
-  month, and find-or-creates the playlist by title. Re-run it anytime —
-  same calendar month is a cached no-op, a new month re-derives and
-  reconciles. `--dry-run` previews without touching the account; `--check=
-  <playlistId>` and `--list-playlists` are read-only diagnostics. No
-  scheduled trigger is installed (Charlie's call, 2026-08-13) — cloud
-  routines can't see the local-only auth cookie this depends on, and
-  session-based cron jobs expire long before a month is up, so a local
-  launchd job was the only real automation option and he preferred none.
-  Rotate it by just asking the next agent to run it.
+  calendar month instead of the week) is applied per-segment — each era
+  pool and each artist pool rotates its own window monthly, independent of
+  the others.
+
+  Re-run it anytime — same calendar month is a cached no-op (see below),
+  a new month re-derives and reconciles. `--dry-run` previews without
+  touching the account; `--force` bypasses the monthly cache and re-derives
+  immediately (needed right after changing the selection rule mid-month, as
+  happened here); `--check=<playlistId>` and `--list-playlists` are
+  read-only diagnostics. No scheduled trigger is installed (Charlie's call,
+  2026-08-13) — cloud routines can't see the local-only auth cookie this
+  depends on, and session-based cron jobs expire long before a month is up,
+  so a local launchd job was the only real automation option and he
+  preferred none. Rotate it by just asking the next agent to run it.
 
   **Never removes a track it didn't add itself.** A local gitignored state
   file (`Encore/.encore-playlist-tool-state.json`) records exactly which
