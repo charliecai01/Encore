@@ -154,6 +154,15 @@ Task {
         }
     } catch { check("podcasts", false, "\(error)") }
 
+    // Native artist names: CJK artists must resolve to a Simplified name,
+    // English ones must resolve to nothing (and never to somebody else's).
+    for name in ["Jacky Cheung", "A Mei", "A-Lin", "Taylor Swift"] {
+        let native = await NativeNames.native(for: name)
+        let expectsNative = name != "Taylor Swift"
+        check("native name: \(name)", expectsNative == (native != nil),
+              native ?? "(none — not a CJK artist)")
+    }
+
     exit(0)
 }
 

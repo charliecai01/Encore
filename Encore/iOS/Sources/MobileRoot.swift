@@ -64,7 +64,12 @@ struct MobileRoot: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: player.toast)
-        .task { await library.loadIfNeeded() }
+        .task {
+            // Native artist names resolved in earlier sessions are on disk;
+            // load them before the first render so they don't pop in.
+            NativeNames.seedFromDisk()
+            await library.loadIfNeeded()
+        }
         // Hidden player web view, kept in the hierarchy so WebKit keeps audio alive.
         .background(PlayerWebHost().frame(width: 1, height: 1).opacity(0.01))
     }

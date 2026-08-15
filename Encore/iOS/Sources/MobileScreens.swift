@@ -109,6 +109,11 @@ struct TrackRowView: View {
     var index: Int? = nil
     var showsArtwork = true
     var onRemoveFromPlaylist: (() -> Void)?
+    /// Bumped by the parent when native artist names finish resolving. The
+    /// row's own data doesn't change, so without a property that DOES change
+    /// SwiftUI reuses the rendered row and the name stays romanized until you
+    /// navigate away and back.
+    var nameVersion = 0
     let onPlay: () -> Void
     @State private var played = false
     @State private var swipeOffset: CGFloat = 0
@@ -196,7 +201,11 @@ struct TrackRowView: View {
                     .foregroundStyle(player.current?.videoId == track.videoId ? Theme.accent
                                      : (played ? Theme.textTertiary : Theme.textPrimary))
                     .lineLimit(1)
-                Text(track.playsText.map { "\(track.artistLine) · \($0)" } ?? track.artistLine)
+                // CJK artists show their native name (张学友, not "Jacky
+                // Cheung") once it's resolved; everyone else is unchanged.
+                let artistLine = NativeNames.rewriting(track.artistLine,
+                                                       artists: track.artists.map(\.name) + [track.artistLine])
+                Text(track.playsText.map { "\(artistLine) · \($0)" } ?? artistLine)
                     .font(.system(size: 13)).foregroundStyle(Theme.textSecondary).lineLimit(1)
             }
             Spacer()
@@ -386,12 +395,15 @@ struct HomeScreen: View {
     @State private var playlists: [CardItem] = []
     @State private var albums: [CardItem] = []
     @State private var loading = true
+    /// Bumped when native artist names finish resolving, purely to re-render.
+    @State private var nameVersion = 0
 
     private let rowHeight: CGFloat = 76
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
+                let _ = nameVersion   // re-render when native names land
                 if !playlists.isEmpty {
                     section("Playlists", items: HomeSections.orderedPlaylists(playlists))
                 }
@@ -438,7 +450,8 @@ struct HomeScreen: View {
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                 if !item.subtitle.isEmpty {
-                    Text(item.subtitle)
+                    // "Album • Jacky Cheung • 2004" → "Album • 张学友 • 2004"
+                    Text(NativeNames.rewriting(item.subtitle, artists: subtitleNameCandidates(item.subtitle)))
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(1)
@@ -449,6 +462,15 @@ struct HomeScreen: View {
         .padding(8)
         .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight, alignment: .leading)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    /// Card subtitles are pre-joined ("Album • Jacky Cheung • 2004"), and the
+    /// card carries no separate artist field — so treat each separator-
+    /// delimited part as a possible artist name and let the cache decide.
+    private func subtitleNameCandidates(_ subtitle: String) -> [String] {
+        subtitle.components(separatedBy: CharacterSet(charactersIn: "•·"))
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 
     private func load() async {
@@ -475,6 +497,11 @@ struct HomeScreen: View {
             PageCache.shared.homeAlbums = freshAlbums
         }
         loading = false
+
+        // Resolve native names for the artists credited on these albums, then
+        // re-render. Results persist, so this is one-time per artist.
+        let candidates = albums.flatMap { subtitleNameCandidates($0.subtitle) }
+        if await NativeNames.warmUp(names: candidates) { nameVersion &+= 1 }
     }
 }
 
@@ -774,6 +801,8 @@ struct CollectionScreen: View {
     @State private var showEdit = false
     @State private var appliedDefaultSort = false
     @State private var savingToLibrary = false
+    /// Bumped when native artist names finish resolving, purely to re-render.
+    @State private var nameVersion = 0
 
     private var cacheKey: String {
         switch kind {
@@ -786,6 +815,26 @@ struct CollectionScreen: View {
     private var sortStorageKey: String { "sort-\(cacheKey)" }
     private var isAlbum: Bool { if case .album = kind { return true }; return false }
     private var isPlaylist: Bool { if case .playlist = kind { return true }; return false }
+
+    /// Artist names credited on this page, for rewriting the header subtitle
+    /// and rows to native names. The subtitle arrives pre-joined, so the
+    /// names have to come from the tracks.
+    ///
+    /// Follows the DISPLAYED order (sorted/filtered), not `page.tracks` —
+    /// playlists open sorted by artist, so the raw order resolved artists
+    /// that were nowhere near the top of the screen while the visible ones
+    /// stayed romanized. Deduped in first-seen order for the same reason.
+    private func artistNames(in page: CollectionPage) -> [String] {
+        var names: [String] = []
+        var seen = Set<String>()
+        for track in shownTracks(page).prefix(60) {
+            for name in track.artists.map(\.name) + [track.artistLine]
+            where !name.isEmpty && seen.insert(name).inserted {
+                names.append(name)
+            }
+        }
+        return names
+    }
     /// Save/remove this album in the library. Flips the local state first so the
     /// button responds immediately, and rolls back if YouTube rejects it.
     private func setSaved(_ saved: Bool, target: String) {
@@ -825,40 +874,24 @@ struct CollectionScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                let _ = nameVersion   // re-render when native names land
                 if let page {
                     // No cover art inside a collection page at all — playlists
                     // or albums (Charlie's call, 2026-08-14): it just pushes
                     // the tracks down. Art still shows everywhere you PICK a
                     // collection (Home, Library, search) and on the row/now-
                     // playing surfaces.
-                    VStack(spacing: 4) {
-                        Text(page.title).font(.system(size: 22, weight: .bold)).multilineTextAlignment(.center)
-                        // Playlists also drop the subtitle — "Playlist ·
-                        // Unlisted · 2026" says nothing. Albums keep theirs
-                        // ("Album · David Tao · 2014"), which does.
-                        if !page.subtitle.isEmpty, !isPlaylist {
-                            Text(page.subtitle).font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
-                        }
-                    }.frame(maxWidth: .infinity).padding(.top, 8)
+                    // The title is already in the nav bar — repeating it here
+                    // just cost a screenful (Charlie, 2026-08-14). Albums keep
+                    // their subtitle line; playlists show nothing at all, so
+                    // the tracks start at the top.
+                    if !page.subtitle.isEmpty, !isPlaylist {
+                        // "Jacky Cheung · Album · 2004" → "张学友 · Album · 2004"
+                        Text(NativeNames.rewriting(page.subtitle, artists: artistNames(in: page)))
+                            .font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
+                            .frame(maxWidth: .infinity).padding(.top, 8)
+                    }
                     let shown = shownTracks(page)
-                    HStack(spacing: 10) {
-                        Button { player.playCollection(shown, startAt: 0, playlistId: playlistId) } label: {
-                            Label("Play", systemImage: "play.fill").frame(maxWidth: .infinity)
-                        }.buttonStyle(.borderedProminent).tint(Theme.accent)
-                        Button { player.playShuffled(shown, playlistId: playlistId) } label: {
-                            Label("Shuffle", systemImage: "shuffle").frame(maxWidth: .infinity)
-                        }.buttonStyle(.bordered)
-                        // Albums carry a library toggle; playlists don't.
-                        if let saved = page.savedToLibrary, let target = page.libraryTargetPlaylistId {
-                            Button { setSaved(!saved, target: target) } label: {
-                                Image(systemName: saved ? "checkmark" : "plus")
-                                    .frame(minWidth: 28)
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(savingToLibrary)
-                            .accessibilityLabel(saved ? "Remove album from library" : "Save album to library")
-                        }
-                    }.padding(.horizontal, 16)
                     SortFilterBar(filter: $filter, sort: $sort,
                                   sortOptions: sortOptions,
                                   sortLabel: {
@@ -873,7 +906,8 @@ struct CollectionScreen: View {
                             TrackRowView(track: t,
                                          index: i,
                                          showsArtwork: !isAlbum,
-                                         onRemoveFromPlaylist: isPlaylist ? { remove(t) } : nil) {
+                                         onRemoveFromPlaylist: isPlaylist ? { remove(t) } : nil,
+                                         nameVersion: nameVersion) {
                                 player.playCollection(shown, startAt: i, playlistId: playlistId)
                             }
                             .padding(.horizontal, 16)
@@ -882,10 +916,43 @@ struct CollectionScreen: View {
                 } else if loading {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
                 }
-                Color.clear.frame(height: 80)
+                // Clears the pinned transport bar below, so the last
+                // tracks stay reachable.
+                Color.clear.frame(height: 150)
             }
         }
         .background(Theme.bg)
+        // Play/Shuffle live pinned at the BOTTOM (Charlie, 2026-08-14): at
+        // the top of a 100-track list they were a stretch for the thumb, and
+        // scrolled away entirely. Sits above the mini player when one shows.
+        .overlay(alignment: .bottom) {
+            if let page {
+                let shown = shownTracks(page)
+                HStack(spacing: 10) {
+                    Button { player.playCollection(shown, startAt: 0, playlistId: playlistId) } label: {
+                        Label("Play", systemImage: "play.fill").frame(maxWidth: .infinity)
+                    }.buttonStyle(.borderedProminent).tint(Theme.accent)
+                    Button { player.playShuffled(shown, playlistId: playlistId) } label: {
+                        Label("Shuffle", systemImage: "shuffle").frame(maxWidth: .infinity)
+                    }.buttonStyle(.bordered)
+                    // Albums carry a library toggle; playlists don't.
+                    if let saved = page.savedToLibrary, let target = page.libraryTargetPlaylistId {
+                        Button { setSaved(!saved, target: target) } label: {
+                            Image(systemName: saved ? "checkmark" : "plus").frame(minWidth: 28)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(savingToLibrary)
+                        .accessibilityLabel(saved ? "Remove album from library" : "Save album to library")
+                    }
+                }
+                .controlSize(.large)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                .padding(.horizontal, 12)
+                .padding(.bottom, player.current != nil ? 118 : 58)
+            }
+        }
         .navigationTitle(page?.title ?? "").navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if isPlaylist, page != nil {
@@ -939,6 +1006,12 @@ struct CollectionScreen: View {
         }
         loading = false
         await refreshSavedState()
+
+        // Native names for the artists on this page (张学友, not "Jacky
+        // Cheung"). Cached + persisted, so this only costs anything once.
+        if let page {
+            if await NativeNames.warmUp(names: artistNames(in: page)) { nameVersion &+= 1 }
+        }
     }
 
     /// Is this album in the library? Resolved against the library album list,

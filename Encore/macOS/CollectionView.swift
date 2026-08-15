@@ -165,11 +165,16 @@ struct CollectionView: View {
     }
 
     private func header(_ page: CollectionPage) -> some View {
-        // No cover art inside a collection page at all — playlists or albums
-        // (Charlie's call, 2026-08-14): it just pushes the tracks down. Art
-        // still shows everywhere you PICK a collection (Home, Library,
-        // search) and on the row/now-playing surfaces.
+        // Playlist art is SHRUNK here, not removed (Charlie, 2026-08-14):
+        // it's auto-generated and was dominating the header. Albums keep
+        // theirs full size — that's real cover art. (iOS drops it entirely on
+        // both; the phone has far less room.)
         HStack(alignment: .bottom, spacing: 22) {
+            let artSize: CGFloat = isPlaylist ? 96 : 212
+            ArtworkView(url: Artwork.upscale(page.thumbnailURL, to: isPlaylist ? 240 : 544), corner: 10)
+                .frame(width: artSize, height: artSize)
+                .shadow(color: .black.opacity(0.45), radius: isPlaylist ? 12 : 24, y: isPlaylist ? 5 : 10)
+
             VStack(alignment: .leading, spacing: 9) {
                 Text(kind.label.uppercased())
                     .font(.system(size: 11, weight: .bold))
