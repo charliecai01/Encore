@@ -61,25 +61,56 @@ final class NativeNamesTests: XCTestCase {
     // MARK: - Song titles
 
     func testTranslatedHalfIsStrippedFromTitles() {
-        XCTAssertEqual(NativeNames.displayTitle("我恨我愛你 - Hate to Love You"), "我恨我愛你")
-        XCTAssertEqual(NativeNames.displayTitle("永遠的畫面 - Forever Pictures"), "永遠的畫面")
-        XCTAssertEqual(NativeNames.displayTitle("真實 - Reality"), "真實")
+        XCTAssertEqual(NativeNames.displayTitle("我恨我愛你 - Hate to Love You"), "我恨我爱你")
+        XCTAssertEqual(NativeNames.displayTitle("永遠的畫面 - Forever Pictures"), "永远的画面")
+        XCTAssertEqual(NativeNames.displayTitle("真實 - Reality"), "真实")
     }
 
-    /// The script is left exactly as YouTube listed it — this strips the
-    /// English half, it does not convert Traditional to Simplified.
-    func testTitleScriptIsNotConverted() {
-        XCTAssertEqual(NativeNames.displayTitle("記得 - Remember"), "記得")
+    /// Titles are normalized to Simplified, matching the artist names.
+    func testTitleIsConvertedToSimplified() {
+        XCTAssertEqual(NativeNames.displayTitle("記得 - Remember"), "记得")
+        XCTAssertEqual(NativeNames.displayTitle("聽海"), "听海")
     }
 
     func testTitlesWithoutATranslatedHalfAreUntouched() {
-        XCTAssertEqual(NativeNames.displayTitle("P.S.我愛你"), "P.S.我愛你")
-        XCTAssertEqual(NativeNames.displayTitle("以前，以後"), "以前，以後")
+        XCTAssertEqual(NativeNames.displayTitle("P.S.我愛你"), "P.S.我爱你")
+        XCTAssertEqual(NativeNames.displayTitle("以前，以後"), "以前，以后")
         XCTAssertEqual(NativeNames.displayTitle("Hate to Love You"), "Hate to Love You")
         XCTAssertEqual(NativeNames.displayTitle("Blank Space"), "Blank Space")
-        // A parenthetical is not a translation split.
-        XCTAssertEqual(NativeNames.displayTitle("天若有情 (電視劇「錦繡未央」片尾曲)"),
-                       "天若有情 (電視劇「錦繡未央」片尾曲)")
+    }
+
+    // MARK: - Trailing parentheticals
+
+    func testTrailingParentheticalsAreStripped() {
+        XCTAssertEqual(NativeNames.displayTitle("光年之外 (G.E.M.重生版)"), "光年之外")
+        XCTAssertEqual(NativeNames.displayTitle("天若有情 (電視劇「錦繡未央」片尾曲)"), "天若有情")
+        // An English title with no Han must be cleaned up too.
+        XCTAssertEqual(NativeNames.displayTitle("Where Did U Go (G.E.M.重生版)"), "Where Did U Go")
+        XCTAssertEqual(NativeNames.displayTitle("All Too Well (10 Minute Version)"), "All Too Well")
+    }
+
+    /// Nested brackets inside the group must not end the scan early.
+    func testNestedBracketsInsideTheGroup() {
+        XCTAssertEqual(NativeNames.displayTitle("光年之外 (電影《Passengers》主題曲)"), "光年之外")
+    }
+
+    func testMultipleTrailingGroupsAllGo() {
+        XCTAssertEqual(NativeNames.displayTitle("光年之外 (電影主題曲) (Live)"), "光年之外")
+        XCTAssertEqual(NativeNames.displayTitle("Song [Remastered] (Live)"), "Song")
+    }
+
+    func testFullWidthParenthesesAreHandled() {
+        XCTAssertEqual(NativeNames.displayTitle("光年之外（重生版）"), "光年之外")
+    }
+
+    /// A title that is ONLY a parenthetical must survive rather than vanish.
+    func testATitleIsNeverStrippedToNothing() {
+        XCTAssertEqual(NativeNames.displayTitle("(Interlude)"), "(Interlude)")
+    }
+
+    /// Both rules together: translation split first, then the parenthetical.
+    func testTranslationAndParentheticalTogether() {
+        XCTAssertEqual(NativeNames.displayTitle("我恨我愛你 - Hate to Love You (Live)"), "我恨我爱你")
     }
 
     /// An English title that happens to contain a dash must not lose half.

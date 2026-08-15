@@ -148,6 +148,10 @@ struct TrackRow: View {
     /// Bumped by the parent when native artist names resolve. The row's own
     /// data doesn't change, so without it SwiftUI reuses the rendered row.
     var nameVersion = 0
+    /// Multi-select mode: show a checkbox; the parent turns a tap into a
+    /// selection toggle rather than playback.
+    var isSelecting = false
+    var isSelected = false
     /// Set by playlist pages: enables "Remove from this Playlist".
     var onRemoveFromPlaylist: (() -> Void)? = nil
     let onPlay: () -> Void
@@ -161,6 +165,12 @@ struct TrackRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            if isSelecting {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 15))
+                    .foregroundStyle(isSelected ? Theme.fallbackAccent : Theme.textSecondary)
+                    .frame(width: 18)
+            }
             ZStack {
                 if showsArtwork {
                     ArtworkView(url: track.thumbnailURL, corner: 5)

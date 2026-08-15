@@ -114,6 +114,10 @@ struct TrackRowView: View {
     /// SwiftUI reuses the rendered row and the name stays romanized until you
     /// navigate away and back.
     var nameVersion = 0
+    /// Multi-select mode: the row shows a checkbox and a tap toggles it
+    /// instead of playing. The parent owns the selection itself.
+    var isSelecting = false
+    var isSelected = false
     let onPlay: () -> Void
     @State private var played = false
     @State private var swipeOffset: CGFloat = 0
@@ -155,8 +159,8 @@ struct TrackRowView: View {
         // YouTube already told us it won't play this one (grey row). Dim it and
         // swallow the tap: playing it only ever yields error 150 and a skip.
         .opacity(track.isUnavailable ? 0.4 : 1)
-        .onTapGesture { if !track.isUnavailable { onPlay() } }
-        .gesture(playNextSwipe)
+        .onTapGesture { if isSelecting || !track.isUnavailable { onPlay() } }
+        .gesture(playNextSwipe, isEnabled: !isSelecting)
         .onAppear { if PodcastFeature.enabled, track.isEpisode { played = PlayedEpisodes.isPlayed(track.videoId) } }
     }
 
@@ -186,6 +190,12 @@ struct TrackRowView: View {
 
     private var rowContent: some View {
         HStack(spacing: 12) {
+            if isSelecting {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 21))
+                    .foregroundStyle(isSelected ? Theme.accent : Theme.textTertiary)
+                    .frame(width: 24)
+            }
             if showsArtwork {
                 ArtworkView(url: track.thumbnailURL, corner: 5).frame(width: 52, height: 52)
             } else if let index {
@@ -501,7 +511,10 @@ struct HomeScreen: View {
         // Resolve native names for the artists credited on these albums, then
         // re-render. Results persist, so this is one-time per artist.
         let candidates = albums.flatMap { subtitleNameCandidates($0.subtitle) }
-        if await NativeNames.warmUp(names: candidates) { nameVersion &+= 1 }
+        if await NativeNames.warmUp(names: candidates) {
+            nameVersion &+= 1
+            PlayerEngine.shared.nameVersion &+= 1
+        }
     }
 }
 
@@ -801,6 +814,12 @@ struct CollectionScreen: View {
     @State private var showEdit = false
     @State private var appliedDefaultSort = false
     @State private var savingToLibrary = false
+    /// Multi-select: pick songs to remove from this playlist, or to add to
+    /// another one. Holds videoIds.
+    @State private var selecting = false
+    @State private var selection: Set<String> = []
+    @State private var showAddSelection = false
+    @State private var workingOnSelection = false
     /// Bumped when native artist names finish resolving, purely to re-render.
     @State private var nameVersion = 0
 
@@ -907,8 +926,14 @@ struct CollectionScreen: View {
                                          index: i,
                                          showsArtwork: !isAlbum,
                                          onRemoveFromPlaylist: isPlaylist ? { remove(t) } : nil,
-                                         nameVersion: nameVersion) {
-                                player.playCollection(shown, startAt: i, playlistId: playlistId)
+                                         nameVersion: nameVersion,
+                                         isSelecting: selecting,
+                                         isSelected: selection.contains(t.videoId)) {
+                                if selecting {
+                                    toggle(t)
+                                } else {
+                                    player.playCollection(shown, startAt: i, playlistId: playlistId)
+                                }
                             }
                             .padding(.horizontal, 16)
                         }
@@ -926,7 +951,9 @@ struct CollectionScreen: View {
         // the top of a 100-track list they were a stretch for the thumb, and
         // scrolled away entirely. Sits above the mini player when one shows.
         .overlay(alignment: .bottom) {
-            if let page {
+            if selecting {
+                selectionBar
+            } else if let page {
                 let shown = shownTracks(page)
                 HStack(spacing: 10) {
                     Button { player.playCollection(shown, startAt: 0, playlistId: playlistId) } label: {
@@ -955,9 +982,26 @@ struct CollectionScreen: View {
         }
         .navigationTitle(page?.title ?? "").navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if isPlaylist, page != nil {
+            if page != nil {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showEdit = true } label: { Image(systemName: "pencil") }
+                    if selecting {
+                        Button("Done") { endSelection() }
+                    } else {
+                        // The pencil covers both kinds of editing: picking
+                        // songs in bulk (any collection) and the playlist's
+                        // own details (your own playlists).
+                        Menu {
+                            Button {
+                                selecting = true
+                                selection = []
+                            } label: { Label("Select Songs", systemImage: "checkmark.circle") }
+                            if isPlaylist {
+                                Button { showEdit = true } label: {
+                                    Label("Edit Details…", systemImage: "pencil")
+                                }
+                            }
+                        } label: { Image(systemName: "pencil") }
+                    }
                 }
             }
         }
@@ -974,6 +1018,10 @@ struct CollectionScreen: View {
                 })
             }
         }
+        .sheet(isPresented: $showAddSelection) {
+            AddToPlaylistSheet(tracks: selectedTracks) { endSelection() }
+                .environmentObject(player)
+        }
         .refreshable { await load() }
         .task {
             // Playlists always open sorted by artist.
@@ -987,6 +1035,85 @@ struct CollectionScreen: View {
         .onChange(of: sort) { _, newSort in
             // Don't persist for playlists — they should reopen sorted by artist.
             if !isPlaylist { UserDefaults.standard.set(newSort.rawValue, forKey: sortStorageKey) }
+        }
+    }
+
+    /// Actions for the picked songs. Mirrors the Play/Shuffle bar's position
+    /// so the buttons stay under the thumb.
+    private var selectionBar: some View {
+        VStack(spacing: 8) {
+            Text(selection.isEmpty ? "Select songs" : "\(selection.count) selected")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.textSecondary)
+            HStack(spacing: 10) {
+                Button { showAddSelection = true } label: {
+                    Label("Add", systemImage: "text.badge.plus").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent).tint(Theme.accent)
+                .disabled(selection.isEmpty || workingOnSelection)
+
+                // Removing is only meaningful on a playlist you own; YouTube
+                // rejects it elsewhere (the toast says so if it does).
+                if isPlaylist {
+                    Button(role: .destructive) { removeSelected() } label: {
+                        Label("Remove", systemImage: "trash").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(selection.isEmpty || workingOnSelection)
+                }
+            }
+            .controlSize(.large)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal, 12)
+        .padding(.bottom, player.current != nil ? 118 : 58)
+    }
+
+    private func toggle(_ track: Track) {
+        if selection.contains(track.videoId) {
+            selection.remove(track.videoId)
+        } else {
+            selection.insert(track.videoId)
+        }
+    }
+
+    private func endSelection() {
+        selecting = false
+        selection = []
+    }
+
+    /// The picked tracks, in the order they're shown.
+    private var selectedTracks: [Track] {
+        guard let page else { return [] }
+        return shownTracks(page).filter { selection.contains($0.videoId) }
+    }
+
+    private func removeSelected() {
+        guard let pid = playlistId, !selection.isEmpty else { return }
+        let batch = selectedTracks
+        workingOnSelection = true
+        Task {
+            var removed = 0
+            for track in batch {
+                if (try? await YTM.shared.removeFromPlaylist(playlistId: pid,
+                                                             videoId: track.videoId,
+                                                             setVideoId: track.setVideoId)) == true {
+                    removed += 1
+                }
+            }
+            workingOnSelection = false
+            if removed > 0 {
+                player.showToast(removed == batch.count
+                                 ? "Removed \(removed) song\(removed == 1 ? "" : "s")"
+                                 : "Removed \(removed) of \(batch.count)")
+                PageCache.shared.collections[cacheKey] = nil
+                endSelection()
+                await load()
+            } else {
+                player.showToast("Couldn't remove — you can only edit your own playlists")
+            }
         }
     }
 
@@ -1010,7 +1137,10 @@ struct CollectionScreen: View {
         // Native names for the artists on this page (张学友, not "Jacky
         // Cheung"). Cached + persisted, so this only costs anything once.
         if let page {
-            if await NativeNames.warmUp(names: artistNames(in: page)) { nameVersion &+= 1 }
+            if await NativeNames.warmUp(names: artistNames(in: page)) {
+                nameVersion &+= 1
+                player.nameVersion &+= 1
+            }
         }
     }
 

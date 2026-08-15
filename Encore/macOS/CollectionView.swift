@@ -27,6 +27,11 @@ struct CollectionView: View {
     @State private var palette = Palette.fallback
     /// Bumped when native artist names finish resolving, purely to re-render.
     @State private var nameVersion = 0
+    /// Multi-select: pick songs to remove from this playlist, or add to
+    /// another. Holds videoIds.
+    @State private var selecting = false
+    @State private var selection: Set<String> = []
+    @State private var workingOnSelection = false
     @State private var sort: CollectionSort = .order
     @State private var filterText = ""
     @State private var showEdit = false
@@ -172,7 +177,9 @@ struct CollectionView: View {
         // theirs full size — that's real cover art. (iOS drops it entirely on
         // both; the phone has far less room.)
         HStack(alignment: .bottom, spacing: 22) {
-            let artSize: CGFloat = isPlaylist ? 96 : 212
+            // Playlist art is sized to the text column so its top lines up
+            // with the "PLAYLIST" label; albums keep the larger cover.
+            let artSize: CGFloat = isPlaylist ? 150 : 212
             ArtworkView(url: Artwork.upscale(page.thumbnailURL, to: isPlaylist ? 240 : 544), corner: 10)
                 .frame(width: artSize, height: artSize)
                 .shadow(color: .black.opacity(0.45), radius: isPlaylist ? 12 : 24, y: isPlaylist ? 5 : 10)
@@ -192,8 +199,13 @@ struct CollectionView: View {
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(1)
                 }
-                if !page.secondSubtitle.isEmpty {
-                    Text(page.secondSubtitle)
+                // Playlists drop the view count — it's your own list, and
+                // "8.4K views" says nothing next to tracks/duration. Albums
+                // keep the line as YouTube sends it.
+                let stats = isPlaylist ? DisplayText.withoutViewCount(page.secondSubtitle)
+                                       : page.secondSubtitle
+                if !stats.isEmpty {
+                    Text(stats)
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.textTertiary)
                 }
@@ -222,8 +234,21 @@ struct CollectionView: View {
                     if isPlaylist {
                         PillButton(title: "Edit", icon: "pencil") { showEdit = true }
                     }
+                    // Bulk song editing — available on any collection, since
+                    // "add these to a playlist" makes sense on albums too.
+                    if selecting {
+                        PillButton(title: "Done", icon: "checkmark") {
+                            selecting = false; selection = []
+                        }
+                    } else {
+                        PillButton(title: "Select", icon: "checkmark.circle") {
+                            selecting = true; selection = []
+                        }
+                    }
                 }
                 .padding(.top, 6)
+
+                if selecting { selectionBar }
             }
             Spacer()
         }
@@ -299,12 +324,113 @@ struct CollectionView: View {
                          showsAlbum: !isAlbum,
                          playCount: showPlayCounts ? (counts[track.videoId]?.count ?? 0) : nil,
                          nameVersion: nameVersion,
+                         isSelecting: selecting,
+                         isSelected: selection.contains(track.videoId),
                          onRemoveFromPlaylist: isPlaylist ? { removeTrack(track) } : nil) {
-                    player.playCollection(shown, startAt: i)
+                    if selecting {
+                        toggleSelection(track)
+                    } else {
+                        player.playCollection(shown, startAt: i)
+                    }
                 }
             }
         }
         .padding(.horizontal, 16)
+    }
+
+    /// Actions for the picked songs: add them to another playlist, or remove
+    /// them from this one (playlists you own only).
+    private var selectionBar: some View {
+        HStack(spacing: 10) {
+            Text(selection.isEmpty ? "Select songs" : "\(selection.count) selected")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.textSecondary)
+
+            Menu("Add to Playlist") {
+                ForEach(editablePlaylists) { playlist in
+                    Button(playlist.title) { addSelected(to: playlist) }
+                }
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .disabled(selection.isEmpty || workingOnSelection || editablePlaylists.isEmpty)
+
+            if isPlaylist {
+                PillButton(title: "Remove", icon: "trash") { removeSelected() }
+                    .disabled(selection.isEmpty || workingOnSelection)
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    /// Playlists you can actually add to — Liked Music and auto-radios out.
+    private var editablePlaylists: [CardItem] {
+        LibraryStore.shared.playlists.filter { pl in
+            guard let id = pl.playlistId else { return false }
+            return id != "LM" && !id.hasPrefix("RD")
+        }
+    }
+
+    private var selectedTracks: [Track] {
+        guard let page else { return [] }
+        return visibleTracks(page).filter { selection.contains($0.videoId) }
+    }
+
+    private func toggleSelection(_ track: Track) {
+        if selection.contains(track.videoId) {
+            selection.remove(track.videoId)
+        } else {
+            selection.insert(track.videoId)
+        }
+    }
+
+    private func addSelected(to playlist: CardItem) {
+        guard let pid = playlist.playlistId else { return }
+        let batch = selectedTracks
+        workingOnSelection = true
+        Task {
+            var added = 0
+            for track in batch {
+                if (try? await YTM.shared.addToPlaylist(playlistId: pid, videoId: track.videoId)) == true {
+                    added += 1
+                }
+            }
+            workingOnSelection = false
+            player.showToast(added == batch.count
+                             ? "Added \(added) song\(added == 1 ? "" : "s") to \(playlist.title)"
+                             : "Added \(added) of \(batch.count) — the rest couldn't be added")
+            if added > 0 { PageCache.shared.collections["playlist-\(pid)"] = nil }
+            selecting = false
+            selection = []
+        }
+    }
+
+    private func removeSelected() {
+        guard case .playlist(let pid) = kind, !selection.isEmpty else { return }
+        let batch = selectedTracks
+        workingOnSelection = true
+        Task {
+            var removed = 0
+            for track in batch {
+                if (try? await YTM.shared.removeFromPlaylist(playlistId: pid,
+                                                             videoId: track.videoId,
+                                                             setVideoId: track.setVideoId)) == true {
+                    removed += 1
+                }
+            }
+            workingOnSelection = false
+            if removed > 0 {
+                player.showToast(removed == batch.count
+                                 ? "Removed \(removed) song\(removed == 1 ? "" : "s")"
+                                 : "Removed \(removed) of \(batch.count)")
+                PageCache.shared.collections[cacheKey] = nil
+                selecting = false
+                selection = []
+                await load()
+            } else {
+                player.showToast("Couldn't remove — you can only edit your own playlists")
+            }
+        }
     }
 
     private func removeTrack(_ track: Track) {
@@ -393,7 +519,10 @@ struct CollectionView: View {
                     names.append(name)
                 }
             }
-            if await NativeNames.warmUp(names: names) { nameVersion &+= 1 }
+            if await NativeNames.warmUp(names: names) {
+                nameVersion &+= 1
+                player.nameVersion &+= 1
+            }
         } catch {
             self.error = error.localizedDescription
             loading = false

@@ -77,24 +77,60 @@ public enum NativeNames {
         return key.isEmpty ? nil : displayOverrides[key]
     }
 
-    /// A song title with its translated/romanized half removed: "我恨我愛你 -
-    /// Hate to Love You" → "我恨我愛你" (Charlie's call, 2026-08-14). The
-    /// script is left exactly as YouTube listed it — only the English half
-    /// goes. Titles without a separator, or without any Han, are untouched,
-    /// so "P.S.我愛你" and "Hate to Love You" both survive intact.
+    /// A song title cleaned up for display (Charlie's calls, 2026-08-14):
+    ///
+    /// 1. The translated/romanized half goes — "我恨我愛你 - Hate to Love You"
+    ///    → "我恨我愛你".
+    /// 2. Trailing parentheticals go — "光年之外 (G.E.M.重生版)" → "光年之外",
+    ///    "Where Did U Go (G.E.M.重生版)" → "Where Did U Go".
+    /// 3. Han is normalized to Simplified, matching the artist names —
+    ///    "記得" → "记得". Latin text passes through untouched.
+    ///
+    /// Note this deliberately collapses version distinctions: a studio cut and
+    /// its "(Live)" or "(重生版)" release end up displaying the same, which is
+    /// why two rows in a list can now read alike. That's the requested
+    /// behaviour — the rows are still separate tracks.
     public static func displayTitle(_ title: String) -> String {
-        guard CJK.hasHan(title) else { return title }
-        let separators = [" - ", " – ", " — "]
-        for sep in separators where title.contains(sep) {
-            let segments = title.components(separatedBy: sep)
-            // Keep every leading segment that has Han, drop the rest — a
-            // title can legitimately be "甲 - 乙".
-            let han = segments.prefix { CJK.hasHan($0) }
-            if !han.isEmpty, han.count < segments.count {
-                return han.joined(separator: sep).trimmingCharacters(in: .whitespaces)
+        var out = title
+        if CJK.hasHan(out) {
+            let separators = [" - ", " – ", " — "]
+            for sep in separators where out.contains(sep) {
+                let segments = out.components(separatedBy: sep)
+                // Keep every leading segment that has Han, drop the rest — a
+                // title can legitimately be "甲 - 乙".
+                let han = segments.prefix { CJK.hasHan($0) }
+                if !han.isEmpty, han.count < segments.count {
+                    out = han.joined(separator: sep)
+                }
+                break
             }
         }
-        return title
+        out = strippingTrailingParentheticals(out)
+        let trimmed = out.trimmingCharacters(in: .whitespaces)
+        // Never strip a title away to nothing (e.g. "(Interlude)").
+        return trimmed.isEmpty ? CJK.toSimplified(title) : CJK.toSimplified(trimmed)
+    }
+
+    /// Removes trailing "(…)", "（…）" and "[…]" groups, repeatedly, so
+    /// "光年之外 (電影《Passengers》主題曲) (Live)" ends up as "光年之外".
+    private static func strippingTrailingParentheticals(_ text: String) -> String {
+        let pairs: [(Character, Character)] = [("(", ")"), ("（", "）"), ("[", "]"), ("【", "】")]
+        var out = text.trimmingCharacters(in: .whitespaces)
+        var changed = true
+        while changed {
+            changed = false
+            for (open, close) in pairs where out.hasSuffix(String(close)) {
+                // Match the LAST opening bracket so nested text inside the
+                // group (《Passengers》) doesn't end the scan early.
+                guard let start = out.lastIndex(of: open) else { continue }
+                let candidate = String(out[out.startIndex..<start]).trimmingCharacters(in: .whitespaces)
+                guard !candidate.isEmpty else { continue }
+                out = candidate
+                changed = true
+                break
+            }
+        }
+        return out
     }
 
     /// The Simplified native name for `query` given a candidate artist-entity

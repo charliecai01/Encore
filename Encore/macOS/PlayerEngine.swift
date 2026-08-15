@@ -74,6 +74,11 @@ final class PlayerEngine: NSObject, ObservableObject {
         }
     }
     @Published var toast: String?
+    /// Bumped when native artist names finish resolving. Surfaces that show a
+    /// name but own no other changing state — the mini player, Now Playing —
+    /// observe this engine, so publishing here is what makes them re-render;
+    /// otherwise they keep the romanized name until the track changes.
+    @Published var nameVersion = 0
     @Published var videoMode = false {
         didSet { js("window.__encore && __encore.videoMode(\(videoMode ? "true" : "false"))") }
     }
