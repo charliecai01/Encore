@@ -231,19 +231,26 @@ struct CollectionView: View {
                         }
                         .disabled(savingToLibrary)
                     }
-                    if isPlaylist {
-                        PillButton(title: "Edit", icon: "pencil") { showEdit = true }
-                    }
-                    // Bulk song editing — available on any collection, since
-                    // "add these to a playlist" makes sense on albums too.
+                    // One compact control rather than separate Edit and
+                    // Select pills: the header row feeds the window's minimum
+                    // width (EncoreApp pins minWidth 1264), and an extra pill
+                    // pushed the window wider than the screen, clipping the
+                    // player bar at both edges.
                     if selecting {
                         PillButton(title: "Done", icon: "checkmark") {
                             selecting = false; selection = []
                         }
                     } else {
-                        PillButton(title: "Select", icon: "checkmark.circle") {
-                            selecting = true; selection = []
+                        Menu {
+                            Button("Select Songs") { selecting = true; selection = [] }
+                            if isPlaylist {
+                                Button("Edit Details…") { showEdit = true }
+                            }
+                        } label: {
+                            Label("Edit", systemImage: "pencil")
                         }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
                     }
                 }
                 .padding(.top, 6)

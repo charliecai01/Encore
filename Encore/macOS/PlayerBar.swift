@@ -49,14 +49,15 @@ struct PlayerBar: View {
                 .buttonStyle(.plain)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(track.title)
+                    Text(NativeNames.displayTitle(track.title))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
                         .lineLimit(1)
                         .onTapGesture {
                             if let albumId = track.album?.id { nav.go(.album(albumId)) }
                         }
-                    Text(track.artistLine)
+                    Text(NativeNames.rewriting(track.artistLine,
+                                               artists: track.artists.map(\.name) + [track.artistLine]))
                         .font(.system(size: 11.5))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(1)
