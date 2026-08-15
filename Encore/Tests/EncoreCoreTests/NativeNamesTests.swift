@@ -42,6 +42,52 @@ final class NativeNamesTests: XCTestCase {
         XCTAssertEqual(NativeNames.resolve(entityTitle: "周杰倫", query: "周杰伦"), "周杰伦")
     }
 
+    // MARK: - Pinned display names
+
+    /// A-Lin is billed romanized everywhere, so 黄丽玲 reads wrong.
+    func testALinStaysRomanizedFromEitherDirection() {
+        XCTAssertEqual(NativeNames.resolve(entityTitle: "黃麗玲 - A-Lin+", query: "A-Lin"), "A-Lin")
+        XCTAssertEqual(NativeNames.overrideName(for: "A-Lin"), "A-Lin")
+        XCTAssertEqual(NativeNames.overrideName(for: "黄丽玲"), "A-Lin")
+        // Traditional spelling folds to the same override.
+        XCTAssertEqual(NativeNames.overrideName(for: "黃麗玲"), "A-Lin")
+    }
+
+    func testOtherArtistsAreUnaffectedByTheOverrideList() {
+        XCTAssertNil(NativeNames.overrideName(for: "Jacky Cheung"))
+        XCTAssertNil(NativeNames.overrideName(for: "张学友"))
+    }
+
+    // MARK: - Song titles
+
+    func testTranslatedHalfIsStrippedFromTitles() {
+        XCTAssertEqual(NativeNames.displayTitle("我恨我愛你 - Hate to Love You"), "我恨我愛你")
+        XCTAssertEqual(NativeNames.displayTitle("永遠的畫面 - Forever Pictures"), "永遠的畫面")
+        XCTAssertEqual(NativeNames.displayTitle("真實 - Reality"), "真實")
+    }
+
+    /// The script is left exactly as YouTube listed it — this strips the
+    /// English half, it does not convert Traditional to Simplified.
+    func testTitleScriptIsNotConverted() {
+        XCTAssertEqual(NativeNames.displayTitle("記得 - Remember"), "記得")
+    }
+
+    func testTitlesWithoutATranslatedHalfAreUntouched() {
+        XCTAssertEqual(NativeNames.displayTitle("P.S.我愛你"), "P.S.我愛你")
+        XCTAssertEqual(NativeNames.displayTitle("以前，以後"), "以前，以後")
+        XCTAssertEqual(NativeNames.displayTitle("Hate to Love You"), "Hate to Love You")
+        XCTAssertEqual(NativeNames.displayTitle("Blank Space"), "Blank Space")
+        // A parenthetical is not a translation split.
+        XCTAssertEqual(NativeNames.displayTitle("天若有情 (電視劇「錦繡未央」片尾曲)"),
+                       "天若有情 (電視劇「錦繡未央」片尾曲)")
+    }
+
+    /// An English title that happens to contain a dash must not lose half.
+    func testEnglishTitleWithADashSurvives() {
+        XCTAssertEqual(NativeNames.displayTitle("Hate to Love You - Live"),
+                       "Hate to Love You - Live")
+    }
+
     // MARK: - Parsing pieces
 
     func testNativePartHandlesSeveralSeparators() {

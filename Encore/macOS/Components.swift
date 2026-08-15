@@ -145,6 +145,9 @@ struct TrackRow: View {
     var showsAlbum = true
     /// Personal play count (from `PlayCounts`); non-nil shows the column.
     var playCount: Int? = nil
+    /// Bumped by the parent when native artist names resolve. The row's own
+    /// data doesn't change, so without it SwiftUI reuses the rendered row.
+    var nameVersion = 0
     /// Set by playlist pages: enables "Remove from this Playlist".
     var onRemoveFromPlaylist: (() -> Void)? = nil
     let onPlay: () -> Void
@@ -184,11 +187,14 @@ struct TrackRow: View {
             .frame(width: showsArtwork ? 40 : 28, height: 40)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(track.title)
+                // CJK titles drop their translated half ("我恨我愛你 - Hate to
+                // Love You" → "我恨我愛你"); CJK artists show their native name.
+                Text(NativeNames.displayTitle(track.title))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(isCurrent ? Theme.fallbackAccent : Theme.textPrimary)
                     .lineLimit(1)
-                Text(track.artistLine)
+                Text(NativeNames.rewriting(track.artistLine,
+                                           artists: track.artists.map(\.name) + [track.artistLine]))
                     .font(.system(size: 11.5))
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(1)

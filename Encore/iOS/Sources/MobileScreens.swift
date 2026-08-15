@@ -196,7 +196,7 @@ struct TrackRowView: View {
                     .frame(width: 28, height: 52)
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(track.title)
+                Text(NativeNames.displayTitle(track.title))
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(player.current?.videoId == track.videoId ? Theme.accent
                                      : (played ? Theme.textTertiary : Theme.textPrimary))
@@ -361,7 +361,7 @@ struct ShelfRow: View {
                                     VStack(alignment: .leading, spacing: 6) {
                                         ArtworkView(url: Artwork.upscale(track.thumbnailURL, to: 300), corner: 8)
                                             .frame(width: 118, height: 118)
-                                        Text(track.title).font(.system(size: 13, weight: .semibold))
+                                        Text(NativeNames.displayTitle(track.title)).font(.system(size: 13, weight: .semibold))
                                             .foregroundStyle(Theme.textPrimary).lineLimit(1).frame(width: 118, alignment: .leading)
                                         Text(track.playsText ?? track.artistLine).font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
                                             .lineLimit(1).frame(width: 118, alignment: .leading)
@@ -1504,7 +1504,7 @@ struct MostPlayedScreen: View {
                                     .foregroundStyle(Theme.textTertiary).frame(width: 24, alignment: .trailing)
                                 ArtworkView(url: rec.track.thumbnailURL, corner: 5).frame(width: 48, height: 48)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(rec.track.title).font(.system(size: 15, weight: .medium))
+                                    Text(NativeNames.displayTitle(rec.track.title)).font(.system(size: 15, weight: .medium))
                                         .foregroundStyle(player.current?.videoId == rec.track.videoId ? Theme.accent : Theme.textPrimary)
                                         .lineLimit(1)
                                     Text(rec.track.artistLine).font(.system(size: 12.5))

@@ -57,13 +57,55 @@ public enum NativeNames {
         return nil
     }
 
+    /// Artists Charlie wants left under their romanized/stage name even
+    /// though a Han form exists — A-Lin is billed that way everywhere, so
+    /// "黄丽玲" reads wrong (his call, 2026-08-14). Keyed by `latinKey` and by
+    /// both Han forms so it applies whichever direction the name arrives in.
+    /// Keyed by `latinKey` and by the Simplified Han form, so it applies
+    /// whichever direction the name arrives in — a track credited "黃麗玲"
+    /// also displays as "A-Lin".
+    public static let displayOverrides: [String: String] = [
+        "alin": "A-Lin",
+        "黄丽玲": "A-Lin",
+    ]
+
+    /// The name Charlie wants shown for this artist, when it's been pinned.
+    public static func overrideName(for name: String) -> String? {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        if let hit = displayOverrides[CJK.toSimplified(trimmed)] { return hit }
+        let key = latinKey(trimmed)
+        return key.isEmpty ? nil : displayOverrides[key]
+    }
+
+    /// A song title with its translated/romanized half removed: "我恨我愛你 -
+    /// Hate to Love You" → "我恨我愛你" (Charlie's call, 2026-08-14). The
+    /// script is left exactly as YouTube listed it — only the English half
+    /// goes. Titles without a separator, or without any Han, are untouched,
+    /// so "P.S.我愛你" and "Hate to Love You" both survive intact.
+    public static func displayTitle(_ title: String) -> String {
+        guard CJK.hasHan(title) else { return title }
+        let separators = [" - ", " – ", " — "]
+        for sep in separators where title.contains(sep) {
+            let segments = title.components(separatedBy: sep)
+            // Keep every leading segment that has Han, drop the rest — a
+            // title can legitimately be "甲 - 乙".
+            let han = segments.prefix { CJK.hasHan($0) }
+            if !han.isEmpty, han.count < segments.count {
+                return han.joined(separator: sep).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return title
+    }
+
     /// The Simplified native name for `query` given a candidate artist-entity
     /// title, or nil when the candidate doesn't plausibly refer to the same
     /// artist. The match guard matters: a bare artist search happily returns
     /// somebody else, and silently relabelling one artist with another's name
     /// is worse than showing the romanized one.
     public static func resolve(entityTitle: String, query: String) -> String? {
+        if let pinned = overrideName(for: query) { return pinned }
         guard let native = nativePart(of: entityTitle) else { return nil }
+        if let pinned = overrideName(for: native) { return pinned }
         // A query that's already Han just needs normalizing.
         if CJK.hasHan(query) {
             let q = CJK.toSimplified(query.trimmingCharacters(in: .whitespaces))
@@ -91,7 +133,10 @@ public enum NativeNames {
 
     /// Persisted so the lookups survive relaunches — the answer for a given
     /// artist never changes, and Charlie prefers storage over spinners.
-    private static let defaultsKey = "nativeArtistNames"
+    /// The version suffix invalidates everything when the RULES change (v2
+    /// added the romanized-preferred overrides), since old entries were
+    /// computed under the old rules.
+    private static let defaultsKey = "nativeArtistNames.v2"
 
     private static func loadPersisted() -> [String: String] {
         UserDefaults.standard.dictionary(forKey: defaultsKey) as? [String: String] ?? [:]
@@ -116,6 +161,12 @@ public enum NativeNames {
         if let saved = loadPersisted()[key] {
             cache.withLock { $0[key] = saved }
             return saved.isEmpty ? nil : saved
+        }
+        // A pinned display name short-circuits everything — no network.
+        if let pinned = overrideName(for: name) {
+            cache.withLock { $0[key] = pinned }
+            persist(key, pinned)
+            return pinned
         }
         // A name that's already Han only needs normalizing — no network.
         if CJK.hasHan(name) {

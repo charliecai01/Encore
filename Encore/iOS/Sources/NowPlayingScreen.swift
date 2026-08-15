@@ -162,12 +162,12 @@ struct NowPlayingScreen: View {
             HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 3) {
                     // Tap the title to open the album.
-                    Text(player.current?.title ?? "").font(.system(size: 22, weight: .bold))
+                    Text(NativeNames.displayTitle(player.current?.title ?? "")).font(.system(size: 22, weight: .bold))
                         .foregroundStyle(.white).lineLimit(1)
                         .contentShape(Rectangle())
                         .onTapGesture { openAlbum() }
                     // Tap the artist to open the artist page.
-                    Text(player.current?.artistLine ?? "").font(.system(size: 15))
+                    Text(NativeNames.displayCached(player.current?.artistLine ?? "")).font(.system(size: 15))
                         .foregroundStyle(.white.opacity(0.6)).lineLimit(1)
                         .contentShape(Rectangle())
                         .onTapGesture { openArtist() }
@@ -447,7 +447,7 @@ struct QueuePane: View {
                     HStack(spacing: 11) {
                         ArtworkView(url: track.thumbnailURL, corner: 4).frame(width: 44, height: 44)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(track.title).font(.system(size: 14, weight: i == player.index ? .semibold : .regular))
+                            Text(NativeNames.displayTitle(track.title)).font(.system(size: 14, weight: i == player.index ? .semibold : .regular))
                                 .foregroundStyle(i == player.index ? Theme.accent : .white).lineLimit(1)
                             Text(track.artistLine).font(.system(size: 12)).foregroundStyle(.white.opacity(0.5)).lineLimit(1)
                         }
@@ -496,10 +496,19 @@ extension View {
 
 /// Pick one of the user's playlists to add a track to.
 struct AddToPlaylistSheet: View {
-    let track: Track
+    /// One or many — the multi-select flow on collection pages adds a whole
+    /// batch through the same sheet.
+    let tracks: [Track]
+    var onFinished: (() -> Void)?
     @EnvironmentObject var player: PlayerEngine
     @ObservedObject private var library = LibraryStore.shared
     @Environment(\.dismiss) private var dismiss
+
+    init(track: Track) { self.tracks = [track] }
+    init(tracks: [Track], onFinished: (() -> Void)? = nil) {
+        self.tracks = tracks
+        self.onFinished = onFinished
+    }
 
     /// Only playlists you can actually add to — Liked Music and auto-radios
     /// are excluded (parity with the macOS context menu).
@@ -534,7 +543,7 @@ struct AddToPlaylistSheet: View {
                 }
             }
             .background(Theme.bg)
-            .navigationTitle("Add to Playlist")
+            .navigationTitle(tracks.count > 1 ? "Add \(tracks.count) Songs" : "Add to Playlist")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Cancel") { dismiss() } } }
         }
@@ -546,10 +555,24 @@ struct AddToPlaylistSheet: View {
     private func add(_ pl: CardItem) {
         guard let pid = pl.playlistId else { return }
         dismiss()
+        let batch = tracks
         Task {
-            let ok = (try? await YTM.shared.addToPlaylist(playlistId: pid, videoId: track.videoId)) ?? false
-            player.showToast(ok ? "Added to \(pl.title)" : "Couldn't add — you can only edit your own playlists")
-            if ok { PageCache.shared.collections["playlist-\(pid)"] = nil }
+            var added = 0
+            for track in batch {
+                if (try? await YTM.shared.addToPlaylist(playlistId: pid, videoId: track.videoId)) == true {
+                    added += 1
+                }
+            }
+            if added == batch.count {
+                player.showToast(batch.count > 1 ? "Added \(added) songs to \(pl.title)"
+                                                 : "Added to \(pl.title)")
+            } else if added > 0 {
+                player.showToast("Added \(added) of \(batch.count) — the rest couldn't be added")
+            } else {
+                player.showToast("Couldn't add — you can only edit your own playlists")
+            }
+            if added > 0 { PageCache.shared.collections["playlist-\(pid)"] = nil }
+            onFinished?()
         }
     }
 }

@@ -25,6 +25,8 @@ struct CollectionView: View {
     @State private var loading = true
     @State private var error: String?
     @State private var palette = Palette.fallback
+    /// Bumped when native artist names finish resolving, purely to re-render.
+    @State private var nameVersion = 0
     @State private var sort: CollectionSort = .order
     @State private var filterText = ""
     @State private var showEdit = false
@@ -296,6 +298,7 @@ struct CollectionView: View {
                          showsArtwork: !isAlbum,
                          showsAlbum: !isAlbum,
                          playCount: showPlayCounts ? (counts[track.videoId]?.count ?? 0) : nil,
+                         nameVersion: nameVersion,
                          onRemoveFromPlaylist: isPlaylist ? { removeTrack(track) } : nil) {
                     player.playCollection(shown, startAt: i)
                 }
@@ -379,6 +382,18 @@ struct CollectionView: View {
             loading = false
             palette = await ArtworkPalette.shared.palette(for: Artwork.upscale(result.thumbnailURL, to: 336))
             await refreshSavedState()
+            // Native names for the artists actually on screen. Follows the
+            // DISPLAYED order, not the raw one — the two differ whenever a
+            // sort is applied, and the raw order resolves off-screen artists.
+            var names: [String] = []
+            var seen = Set<String>()
+            for track in visibleTracks(result).prefix(60) {
+                for name in track.artists.map(\.name) + [track.artistLine]
+                where !name.isEmpty && seen.insert(name).inserted {
+                    names.append(name)
+                }
+            }
+            if await NativeNames.warmUp(names: names) { nameVersion &+= 1 }
         } catch {
             self.error = error.localizedDescription
             loading = false

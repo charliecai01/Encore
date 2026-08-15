@@ -119,10 +119,10 @@ struct MiniPlayer: View {
                     ArtworkView(url: player.current?.thumbnailURL, corner: 6)
                         .frame(width: 52, height: 52)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(player.current?.title ?? "")
+                        Text(NativeNames.displayTitle(player.current?.title ?? ""))
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(Theme.textPrimary).lineLimit(1)
-                        Text(player.current?.artistLine ?? "")
+                        Text(NativeNames.displayCached(player.current?.artistLine ?? ""))
                             .font(.system(size: 12.5))
                             .foregroundStyle(Theme.textSecondary).lineLimit(1)
                     }
