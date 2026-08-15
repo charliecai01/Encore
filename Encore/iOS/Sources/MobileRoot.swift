@@ -12,32 +12,26 @@ struct MobileRoot: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             TabView(selection: $nav.selectedTab) {
-                // Home IS the Favorite Songs playlist — first tab, and where
-                // the app opens. The shelf feed that used to live here moved to
-                // Explore, matching how macOS splits the two.
-                NavigationStack(path: $nav.favoritesPath) {
-                    FavoritesScreen().routeDestinations()
+                // Home is the minimal playlists + albums launcher. It replaced
+                // both the old Home (the Favorite Songs playlist) and the old
+                // Explore shelf feed, which is why there's no Explore tab.
+                NavigationStack(path: $nav.homePath) {
+                    HomeScreen().routeDestinations()
                 }
                 .tabItem { Label("Home", systemImage: "house.fill") }
                 .tag(0)
-
-                NavigationStack(path: $nav.explorePath) {
-                    ExploreScreen().routeDestinations()
-                }
-                .tabItem { Label("Explore", systemImage: "safari") }
-                .tag(1)
 
                 NavigationStack(path: $nav.searchPath) {
                     SearchScreen().routeDestinations()
                 }
                 .tabItem { Label("Search", systemImage: "magnifyingglass") }
-                .tag(2)
+                .tag(1)
 
                 NavigationStack(path: $nav.libraryPath) {
                     LibraryScreen().routeDestinations()
                 }
                 .tabItem { Label("Library", systemImage: "square.stack.fill") }
-                .tag(3)
+                .tag(2)
             }
             .tint(Theme.accent)
 

@@ -78,6 +78,12 @@ struct CachedTrack: Codable {
 struct RotationSnapshot: Codable {
     var monthIndex: Int
     var tracks: [CachedTrack]
+    /// The playlist this tool last synced, remembered so a RENAME doesn't
+    /// make the next run miss it and create a duplicate. Charlie renamed
+    /// "R&B by Sonnet5" → "R&B by Sonnet" on 2026-08-14, which title-only
+    /// lookup would have silently turned into a second playlist. Optional so
+    /// snapshots written before this field existed still decode.
+    var playlistId: String?
 }
 
 func loadAllSnapshots() -> [String: RotationSnapshot] {
@@ -358,14 +364,25 @@ Task {
             exit(0)
         }
 
-        // Find-or-create the playlist.
+        // Find-or-create the playlist. Look it up by the id we synced last
+        // time FIRST and fall back to the title — a playlist Charlie renamed
+        // is still the same playlist, and title-only lookup would create a
+        // duplicate ("R&B by Sonnet5" → "R&B by Sonnet", 2026-08-14). The
+        // title fallback also tolerates that rename via a prefix match.
         let libraryPlaylists = (try? await ytm.libraryPlaylists()) ?? []
+        let stem = HomeSections.pinnedPlaylistTitles.first { playlistTitle.hasPrefix($0) } ?? playlistTitle
+        let existing = previous?.playlistId.flatMap { id in
+            libraryPlaylists.first { $0.playlistId == id }
+        } ?? libraryPlaylists.first { $0.title == playlistTitle }
+            ?? libraryPlaylists.first { $0.title.hasPrefix(stem) }
+
         var playlistId: String
         var priorTracks: [Track] = []
-        if let match = libraryPlaylists.first(where: { $0.title == playlistTitle }), let pid = match.playlistId {
+        if let existing, let pid = existing.playlistId {
             playlistId = pid
             priorTracks = try await ytm.playlist(id: pid).tracks
-            print("Found existing playlist \(pid) with \(priorTracks.count) tracks — reconciling.")
+            let renamed = existing.title == playlistTitle ? "" : " (now titled \"\(existing.title)\")"
+            print("Found existing playlist \(pid)\(renamed) with \(priorTracks.count) tracks — reconciling.")
         } else {
             guard let newId = try await ytm.createPlaylist(title: playlistTitle, privacy: "PRIVATE") else {
                 print("FAIL: createPlaylist returned no id.")
@@ -396,7 +413,7 @@ Task {
 
         saveSnapshot(RotationSnapshot(monthIndex: nowMonth, tracks: chosen.map {
             CachedTrack(videoId: $0.videoId, title: $0.title, artistLine: $0.artistLine)
-        }), forTitle: playlistTitle)
+        }, playlistId: playlistId), forTitle: playlistTitle)
 
         print("\nDone. added=\(added) removed=\(removed) addFailed=\(addFailed) removeFailed=\(removeFailed) target=\(chosen.count)")
         print("\n--- Playlist contents this month ---")

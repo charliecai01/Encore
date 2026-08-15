@@ -45,10 +45,12 @@ final class PageCache {
 
     var collections: [String: CollectionPage] = [:] { didSet { persistCollectionsSoon() } }
     var artists: [String: ArtistPage] = [:]
-    // Home feed + the quick-access playlist grid, persisted to disk so the Home
-    // tab renders instantly on a cold launch instead of waiting on the network.
+    // Home's two lists (playlists + saved albums), persisted to disk so the
+    // Home tab renders instantly on a cold launch instead of waiting on the
+    // network. `shelves` still backs other shelf-based pages.
     var shelves: [String: [Shelf]] = [:] { didSet { persistHomeSoon() } }
     var homePlaylists: [CardItem] = [] { didSet { persistHomeSoon() } }
+    var homeAlbums: [CardItem] = [] { didSet { persistHomeSoon() } }
 
     private var collectionsTask: Task<Void, Never>?
     private var homeTask: Task<Void, Never>?
@@ -56,6 +58,9 @@ final class PageCache {
     private struct HomeSnapshot: Codable {
         var shelves: [String: [Shelf]]
         var playlists: [CardItem]
+        // Added 2026-08-14; optional so a snapshot written before this field
+        // existed still decodes instead of dropping the whole cache.
+        var albums: [CardItem]?
     }
 
     private init() {
@@ -65,6 +70,7 @@ final class PageCache {
         if let home = DiskCache.load(HomeSnapshot.self, from: "home.json") {
             shelves = home.shelves
             homePlaylists = home.playlists
+            homeAlbums = home.albums ?? []
         }
     }
 
@@ -82,12 +88,14 @@ final class PageCache {
         homeTask = Task {
             try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled else { return }
-            DiskCache.save(HomeSnapshot(shelves: self.shelves, playlists: self.homePlaylists), as: "home.json")
+            DiskCache.save(HomeSnapshot(shelves: self.shelves, playlists: self.homePlaylists,
+                                        albums: self.homeAlbums), as: "home.json")
         }
     }
 
     func clear() {
-        collections.removeAll(); artists.removeAll(); shelves.removeAll(); homePlaylists.removeAll()
+        collections.removeAll(); artists.removeAll(); shelves.removeAll()
+        homePlaylists.removeAll(); homeAlbums.removeAll()
         DiskCache.remove("collections.json"); DiskCache.remove("library-tracks.json")
         DiskCache.remove("home.json")
     }
@@ -348,18 +356,17 @@ enum Route: Hashable {
 @MainActor
 final class Nav: ObservableObject {
     static let shared = Nav()
-    /// Tab 0 is Favorites — the app opens straight into it.
+    /// Tab 0 is Home — the app opens straight into it. There are three tabs:
+    /// Home, Search, Library (Explore was folded into Home, 2026-08-14).
     @Published var selectedTab = 0
-    @Published var favoritesPath = NavigationPath()
-    @Published var explorePath = NavigationPath()
+    @Published var homePath = NavigationPath()
     @Published var searchPath = NavigationPath()
     @Published var libraryPath = NavigationPath()
 
     func go(_ route: Route) {
         switch selectedTab {
-        case 0: favoritesPath.append(route)
-        case 1: explorePath.append(route)
-        case 2: searchPath.append(route)
+        case 0: homePath.append(route)
+        case 1: searchPath.append(route)
         default: libraryPath.append(route)
         }
     }
@@ -368,9 +375,8 @@ final class Nav: ObservableObject {
     /// playlist was just deleted).
     func pop() {
         switch selectedTab {
-        case 0: if !favoritesPath.isEmpty { favoritesPath.removeLast() }
-        case 1: if !explorePath.isEmpty { explorePath.removeLast() }
-        case 2: if !searchPath.isEmpty { searchPath.removeLast() }
+        case 0: if !homePath.isEmpty { homePath.removeLast() }
+        case 1: if !searchPath.isEmpty { searchPath.removeLast() }
         default: if !libraryPath.isEmpty { libraryPath.removeLast() }
         }
     }

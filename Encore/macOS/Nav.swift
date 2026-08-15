@@ -32,7 +32,6 @@ enum LibraryTab: String, CaseIterable, Hashable {
 
 enum Route: Hashable {
     case home
-    case explore
     case library(LibraryTab)
     case search(String, YTM.SearchFilter?)
     case album(String)
@@ -99,7 +98,6 @@ final class Nav: ObservableObject {
         let cache = PageCache.shared
         switch current {
         case .home:                cache.shelves["home"] = nil
-        case .explore:             cache.shelves["explore"] = nil
         case .album(let id):       cache.collections["album-\(id)"] = nil
         case .playlist(let id):    cache.collections["playlist-\(id)"] = nil
         case .podcastShow(let id): cache.collections["podcast-\(id)"] = nil
@@ -143,7 +141,6 @@ final class Nav: ObservableObject {
     private static func encode(_ route: Route) -> String? {
         switch route {
         case .home: return "home"
-        case .explore: return "explore"
         case .library(let tab): return "library|\(tab.rawValue)"
         case .album(let id): return "album|\(id)"
         case .playlist(let id): return "playlist|\(id)"
@@ -161,7 +158,9 @@ final class Nav: ObservableObject {
         let arg = parts.count > 1 ? parts[1] : nil
         switch kind {
         case "home": return .home
-        case "explore": return .explore
+        // Sessions saved before Explore was folded into Home (2026-08-14)
+        // can still carry this; land them on Home rather than nowhere.
+        case "explore": return .home
         case "library": return arg.flatMap { LibraryTab(rawValue: $0) }.map { .library($0) }
         case "album": return arg.map { .album($0) }
         case "playlist": return arg.map { .playlist($0) }

@@ -453,7 +453,26 @@ with the Co-Authored-By: Claude line.
 ## 6. Feature inventory (DONE & verified unless noted)
 
 Both platforms unless stated:
-- Home feed, Explore (macOS), Search (real catalog search via Search tab/top bar)
+- **Home — a minimal launcher (reworked 2026-08-14, Charlie's spec):** just
+  two sections, his Playlists then his saved Albums, and *nothing else*. Both
+  lists are dynamic (whatever the account has); playlist order is pinned to
+  Favorite Songs → R&B by Sonnet → Liked Music by
+  `EncoreCore.HomeSections.orderedPlaylists` (shared by both apps,
+  unit-tested), with any other playlist following in server order. Pins match
+  by case-insensitive PREFIX, not exact title — the R&B playlist was renamed
+  mid-session ("R&B by Sonnet5" → "R&B by Sonnet") and an exact match
+  silently dropped it to the bottom.
+  This REPLACED both the old Home (which was the Favorite Songs playlist,
+  `FavoritesScreen`, now deleted) and the entire **Explore** page/tab —
+  YouTube's home shelves, R&B/Classics/Discover shelves, the "New Podcast
+  Episodes" shelf, and the drag-to-reorder Home shortcuts all went with it.
+  iOS is now three tabs (Home/Search/Library); macOS dropped the Explore
+  sidebar item and its `Route.explore` (⌘2 is now Library; a saved session
+  encoding "explore" decodes to `.home`). The R&B *playlist* is still one tap
+  from Home. `EncoreCore`'s `explore()`/`genre()`/`classics()` APIs and
+  `WeeklyRotation` are untouched and still used by `encore-playlist-tool`, so
+  restoring an Explore page is mostly re-adding the route + view.
+- Search (real catalog search via Search tab/top bar)
 - Library: Playlists, Songs (all known tracks), Albums, Artists (aggregated
   across likes+playlists), History (macOS), **Podcasts (under Library)**
 - Sort + filter (CJK-aware) via shared `LibrarySort`; **full options in every

@@ -48,7 +48,7 @@ in too.
 
 ## Features
 
-- **Home / Explore** — your personalized shelves (Supermixes, quick picks, new releases)
+- **Home** — a deliberately minimal launcher: your playlists, then your saved albums, and nothing else
 - **Search** — ⌘K palette with live suggestions, or the top search bar; filter by songs/albums/artists/playlists/videos
 - **Library** — playlists, liked songs, albums, artists, and listening history; CJK-aware sort + filter, full sort options in every tab
 - **Full playback** — queue management (play next / add to queue / reorder-lite), shuffle, repeat one/all, song radio, endless Autoplay radio when the queue runs out, sleep timer, session restore

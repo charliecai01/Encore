@@ -371,188 +371,110 @@ struct ShelfRow: View {
 
 // MARK: - Home
 
-struct ExploreScreen: View {
+/// Home is a deliberately minimal launcher (Charlie's spec, 2026-08-14):
+/// his playlists, then his saved albums, and nothing else.
+///
+/// It replaced BOTH of the old first two tabs — the old Home (which was the
+/// Favorite Songs playlist, `FavoritesScreen`) and the old Explore shelf
+/// feed that used to live in this type (YouTube's home shelves, R&B,
+/// Classics, Discover, podcast episodes, drag-to-reorder shortcuts). The
+/// Explore tab is gone; R&B is still one tap away as a playlist here.
+/// Section ordering lives in `EncoreCore.HomeSections` so macOS matches.
+struct HomeScreen: View {
     @EnvironmentObject var auth: AuthManager
-    @EnvironmentObject var library: LibraryStore
     @EnvironmentObject var nav: Nav
-    @State private var shelves: [Shelf] = []
     @State private var playlists: [CardItem] = []
-    @State private var discoverShelf: Shelf?
-    /// Latest episodes from subscribed shows (the "New Episodes" RDPN feed) —
-    /// surfaced on Home because podcasts otherwise live two taps deep.
-    @State private var podcastShelf: Shelf?
-    /// R&B — Charlie's genre. iOS has no Explore tab, so it rides on Home:
-    /// the long DJ remix mixes (videos) + YouTube's own "R&B & soul" shelves.
-    @State private var rnbShelves: [Shelf] = []
-    @State private var classicsShelves: [Shelf] = []
+    @State private var albums: [CardItem] = []
     @State private var loading = true
-    @State private var editingShortcuts = false
-    @State private var shortcutOrder: [String] = UserDefaults.standard.stringArray(forKey: "homeShortcutOrder") ?? []
 
-    private let shortcutRowHeight: CGFloat = 76
-
-    /// User's playlists in their saved shortcut order (reordered ones first,
-    /// any new/unseen playlists appended in the server's order).
-    private var orderedPlaylists: [CardItem] {
-        guard !shortcutOrder.isEmpty else { return playlists }
-        let known = Set(shortcutOrder)
-        let ranked = shortcutOrder.compactMap { id in playlists.first { $0.id == id } }
-        let rest = playlists.filter { !known.contains($0.id) }
-        return ranked + rest
-    }
+    private let rowHeight: CGFloat = 76
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
-                // Full-width quick-access shortcuts to your playlists. Tap Edit
-                // to drag them into a custom order (persisted across launches).
                 if !playlists.isEmpty {
-                    HStack {
-                        Spacer()
-                        Button(editingShortcuts ? "Done" : "Edit") {
-                            withAnimation { editingShortcuts.toggle() }
-                        }
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Theme.accent)
-                    }
-                    .padding(.horizontal, 16)
-
-                    if editingShortcuts {
-                        List {
-                            ForEach(orderedPlaylists) { pl in
-                                shortcutRow(pl)
-                                    .listRowBackground(Color.clear)
-                                    .listRowSeparator(.hidden)
-                                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                            }
-                            .onMove(perform: moveShortcut)
-                        }
-                        .listStyle(.plain)
-                        .scrollContentBackground(.hidden)
-                        .scrollDisabled(true)
-                        .environment(\.editMode, .constant(.active))
-                        .frame(height: CGFloat(orderedPlaylists.count) * (shortcutRowHeight + 8) + 8)
-                    } else {
-                        VStack(spacing: 8) {
-                            ForEach(orderedPlaylists) { pl in
-                                Button { nav.open(pl) } label: { shortcutRow(pl) }
-                                    .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                    }
+                    section("Playlists", items: HomeSections.orderedPlaylists(playlists))
                 }
-                if loading { ProgressView().frame(maxWidth: .infinity).padding(.top, 60) }
-                // R&B leads, with Classics kept next to it as one curated
-                // block; Discover and the YouTube feed follow.
-                ForEach(rnbShelves) { ShelfRow(shelf: $0) }
-                ForEach(classicsShelves) { ShelfRow(shelf: $0) }
-                if let podcastShelf { ShelfRow(shelf: podcastShelf) }
-                if let discoverShelf { ShelfRow(shelf: discoverShelf) }
-                ForEach(shelves) { ShelfRow(shelf: $0) }
+                if !albums.isEmpty {
+                    section("Albums", items: albums)
+                }
+                if loading, playlists.isEmpty, albums.isEmpty {
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
+                }
                 Color.clear.frame(height: 80)
             }
             .padding(.top, 8)
         }
         .background(Theme.bg)
-        .navigationTitle("Explore")
+        .navigationTitle("Home")
         .toolbar { accountButton }
         .refreshable { await load() }
         .task(id: auth.isSignedIn) { await load() }
     }
 
-    private func load() async {
-        loading = true
-        // Seed instantly from the disk-backed cache (persists across launches),
-        // then refresh from the network below.
-        if let cached = PageCache.shared.shelves["home"], !cached.isEmpty { shelves = cached; loading = false }
-        if playlists.isEmpty, !PageCache.shared.homePlaylists.isEmpty { playlists = PageCache.shared.homePlaylists }
-        let fresh = (try? await YTM.shared.home()) ?? []
-        if !fresh.isEmpty { shelves = fresh; PageCache.shared.shelves["home"] = fresh }
-        loading = false
-        // Load the user's saved playlists directly so the grid is independent
-        // of shared-store timing.
-        if auth.isSignedIn {
-            var freshPlaylists = (try? await YTM.shared.libraryPlaylists()) ?? []
-            // Pin subscribed shows (TheMove) ahead of the playlists — the
-            // only podcast feed in use, one tap from Home.
-            if PodcastFeature.enabled {
-                let shows = ((try? await YTM.shared.libraryPodcasts()) ?? [])
-                    .filter { $0.kind == .podcast }
-                freshPlaylists = shows + freshPlaylists
-            }
-            if !freshPlaylists.isEmpty {
-                playlists = freshPlaylists
-                PageCache.shared.homePlaylists = freshPlaylists
-            }
-            // Latest episodes from subscribed shows ("New Episodes" / RDPN).
-            if PodcastFeature.enabled {
-                let episodes = ((try? await YTM.shared.playlist(id: "RDPN"))?.tracks ?? [])
-                    .filter(\.isEpisode)
-                if !episodes.isEmpty {
-                    podcastShelf = Shelf(title: "New Podcast Episodes",
-                                         items: episodes.prefix(8).map { .track($0) })
+    @ViewBuilder private func section(_ title: String, items: [CardItem]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(Theme.textPrimary)
+                .padding(.horizontal, 16)
+            VStack(spacing: 8) {
+                ForEach(items) { item in
+                    Button { nav.open(item) } label: { row(item) }
+                        .buttonStyle(.plain)
                 }
             }
-            await library.loadIfNeeded()
-            let discover = await library.discover()
-            if !discover.isEmpty {
-                discoverShelf = Shelf(title: "Discover · Fresh for you", items: discover.map { .card($0.asSongCard) })
-            }
+            .padding(.horizontal, 16)
         }
-        await loadRnB()
     }
 
-    /// R&B section (no sign-in needed): the long DJ remix mixes that only
-    /// exist as videos, then YouTube Music's own "R&B & soul" shelves.
-    private func loadRnB() async {
-        async let remixTask = (try? await YTM.shared.search("R&B remix mix", filter: .videos))?
-            .shelves.flatMap(\.items) ?? []
-        async let genreTask = (try? await YTM.shared.genre(params: YTM.Genre.rnbParams)) ?? []
-
-        // Order matches macOS Explore: the "R&B & soul" song shelves lead,
-        // then the long DJ remix mixes. (macOS gets this by inserting the
-        // genre shelves at 0 *after* the remixes; iOS builds the list
-        // directly, so keep the two in step if either changes.)
-        // These pages are editorial and barely change, so rotate weekly rather
-        // than staring at the same lead track for days.
-        var built: [Shelf] = []
-        for shelf in WeeklyRotation.rotateItems(in: Array(await genreTask.prefix(4)))
-        where !shelf.items.isEmpty {
-            built.append(Shelf(title: shelf.title.localizedCaseInsensitiveContains("r&b")
-                               ? shelf.title : "R&B · \(shelf.title)",
-                               items: shelf.items, moreBrowseId: shelf.moreBrowseId))
-        }
-        // Rotate BEFORE trimming, so the 15 shown are a different slice each
-        // week rather than the same 15 reordered.
-        let remixes = WeeklyRotation.rotate(await remixTask)
-        if !remixes.isEmpty {
-            built.append(Shelf(title: "R&B Remixes & DJ Mixes", items: Array(remixes.prefix(15))))
-        }
-        if !built.isEmpty { rnbShelves = built }
-
-        let classics = (try? await YTM.shared.classics()) ?? []
-        if !classics.isEmpty { classicsShelves = WeeklyRotation.rotateItems(in: classics) }
-    }
-
-    /// One full-width shortcut box (artwork + title).
-    @ViewBuilder private func shortcutRow(_ pl: CardItem) -> some View {
+    /// One full-width entry (artwork + title, plus the artist line for albums).
+    @ViewBuilder private func row(_ item: CardItem) -> some View {
         HStack(spacing: 12) {
-            ArtworkView(url: pl.thumbnailURL, corner: 6).frame(width: 60, height: 60)
-            Text(pl.title).font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Theme.textPrimary).lineLimit(1)
+            ArtworkView(url: item.thumbnailURL, corner: 6).frame(width: 60, height: 60)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                if !item.subtitle.isEmpty {
+                    Text(item.subtitle)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(1)
+                }
+            }
             Spacer(minLength: 0)
         }
         .padding(8)
-        .frame(maxWidth: .infinity, minHeight: shortcutRowHeight, maxHeight: shortcutRowHeight, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight, alignment: .leading)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
     }
 
-    private func moveShortcut(from source: IndexSet, to destination: Int) {
-        var items = orderedPlaylists
-        items.move(fromOffsets: source, toOffset: destination)
-        shortcutOrder = items.map(\.id)
-        UserDefaults.standard.set(shortcutOrder, forKey: "homeShortcutOrder")
+    private func load() async {
+        loading = true
+        // Seed instantly from the disk-backed cache (persists across launches)
+        // so Home isn't a spinner on every cold start, then refresh below.
+        if playlists.isEmpty, !PageCache.shared.homePlaylists.isEmpty {
+            playlists = PageCache.shared.homePlaylists
+        }
+        if albums.isEmpty, !PageCache.shared.homeAlbums.isEmpty {
+            albums = PageCache.shared.homeAlbums
+        }
+        guard auth.isSignedIn else { loading = false; return }
+
+        async let playlistTask = (try? await YTM.shared.libraryPlaylists()) ?? []
+        async let albumTask = (try? await YTM.shared.libraryAlbums()) ?? []
+        let (freshPlaylists, freshAlbums) = await (playlistTask, albumTask)
+        if !freshPlaylists.isEmpty {
+            playlists = freshPlaylists
+            PageCache.shared.homePlaylists = freshPlaylists
+        }
+        if !freshAlbums.isEmpty {
+            albums = freshAlbums
+            PageCache.shared.homeAlbums = freshAlbums
+        }
+        loading = false
     }
 }
 

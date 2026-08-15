@@ -178,66 +178,27 @@ struct ContentRouter: View {
         Group {
             switch nav.current {
             case .home:
-                ShelvesScreen(title: greeting(), loader: {
-                    var shelves = (try? await YTM.shared.home()) ?? []
-                    let discover = await LibraryStore.shared.discover()
-                    if !discover.isEmpty {
-                        shelves.insert(Shelf(title: "Discover · Fresh for you",
-                                             items: discover.map { .card($0.asSongCard) }), at: 0)
+                // A deliberately minimal launcher (Charlie's spec, 2026-08-14):
+                // his playlists, then his saved albums, and nothing else. This
+                // replaced the old YouTube home feed AND the whole Explore page
+                // (R&B / Classics / Discover / remix shelves), which is why
+                // there's no longer an Explore route. Ordering is shared with
+                // iOS via EncoreCore.HomeSections.
+                ShelvesScreen(title: "Home", loader: {
+                    async let playlistTask = (try? await YTM.shared.libraryPlaylists()) ?? []
+                    async let albumTask = (try? await YTM.shared.libraryAlbums()) ?? []
+                    let (playlists, albums) = await (playlistTask, albumTask)
+                    var shelves: [Shelf] = []
+                    if !playlists.isEmpty {
+                        shelves.append(Shelf(title: "Playlists",
+                                             items: HomeSections.orderedPlaylists(playlists).map { .card($0) }))
                     }
-                    // Latest episodes from subscribed shows ("New Episodes" /
-                    // RDPN auto-playlist) — podcasts otherwise live two clicks
-                    // deep. Inserted last so it lands at the very top.
-                    if PodcastFeature.enabled {
-                        let episodes = ((try? await YTM.shared.playlist(id: "RDPN"))?.tracks ?? [])
-                            .filter(\.isEpisode)
-                        if !episodes.isEmpty {
-                            shelves.insert(Shelf(title: "New Podcast Episodes",
-                                                 items: episodes.prefix(8).map { .track($0) }), at: 0)
-                        }
+                    if !albums.isEmpty {
+                        shelves.append(Shelf(title: "Albums", items: albums.map { .card($0) }))
                     }
                     return shelves
                 }, showsSignInPrompt: true, cacheKey: "home")
                     .id("home")
-            case .explore:
-                ShelvesScreen(title: "Explore", loader: {
-                    // Charlie's genre: lead Explore with R&B — YouTube Music's
-                    // own "R&B & soul" category, plus the long DJ remix mixes
-                    // that only exist as videos.
-                    async let baseTask = (try? await YTM.shared.explore()) ?? []
-                    async let rnbTask = (try? await YTM.shared.genre(params: YTM.Genre.rnbParams)) ?? []
-                    async let remixTask = (try? await YTM.shared.search("R&B remix mix", filter: .videos))?
-                        .shelves.flatMap(\.items) ?? []
-                    async let classicsTask = (try? await YTM.shared.classics()) ?? []
-
-                    var shelves = await baseTask
-                    // Classics (the Queen / Michael Jackson era) sit under the
-                    // whole R&B block, which is inserted above them below.
-                    let classics = await classicsTask
-                    if !classics.isEmpty {
-                        shelves.insert(contentsOf: WeeklyRotation.rotateItems(in: classics), at: 0)
-                    }
-                    // Rotate BEFORE trimming, so the 20 shown are a different
-                    // slice each week rather than the same 20 reordered.
-                    let remixes = WeeklyRotation.rotate(await remixTask)
-                    if !remixes.isEmpty {
-                        shelves.insert(Shelf(title: "R&B Remixes & DJ Mixes",
-                                             items: Array(remixes.prefix(20))), at: 0)
-                    }
-                    // Genre shelves already carry their own titles; prefix them
-                    // so they read as one R&B section rather than generic rows.
-                    // Rotated weekly — these pages are editorial and otherwise
-                    // show the same lead track for days.
-                    let rnb = WeeklyRotation.rotateItems(in: await rnbTask)
-                    for shelf in rnb.prefix(4).reversed() {
-                        let titled = Shelf(title: shelf.title.localizedCaseInsensitiveContains("r&b")
-                                           ? shelf.title : "R&B · \(shelf.title)",
-                                           items: shelf.items, moreBrowseId: shelf.moreBrowseId)
-                        shelves.insert(titled, at: 0)
-                    }
-                    return shelves
-                }, cacheKey: "explore")
-                    .id("explore")
             case .library(let tab):
                 LibraryView(tab: tab)
                     .id("library-\(tab.rawValue)")

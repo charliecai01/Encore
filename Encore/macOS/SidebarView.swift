@@ -26,8 +26,6 @@ struct SidebarView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     SidebarItem(title: "Home", icon: "house.fill",
                                 selected: nav.current == .home) { nav.go(.home) }
-                    SidebarItem(title: "Explore", icon: "square.grid.2x2.fill",
-                                selected: nav.current == .explore) { nav.go(.explore) }
 
                     SectionLabel("Library")
                     ForEach(LibraryTab.visible, id: \.self) { tab in

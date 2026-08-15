@@ -57,10 +57,8 @@ struct EncoreApp: App {
                 Divider()
                 Button("Home") { nav.go(.home) }
                     .keyboardShortcut("1", modifiers: [.command])
-                Button("Explore") { nav.go(.explore) }
-                    .keyboardShortcut("2", modifiers: [.command])
                 Button("Library") { nav.go(.library(.playlists)) }
-                    .keyboardShortcut("3", modifiers: [.command])
+                    .keyboardShortcut("2", modifiers: [.command])
             }
         }
     }
