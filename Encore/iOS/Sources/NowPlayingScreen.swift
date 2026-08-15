@@ -557,20 +557,24 @@ struct AddToPlaylistSheet: View {
         dismiss()
         let batch = tracks
         Task {
-            var added = 0
-            for track in batch {
+            // YouTube happily stores the same song twice, so the duplicate
+            // check has to happen here: pull what the playlist already holds
+            // and drop anything it has.
+            let existing = (try? await YTM.shared.playlist(id: pid).tracks) ?? []
+            let split = PlaylistAdd.split(batch, existing: existing)
+
+            var added = 0, failed = 0
+            for track in split.toAdd {
                 if (try? await YTM.shared.addToPlaylist(playlistId: pid, videoId: track.videoId)) == true {
                     added += 1
+                } else {
+                    failed += 1
                 }
             }
-            if added == batch.count {
-                player.showToast(batch.count > 1 ? "Added \(added) songs to \(pl.title)"
-                                                 : "Added to \(pl.title)")
-            } else if added > 0 {
-                player.showToast("Added \(added) of \(batch.count) — the rest couldn't be added")
-            } else {
-                player.showToast("Couldn't add — you can only edit your own playlists")
-            }
+            player.showToast(PlaylistAdd.resultMessage(added: added,
+                                                       duplicates: split.duplicates.count,
+                                                       failed: failed,
+                                                       playlistTitle: pl.title))
             if added > 0 { PageCache.shared.collections["playlist-\(pid)"] = nil }
             onFinished?()
         }

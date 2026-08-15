@@ -81,17 +81,19 @@ public enum NativeNames {
     ///
     /// 1. The translated/romanized half goes — "我恨我愛你 - Hate to Love You"
     ///    → "我恨我愛你".
-    /// 2. Trailing parentheticals go — "光年之外 (G.E.M.重生版)" → "光年之外",
-    ///    "Where Did U Go (G.E.M.重生版)" → "Where Did U Go".
+    /// 2. DESCRIPTIVE parentheticals go — "天若有情 (電視劇「錦繡未央」片尾曲)"
+    ///    → "天若有情" — but VERSION markers stay: "光年之外 (G.E.M.重生版)"
+    ///    and "First Of May (Live)" keep their tag, so a different recording
+    ///    stays tellable apart from the original.
     /// 3. Han is normalized to Simplified, matching the artist names —
     ///    "記得" → "记得". Latin text passes through untouched.
-    ///
-    /// Note this deliberately collapses version distinctions: a studio cut and
-    /// its "(Live)" or "(重生版)" release end up displaying the same, which is
-    /// why two rows in a list can now read alike. That's the requested
-    /// behaviour — the rows are still separate tracks.
     public static func displayTitle(_ title: String) -> String {
-        var out = title
+        // Parentheticals come off FIRST: "我恨我愛你 - Hate to Love You (Live)"
+        // splits on the dash into a Han half and an English half, and the
+        // version marker rides on the English one — doing the split first
+        // would throw "(Live)" away with it.
+        let (stripped, keptGroups) = splitTrailingParentheticals(title)
+        var out = stripped
         if CJK.hasHan(out) {
             let separators = [" - ", " – ", " — "]
             for sep in separators where out.contains(sep) {
@@ -105,32 +107,64 @@ public enum NativeNames {
                 break
             }
         }
-        out = strippingTrailingParentheticals(out)
-        let trimmed = out.trimmingCharacters(in: .whitespaces)
+        var joined = out
+        for group in keptGroups {
+            // Full-width brackets take no preceding space in CJK typography.
+            let fullWidth = group.hasPrefix("（") || group.hasPrefix("【")
+            joined += (fullWidth ? "" : " ") + group
+        }
+        joined = joined.trimmingCharacters(in: .whitespaces)
         // Never strip a title away to nothing (e.g. "(Interlude)").
-        return trimmed.isEmpty ? CJK.toSimplified(title) : CJK.toSimplified(trimmed)
+        return joined.isEmpty ? CJK.toSimplified(title) : CJK.toSimplified(joined)
     }
 
-    /// Removes trailing "(…)", "（…）" and "[…]" groups, repeatedly, so
-    /// "光年之外 (電影《Passengers》主題曲) (Live)" ends up as "光年之外".
-    private static func strippingTrailingParentheticals(_ text: String) -> String {
+    /// Markers that mean "this is a DIFFERENT recording", not a description.
+    /// These are kept so a live cut and its studio original stay tellable
+    /// apart (Charlie, 2026-08-14) — losing them made two genuinely different
+    /// tracks render identically.
+    private static let versionMarkers = [
+        "live", "acoustic", "remix", "remaster", "instrumental", "demo",
+        "unplugged", "version", "edit", "mix", "cover", "piano", "orchestral",
+        "extended", "reprise", "session",
+        // Han: 重生版 / 鋼琴版 / 現場 / 伴奏 / 翻唱
+        "版", "现场", "現場", "伴奏", "翻唱",
+    ]
+
+    private static func isVersionMarker(_ inner: String) -> Bool {
+        let lowered = CJK.toSimplified(inner.lowercased())
+        return versionMarkers.contains { lowered.contains(CJK.toSimplified($0)) }
+    }
+
+    /// Removes trailing bracketed groups that merely DESCRIBE the song —
+    /// "(電視劇「錦繡未央」片尾曲)", "(電影《Passengers》主題曲)" — while keeping
+    /// any that mark a different recording, wherever they sit:
+    /// "光年之外 (電影主題曲) (Live)" → "光年之外 (Live)".
+    /// Returns the title without its trailing bracketed groups, plus the
+    /// version-marker groups worth keeping (in their original order).
+    private static func splitTrailingParentheticals(_ text: String) -> (base: String, kept: [String]) {
         let pairs: [(Character, Character)] = [("(", ")"), ("（", "）"), ("[", "]"), ("【", "】")]
-        var out = text.trimmingCharacters(in: .whitespaces)
+        var base = text.trimmingCharacters(in: .whitespaces)
+        var keptGroups: [String] = []   // innermost-last order, reversed at the end
+
         var changed = true
         while changed {
             changed = false
-            for (open, close) in pairs where out.hasSuffix(String(close)) {
+            for (open, close) in pairs where base.hasSuffix(String(close)) {
                 // Match the LAST opening bracket so nested text inside the
                 // group (《Passengers》) doesn't end the scan early.
-                guard let start = out.lastIndex(of: open) else { continue }
-                let candidate = String(out[out.startIndex..<start]).trimmingCharacters(in: .whitespaces)
+                guard let start = base.lastIndex(of: open) else { continue }
+                let group = String(base[start...])
+                let inner = group.dropFirst().dropLast()
+                let candidate = String(base[base.startIndex..<start]).trimmingCharacters(in: .whitespaces)
+                // Never strip a title down to nothing.
                 guard !candidate.isEmpty else { continue }
-                out = candidate
+                if isVersionMarker(String(inner)) { keptGroups.append(group) }
+                base = candidate
                 changed = true
                 break
             }
         }
-        return out
+        return (base, keptGroups.reversed())
     }
 
     /// The Simplified native name for `query` given a candidate artist-entity

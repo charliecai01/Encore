@@ -389,16 +389,24 @@ struct CollectionView: View {
         let batch = selectedTracks
         workingOnSelection = true
         Task {
-            var added = 0
-            for track in batch {
+            // Skip anything the target playlist already has — YouTube itself
+            // allows the duplicate.
+            let existing = (try? await YTM.shared.playlist(id: pid).tracks) ?? []
+            let split = PlaylistAdd.split(batch, existing: existing)
+
+            var added = 0, failed = 0
+            for track in split.toAdd {
                 if (try? await YTM.shared.addToPlaylist(playlistId: pid, videoId: track.videoId)) == true {
                     added += 1
+                } else {
+                    failed += 1
                 }
             }
             workingOnSelection = false
-            player.showToast(added == batch.count
-                             ? "Added \(added) song\(added == 1 ? "" : "s") to \(playlist.title)"
-                             : "Added \(added) of \(batch.count) — the rest couldn't be added")
+            player.showToast(PlaylistAdd.resultMessage(added: added,
+                                                       duplicates: split.duplicates.count,
+                                                       failed: failed,
+                                                       playlistTitle: playlist.title))
             if added > 0 { PageCache.shared.collections["playlist-\(pid)"] = nil }
             selecting = false
             selection = []

@@ -381,6 +381,14 @@ struct TrackRow: View {
     private func addToPlaylist(_ playlist: CardItem) {
         guard let playlistId = playlist.playlistId else { return }
         Task {
+            // Don't add what the playlist already has — YouTube allows the
+            // duplicate, so this is the only place it's caught.
+            let existing = (try? await YTM.shared.playlist(id: playlistId).tracks) ?? []
+            let split = PlaylistAdd.split([track], existing: existing)
+            guard split.toAdd.isEmpty == false else {
+                player.showToast("Already in \(playlist.title)")
+                return
+            }
             let ok = (try? await YTM.shared.addToPlaylist(playlistId: playlistId,
                                                           videoId: track.videoId)) ?? false
             if ok {
