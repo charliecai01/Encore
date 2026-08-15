@@ -165,11 +165,11 @@ struct CollectionView: View {
     }
 
     private func header(_ page: CollectionPage) -> some View {
+        // No cover art inside a collection page at all — playlists or albums
+        // (Charlie's call, 2026-08-14): it just pushes the tracks down. Art
+        // still shows everywhere you PICK a collection (Home, Library,
+        // search) and on the row/now-playing surfaces.
         HStack(alignment: .bottom, spacing: 22) {
-            ArtworkView(url: Artwork.upscale(page.thumbnailURL, to: 544), corner: 10)
-                .frame(width: 212, height: 212)
-                .shadow(color: .black.opacity(0.45), radius: 24, y: 10)
-
             VStack(alignment: .leading, spacing: 9) {
                 Text(kind.label.uppercased())
                     .font(.system(size: 11, weight: .bold))
@@ -179,7 +179,7 @@ struct CollectionView: View {
                     .font(.system(size: page.title.count > 28 ? 26 : 36, weight: .heavy))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(2)
-                if !page.subtitle.isEmpty {
+                if !page.subtitle.isEmpty, !isPlaylist {
                     Text(page.subtitle)
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Theme.textSecondary)

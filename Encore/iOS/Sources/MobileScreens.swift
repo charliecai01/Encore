@@ -826,15 +826,20 @@ struct CollectionScreen: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let page {
-                    ArtworkView(url: Artwork.upscale(page.thumbnailURL, to: 500), corner: 12)
-                        .frame(width: 140, height: 140).frame(maxWidth: .infinity)
-                        .shadow(color: .black.opacity(0.4), radius: 16, y: 6).padding(.top, 8)
+                    // No cover art inside a collection page at all — playlists
+                    // or albums (Charlie's call, 2026-08-14): it just pushes
+                    // the tracks down. Art still shows everywhere you PICK a
+                    // collection (Home, Library, search) and on the row/now-
+                    // playing surfaces.
                     VStack(spacing: 4) {
                         Text(page.title).font(.system(size: 22, weight: .bold)).multilineTextAlignment(.center)
-                        if !page.subtitle.isEmpty {
+                        // Playlists also drop the subtitle — "Playlist ·
+                        // Unlisted · 2026" says nothing. Albums keep theirs
+                        // ("Album · David Tao · 2014"), which does.
+                        if !page.subtitle.isEmpty, !isPlaylist {
                             Text(page.subtitle).font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
                         }
-                    }.frame(maxWidth: .infinity)
+                    }.frame(maxWidth: .infinity).padding(.top, 8)
                     let shown = shownTracks(page)
                     HStack(spacing: 10) {
                         Button { player.playCollection(shown, startAt: 0, playlistId: playlistId) } label: {
