@@ -49,7 +49,7 @@ struct PlayerBar: View {
                 .buttonStyle(.plain)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(NativeNames.displayTitle(track.title))
+                    Text(NativeNames.displayTitle(for: track))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
                         .lineLimit(1)
@@ -147,6 +147,70 @@ struct PlayerBar: View {
         }
     }
 
+    /// The "..." menu, mirroring the iOS Now Playing one: jump to the album
+    /// or artist, start a radio, add the song to a playlist, or remove it
+    /// from the playlist it's playing from (Charlie, 2026-08-16).
+    private var trackActionsMenu: some View {
+        Menu {
+            if let track = player.current {
+                if let albumId = track.album?.id {
+                    Button("View Album") { nav.go(.album(albumId)) }
+                }
+                if let artist = track.artists.first {
+                    Button("View Artist") { nav.goArtist(id: artist.id, name: artist.name) }
+                }
+                Button("Start Radio") { player.playRadio(from: track) }
+                Divider()
+                Menu("Add to Playlist") {
+                    ForEach(editablePlaylists) { playlist in
+                        Button(playlist.title) { addCurrent(to: playlist) }
+                    }
+                }
+                .disabled(editablePlaylists.isEmpty)
+                if player.canRemoveCurrentFromPlaylist {
+                    Divider()
+                    Button("Remove from Playlist") { player.removeCurrentFromPlaylist() }
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 20, height: 16)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(player.current == nil)
+        .help("Song actions")
+    }
+
+    /// Playlists you can actually add to — Liked Music and auto-radios out.
+    private var editablePlaylists: [CardItem] {
+        LibraryStore.shared.playlists.filter { pl in
+            guard let id = pl.playlistId else { return false }
+            return id != "LM" && !id.hasPrefix("RD")
+        }
+    }
+
+    private func addCurrent(to playlist: CardItem) {
+        guard let pid = playlist.playlistId, let track = player.current else { return }
+        Task {
+            // Same duplicate guard as everywhere else: YouTube would happily
+            // store the song twice.
+            let existing = (try? await YTM.shared.playlist(id: pid).tracks) ?? []
+            guard PlaylistAdd.split([track], existing: existing).toAdd.isEmpty == false else {
+                player.showToast("Already in \(playlist.title)")
+                return
+            }
+            let ok = (try? await YTM.shared.addToPlaylist(playlistId: pid, videoId: track.videoId)) ?? false
+            player.showToast(ok ? "Added to \(playlist.title)"
+                                : "Couldn't add — you can only edit your own playlists")
+            if ok { PageCache.shared.collections["playlist-\(pid)"] = nil }
+        }
+    }
+
     private var playPauseButton: some View {
         Button {
             player.togglePlay()
@@ -190,6 +254,7 @@ struct PlayerBar: View {
 
     private var rightControls: some View {
         HStack(spacing: 14) {
+            trackActionsMenu
             ControlButton(icon: "square.and.arrow.up", size: 14) {
                 player.copyCurrentLink()
             }

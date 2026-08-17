@@ -97,6 +97,30 @@ public enum NativeNames {
     /// one person), which no live heuristic reliably reconciles.
     public static let displayOverrides: [String: String] = loadCuratedNames()
 
+    /// videoId → the title to show, for songs YouTube lists under romanized
+    /// pinyin ("Dang Ni Gu Dan Ni Hui Xiang Qi Shui") or an English
+    /// translation ("Loneliness" for 寂寞边界). Keyed by videoId so an
+    /// override can never land on a different song — and deliberately sparse:
+    /// plenty of Mandarin artists title songs in English on purpose.
+    public static let titleOverrides: [String: String] = loadCuratedTitles()
+
+    private static func loadCuratedTitles() -> [String: String] {
+        struct Doc: Decodable { var titles: [String: String]? }
+        guard let url = Bundle.module.url(forResource: "artist-names", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let doc = try? JSONDecoder().decode(Doc.self, from: data)
+        else { return [:] }
+        return doc.titles ?? [:]
+    }
+
+    /// `displayTitle`, but honouring a per-song override first.
+    public static func displayTitle(for track: Track) -> String {
+        // Normalized like every other title, so a Traditional value in the
+        // JSON can't leak Traditional text into an otherwise Simplified list.
+        if let pinned = titleOverrides[track.videoId] { return CJK.toSimplified(pinned) }
+        return displayTitle(track.title)
+    }
+
     private static func loadCuratedNames() -> [String: String] {
         struct Doc: Decodable {
             var romanizedPreferred: [String: String]?

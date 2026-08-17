@@ -73,7 +73,7 @@ private struct MostPlayedRow: View {
                 .frame(width: 40, height: 40)
                 .clipShape(RoundedRectangle(cornerRadius: 5))
             VStack(alignment: .leading, spacing: 2) {
-                Text(record.track.title)
+                Text(NativeNames.displayTitle(for: record.track))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(isCurrent ? Theme.fallbackAccent : Theme.textPrimary)
                     .lineLimit(1)

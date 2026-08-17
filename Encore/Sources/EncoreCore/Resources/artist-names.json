@@ -8,7 +8,8 @@
   "curated by hand; entries YouTube has no Han form for (JJ Lin, Leehom Wang)",
   "were filled in manually. Multi-artist credits are deliberately absent —",
   "those are rewritten per-artist at render time.",
-  "Add a name here rather than teaching the resolver another special case."
+  "Add a name here rather than teaching the resolver another special case.",
+  "'titles' overrides a SONG title, keyed by videoId so it can never hit the wrong track. Only for titles YouTube gives as romanized pinyin or as a translation — songs genuinely titled in English (David Tao's 'Angel', G.E.M.'s 'HELL', aMEI's 'BAD BOY') are left alone."
  ],
  "romanizedPreferred": {
   "_note": "Artists billed under their romanized name; shown as-is even though a Han form exists.",
@@ -121,5 +122,11 @@
   "陶喆": "陶喆",
   "马天宇": "马天宇",
   "黄洛妍": "黄洛妍"
+ },
+ "titles": {
+  "timiyUIdTyc": "爱的就是你",
+  "HQhOhO3JSG0": "唯一",
+  "lUwvc3TfK_I": "当你孤单你会想起谁",
+  "lBW2nRs8xIk": "寂寞边界"
  }
 }

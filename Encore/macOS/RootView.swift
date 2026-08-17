@@ -90,7 +90,7 @@ struct NewPlaylistSheet: View {
             Text("New Playlist")
                 .font(.headline)
             if let track = nav.pendingPlaylistTrack {
-                Text("“\(track.title)” will be added")
+                Text("“\(NativeNames.displayTitle(for: track))” will be added")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }

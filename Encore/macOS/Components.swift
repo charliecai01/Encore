@@ -199,7 +199,7 @@ struct TrackRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 // CJK titles drop their translated half ("我恨我愛你 - Hate to
                 // Love You" → "我恨我愛你"); CJK artists show their native name.
-                Text(NativeNames.displayTitle(track.title))
+                Text(NativeNames.displayTitle(for: track))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(isCurrent ? Theme.fallbackAccent : Theme.textPrimary)
                     .lineLimit(1)

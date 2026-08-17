@@ -125,7 +125,7 @@ struct TopResultCard: View {
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(Theme.textTertiary)
                             .kerning(0.6)
-                        Text(track.title)
+                        Text(NativeNames.displayTitle(for: track))
                             .font(.system(size: 21, weight: .bold))
                             .foregroundStyle(Theme.textPrimary)
                             .lineLimit(1)

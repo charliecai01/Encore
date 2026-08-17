@@ -162,7 +162,7 @@ struct NowPlayingScreen: View {
             HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 3) {
                     // Tap the title to open the album.
-                    Text(NativeNames.displayTitle(player.current?.title ?? "")).font(.system(size: 22, weight: .bold))
+                    Text(player.current.map { NativeNames.displayTitle(for: $0) } ?? "").font(.system(size: 22, weight: .bold))
                         .foregroundStyle(.white).lineLimit(1)
                         .contentShape(Rectangle())
                         .onTapGesture { openAlbum() }
@@ -447,7 +447,7 @@ struct QueuePane: View {
                     HStack(spacing: 11) {
                         ArtworkView(url: track.thumbnailURL, corner: 4).frame(width: 44, height: 44)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(NativeNames.displayTitle(track.title)).font(.system(size: 14, weight: i == player.index ? .semibold : .regular))
+                            Text(NativeNames.displayTitle(for: track)).font(.system(size: 14, weight: i == player.index ? .semibold : .regular))
                                 .foregroundStyle(i == player.index ? Theme.accent : .white).lineLimit(1)
                             Text(track.artistLine).font(.system(size: 12)).foregroundStyle(.white.opacity(0.5)).lineLimit(1)
                         }

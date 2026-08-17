@@ -115,7 +115,7 @@ struct QueueRow: View {
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(track.title)
+                Text(NativeNames.displayTitle(for: track))
                     .font(.system(size: 12.5, weight: isCurrent ? .semibold : .medium))
                     .foregroundStyle(isCurrent ? Theme.fallbackAccent : Theme.textPrimary)
                     .lineLimit(1)

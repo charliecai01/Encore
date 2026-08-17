@@ -248,7 +248,12 @@ final class PlayerEngine: NSObject, ObservableObject {
 
     // MARK: - Public playback API
 
-    func playCollection(_ tracks: [Track], startAt: Int) {
+    /// The playlist the current queue was started from, when there is one.
+    /// Drives "Remove from Playlist" in the player bar — without it there's no
+    /// way to know WHICH playlist the playing song should be removed from.
+    @Published var playlistContextId: String?
+
+    func playCollection(_ tracks: [Track], startAt: Int, playlistId: String? = nil) {
         guard !tracks.isEmpty, startAt < tracks.count else { return }
         // Keep YouTube's greyed-out tracks out of the queue entirely, so
         // auto-advance never walks into a run of them (error 150 → skip, over
@@ -262,20 +267,58 @@ final class PlayerEngine: NSObject, ObservableObject {
         shuffleOn = false
         radioContinuation = nil // finite context; radio is seeded fresh when it ends
         autoplayTailIds = []
+        playlistContextId = playlistId
         queue = playable
         index = start
         load(playable[start])
     }
 
-    func playShuffled(_ tracks: [Track]) {
+    func playShuffled(_ tracks: [Track], playlistId: String? = nil) {
         guard !tracks.isEmpty else { return }
         unshuffledQueue = tracks
         shuffleOn = true
         radioContinuation = nil
         autoplayTailIds = []
+        playlistContextId = playlistId
         queue = tracks.shuffled()
         index = 0
         load(queue[0])
+    }
+
+    /// Whether the now-playing track can be removed from the playlist it's
+    /// being played from (requires an editable playlist context).
+    var canRemoveCurrentFromPlaylist: Bool {
+        playlistContextId != nil && current != nil
+    }
+
+    /// Remove the now-playing track from the playlist it was played from.
+    /// Keeps it playing, drops other copies from Up Next, and updates the
+    /// cached playlist page so the list reflects it. (Port of the iOS one.)
+    func removeCurrentFromPlaylist() {
+        guard let playlistId = playlistContextId, let track = current else { return }
+        Task {
+            let ok = (try? await YTM.shared.removeFromPlaylist(
+                playlistId: playlistId, videoId: track.videoId, setVideoId: track.setVideoId)) ?? false
+            guard ok else {
+                self.showToast("Couldn't remove — you can only edit your own playlists")
+                return
+            }
+            let key = "playlist-\(playlistId)"
+            if var cached = PageCache.shared.collections[key] {
+                cached.tracks.removeAll { $0.videoId == track.videoId && $0.setVideoId == track.setVideoId }
+                PageCache.shared.collections[key] = cached
+            }
+            let playingIdx = self.index
+            var rebuilt: [Track] = []
+            for (i, t) in self.queue.enumerated() {
+                if i == playingIdx || !(t.videoId == track.videoId && t.setVideoId == track.setVideoId) {
+                    rebuilt.append(t)
+                }
+            }
+            self.queue = rebuilt
+            self.index = rebuilt.firstIndex { $0.videoId == track.videoId } ?? self.index
+            self.showToast("Removed from playlist")
+        }
     }
 
     /// Play a track immediately and grow a radio queue behind it.
@@ -292,6 +335,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         shuffleOn = false
         radioContinuation = nil
         autoplayTailIds = []
+        playlistContextId = nil
         queue = [track]
         index = 0
         load(track)

@@ -110,7 +110,11 @@ struct CollectionView: View {
         case .mostPlayed: order = .mostPlayed
         case .leastPlayed: order = .leastPlayed
         }
-        return LibrarySort.arrange(page.tracks, query: filterText, order: order)
+        // Unavailable tracks are HIDDEN, not dimmed (Charlie, 2026-08-16).
+        // Self-healing: `isUnavailable` is re-read on every load, so a track
+        // that stops being greyed out reappears on the next fetch.
+        let available = page.tracks.filter { !$0.isUnavailable }
+        return LibrarySort.arrange(available, query: filterText, order: order)
     }
 
     var body: some View {
@@ -222,10 +226,10 @@ struct CollectionView: View {
                 HStack(spacing: 10) {
                     PillButton(title: "Play", icon: "play.fill", prominent: true) {
                         let shown = visibleTracks(page)
-                        player.playCollection(shown, startAt: 0)
+                        player.playCollection(shown, startAt: 0, playlistId: playlistContextId)
                     }
                     PillButton(title: "Shuffle", icon: "shuffle") {
-                        player.playShuffled(visibleTracks(page))
+                        player.playShuffled(visibleTracks(page), playlistId: playlistContextId)
                     }
                     if let first = page.tracks.first {
                         PillButton(title: "Radio", icon: "dot.radiowaves.left.and.right") {
@@ -325,7 +329,7 @@ struct CollectionView: View {
                     if selecting {
                         toggleSelection(track)
                     } else {
-                        player.playCollection(shown, startAt: i)
+                        player.playCollection(shown, startAt: i, playlistId: playlistContextId)
                     }
                 }
             }
@@ -486,6 +490,14 @@ struct CollectionView: View {
     private var isAlbum: Bool {
         if case .album = kind { return true }
         return false
+    }
+
+    /// The playlist id to hand the engine, so "Remove from Playlist" in the
+    /// player bar knows which playlist the song is playing from. nil for
+    /// albums and podcasts.
+    private var playlistContextId: String? {
+        if case .playlist(let id) = kind { return id }
+        return nil
     }
 
     private var isPlaylist: Bool {

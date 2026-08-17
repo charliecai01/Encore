@@ -121,6 +121,7 @@ struct TrackRowView: View {
     let onPlay: () -> Void
     @State private var played = false
     @State private var swipeOffset: CGFloat = 0
+    @State private var showAddToPlaylist = false
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -162,6 +163,9 @@ struct TrackRowView: View {
         .onTapGesture { if isSelecting || !track.isUnavailable { onPlay() } }
         .gesture(playNextSwipe, isEnabled: !isSelecting)
         .onAppear { if PodcastFeature.enabled, track.isEpisode { played = PlayedEpisodes.isPlayed(track.videoId) } }
+        .sheet(isPresented: $showAddToPlaylist) {
+            AddToPlaylistSheet(track: track).environmentObject(player)
+        }
     }
 
     /// Horizontal-intent drag: right past the threshold queues the track to
@@ -206,7 +210,7 @@ struct TrackRowView: View {
                     .frame(width: 28, height: 52)
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(NativeNames.displayTitle(track.title))
+                Text(NativeNames.displayTitle(for: track))
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(player.current?.videoId == track.videoId ? Theme.accent
                                      : (played ? Theme.textTertiary : Theme.textPrimary))
@@ -248,6 +252,7 @@ struct TrackRowView: View {
                 Button(player.likedIds.contains(track.videoId) ? "Remove from Liked" : "Add to Liked") {
                     player.toggleLike(track)
                 }
+                Button("Add to Playlist") { showAddToPlaylist = true }
                 if let url = track.shareURL {
                     ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") }
                     Button {
@@ -877,8 +882,20 @@ struct CollectionScreen: View {
         }
     }
 
+    /// Unavailable tracks are HIDDEN, not dimmed (Charlie, 2026-08-16).
+    /// `isUnavailable` is re-read from YouTube on every load, so this
+    /// self-heals: when a track stops being greyed out the next fetch
+    /// reports it available and it comes straight back — no bookkeeping and
+    /// no extra polling needed.
     private func shownTracks(_ page: CollectionPage) -> [Track] {
-        TrackSort.apply(page.tracks, filter: filter, sort: sort, keepOrder: sort == .recent)
+        let available = page.tracks.filter { !$0.isUnavailable }
+        return TrackSort.apply(available, filter: filter, sort: sort, keepOrder: sort == .recent)
+    }
+
+    /// How many the filter above is holding back, so they aren't a silent
+    /// disappearance.
+    private func hiddenCount(_ page: CollectionPage) -> Int {
+        page.tracks.filter(\.isUnavailable).count
     }
     /// "Plays" only for play-count-ranked lists (e.g. an artist's Top songs).
     private var sortOptions: [SortMode] {
@@ -942,6 +959,13 @@ struct CollectionScreen: View {
                             }
                             .padding(.horizontal, 16)
                         }
+                    }
+                    if hiddenCount(page) > 0 {
+                        Text("\(hiddenCount(page)) unavailable on YouTube Music — hidden")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.textTertiary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 14)
                     }
                 } else if loading {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
