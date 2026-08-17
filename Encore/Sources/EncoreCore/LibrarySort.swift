@@ -71,7 +71,15 @@ public enum LibrarySort {
         case .title:
             return tracks.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
         case .artist:
-            return tracks.sorted { tieBreak($0.artistLine, $1.artistLine, $0.title, $1.title) }
+            // Sorts on the DISPLAYED name (so an artist credited both
+            // "David Tao" and "陶喆" stays in one place) and groups English
+            // names first alphabetically, then Chinese names by pinyin.
+            return tracks.sorted { lhs, rhs in
+                let a = CJK.nameSortKey(NativeNames.displayArtist(for: lhs))
+                let b = CJK.nameSortKey(NativeNames.displayArtist(for: rhs))
+                if a != b { return a < b }
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
         case .album:
             // Tracks with no album sort last (a "~" sentinel would sort them
             // FIRST under locale-aware comparison, where symbols precede letters).

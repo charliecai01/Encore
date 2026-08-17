@@ -21,6 +21,26 @@ public enum CJK {
     public static func hasHan(_ s: String) -> Bool {
         s.range(of: #"\p{Han}"#, options: .regularExpression) != nil
     }
+
+    /// Mandarin pinyin, ASCII and lowercased: "陶喆" → "tao zhe", "张惠妹" →
+    /// "zhang hui mei". Latin text passes through unchanged, so this is safe
+    /// to use as a sort key for a mixed list.
+    ///
+    /// Sorting Han by its raw code points is effectively random to a reader —
+    /// pinyin is the order a Mandarin speaker expects.
+    public static func pinyin(_ s: String) -> String {
+        let latin = s.applyingTransform(StringTransform("Han-Latin; Latin-ASCII"), reverse: false) ?? s
+        return latin.trimmingCharacters(in: .whitespaces).lowercased()
+    }
+
+    /// Sort key for a name in a mixed English/Chinese list: Latin names come
+    /// first alphabetically, then Han names by pinyin (Charlie's rule,
+    /// 2026-08-16). The leading flag does the grouping; the string orders
+    /// within each group.
+    public static func nameSortKey(_ s: String) -> (Int, String) {
+        let trimmed = s.trimmingCharacters(in: .whitespaces)
+        return hasHan(trimmed) ? (1, pinyin(trimmed)) : (0, trimmed.lowercased())
+    }
 }
 
 public extension String {

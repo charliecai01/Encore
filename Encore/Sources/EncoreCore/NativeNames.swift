@@ -109,8 +109,13 @@ public enum NativeNames {
 
         var out: [String: String] = [:]
         func index(_ name: String, _ display: String) {
-            let key = latinKey(name)
-            if !key.isEmpty { out[key] = display }
+            // Only a PURELY romanized name earns a latinKey entry. On a
+            // mixed-script credit latinKey throws the Han away — "Mike 曾比特"
+            // reduced to "mike", which then claimed every artist named Mike.
+            if !CJK.hasHan(name) {
+                let key = latinKey(name)
+                if !key.isEmpty { out[key] = display }
+            }
             out[CJK.toSimplified(name.trimmingCharacters(in: .whitespaces))] = display
         }
         for (name, display) in doc.names { index(name, display) }
@@ -400,6 +405,15 @@ public enum NativeNames {
     /// `name` rewritten for display if a native form is already known.
     public static func displayCached(_ name: String) -> String {
         cached(for: name) ?? name
+    }
+
+    /// The artist credit as the user actually SEES it for this track — the
+    /// curated/native name where one is known. Sorting has to use this, not
+    /// the raw credit, or one artist splits into two places in the list
+    /// (tracks credited "David Tao" under D, tracks credited "陶喆" among the
+    /// Han names) even though every row displays 陶喆.
+    public static func displayArtist(for track: Track) -> String {
+        rewriting(track.artistLine, artists: track.artists.map(\.name) + [track.artistLine])
     }
 
     /// Rewrites every known artist name inside a composed string — album

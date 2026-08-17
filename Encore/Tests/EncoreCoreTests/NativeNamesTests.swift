@@ -103,6 +103,15 @@ final class NativeNamesTests: XCTestCase {
         XCTAssertEqual(NativeNames.overrideName(for: "黃麗玲"), "A-Lin")
     }
 
+    /// A mixed-script credit must not claim the bare Latin word: the library
+    /// credits "Mike 曾比特", and indexing that under "mike" renamed every
+    /// unrelated artist called Mike.
+    func testMixedScriptEntryDoesNotClaimTheBareLatinName() {
+        XCTAssertNil(NativeNames.overrideName(for: "Mike"))
+        // The full credit still resolves.
+        XCTAssertEqual(NativeNames.overrideName(for: "Mike 曾比特"), "曾比特")
+    }
+
     func testWesternArtistsAreNotInTheMap() {
         XCTAssertNil(NativeNames.overrideName(for: "Taylor Swift"))
         XCTAssertNil(NativeNames.overrideName(for: "Olivia Dean"))

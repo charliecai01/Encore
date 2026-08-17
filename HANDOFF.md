@@ -701,6 +701,16 @@ English half) and scanned AGAIN after it (the split can expose a new one).
 The same identity drives `PlaylistAdd`, so a live version is addable
 alongside the studio cut while a plain re-upload is refused as a duplicate.
 
+**Artist sort order** (`LibrarySort.sort(by: .artist)`): English-named
+artists first alphabetically, then Chinese-named ones by PINYIN (Charlie's
+rule, 2026-08-16) — `CJK.nameSortKey` returns `(group, key)` and
+`CJK.pinyin` does the romanization via ICU's `Han-Latin; Latin-ASCII`.
+Crucially it sorts on `NativeNames.displayArtist(for:)`, the name the user
+SEES, not the raw credit: otherwise one artist splits in two, with tracks
+credited "David Tao" under D and tracks credited "陶喆" among the Han names.
+Grouping is by ARTIST, so S.H.E's Chinese-titled songs stay in the English
+group.
+
 **Views must be told when names arrive.** The lookups are async and the
 display functions are pure, so a rendered row won't refresh on its own:
 rows take a `nameVersion` property, and the engines publish `nameVersion`
