@@ -139,6 +139,15 @@ struct CollectionView: View {
                         .frame(height: 420)
                         .allowsHitTesting(false)
                 }
+                // Pinned copy of the Edit control: the header scrolls away on
+                // a long playlist, and Select/Edit shouldn't mean scrolling
+                // back to the top (Charlie, 2026-08-16). Sits OUTSIDE the
+                // ScrollView so it stays put.
+                .overlay(alignment: .topTrailing) {
+                    editControl
+                        .padding(.trailing, 24)
+                        .padding(.top, 14)
+                }
             }
         }
         .task {
@@ -231,27 +240,6 @@ struct CollectionView: View {
                         }
                         .disabled(savingToLibrary)
                     }
-                    // One compact control rather than separate Edit and
-                    // Select pills: the header row feeds the window's minimum
-                    // width (EncoreApp pins minWidth 1264), and an extra pill
-                    // pushed the window wider than the screen, clipping the
-                    // player bar at both edges.
-                    if selecting {
-                        PillButton(title: "Done", icon: "checkmark") {
-                            selecting = false; selection = []
-                        }
-                    } else {
-                        Menu {
-                            Button("Select Songs") { selecting = true; selection = [] }
-                            if isPlaylist {
-                                Button("Edit Details…") { showEdit = true }
-                            }
-                        } label: {
-                            Label("Edit", systemImage: "pencil")
-                        }
-                        .menuStyle(.borderlessButton)
-                        .fixedSize()
-                    }
                 }
                 .padding(.top, 6)
 
@@ -343,6 +331,32 @@ struct CollectionView: View {
             }
         }
         .padding(.horizontal, 16)
+    }
+
+    /// One compact control rather than separate Edit and Select pills: the
+    /// header row feeds the window's minimum width (EncoreApp pins minWidth
+    /// 1264), and an extra pill pushed the window wider than the screen,
+    /// clipping the player bar at both edges.
+    @ViewBuilder private var editControl: some View {
+        if selecting {
+            PillButton(title: "Done", icon: "checkmark") {
+                selecting = false; selection = []
+            }
+        } else {
+            Menu {
+                Button("Select Songs") { selecting = true; selection = [] }
+                if isPlaylist {
+                    Button("Edit Details…") { showEdit = true }
+                }
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(.ultraThinMaterial, in: Capsule())
+        }
     }
 
     /// Actions for the picked songs: add them to another playlist, or remove
@@ -523,20 +537,26 @@ struct CollectionView: View {
             loading = false
             palette = await ArtworkPalette.shared.palette(for: Artwork.upscale(result.thumbnailURL, to: 336))
             await refreshSavedState()
-            // Native names for the artists actually on screen. Follows the
-            // DISPLAYED order, not the raw one — the two differ whenever a
-            // sort is applied, and the raw order resolves off-screen artists.
+            // Native names for every artist on the page, in DISPLAYED order
+            // so what's on screen resolves first. Walks the whole list — a
+            // 692-track playlist has far more artists than one screenful, and
+            // capping this left the songs further down romanized. Chunked so
+            // rows update as it goes rather than all at the end.
             var names: [String] = []
             var seen = Set<String>()
-            for track in visibleTracks(result).prefix(60) {
+            for track in visibleTracks(result) {
                 for name in track.artists.map(\.name) + [track.artistLine]
                 where !name.isEmpty && seen.insert(name).inserted {
                     names.append(name)
                 }
             }
-            if await NativeNames.warmUp(names: names) {
-                nameVersion &+= 1
-                player.nameVersion &+= 1
+            for start in stride(from: 0, to: names.count, by: 24) {
+                let chunk = Array(names[start..<min(start + 24, names.count)])
+                if await NativeNames.warmUp(names: chunk) {
+                    nameVersion &+= 1
+                    player.nameVersion &+= 1
+                }
+                if Task.isCancelled { return }
             }
         } catch {
             self.error = error.localizedDescription

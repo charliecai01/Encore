@@ -40,9 +40,35 @@ public enum NativeNames {
         }
         for segment in segments {
             let trimmed = segment.trimmingCharacters(in: .whitespaces)
-            if CJK.hasHan(trimmed) { return CJK.toSimplified(trimmed) }
+            if CJK.hasHan(trimmed) { return hanRun(in: trimmed) }
         }
         return nil
+    }
+
+    /// The Han portion of a mixed-script name, Simplified: "G.E.M. 鄧紫棋" and
+    /// "G.E.M.鄧紫棋" both give "邓紫棋", "JJ 林俊傑" gives "林俊杰" (Charlie's
+    /// call, 2026-08-16 — the stage prefix is noise once the real name is
+    /// there). A name that's already all Han just gets normalized.
+    ///
+    /// Takes the LONGEST Han run, so an incidental character elsewhere can't
+    /// win over the actual name.
+    public static func hanRun(in text: String) -> String? {
+        var runs: [String] = []
+        var current = ""
+        for ch in text {
+            if CJK.hasHan(String(ch)) || (!current.isEmpty && (ch == "·" || ch == "・")) {
+                current.append(ch)
+            } else if !current.isEmpty {
+                runs.append(current)
+                current = ""
+            }
+        }
+        if !current.isEmpty { runs.append(current) }
+        let best = runs
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "·・ ")) }
+            .filter { !$0.isEmpty }
+            .max(by: { $0.count < $1.count })
+        return best.map(CJK.toSimplified)
     }
 
     /// The romanized portion, if the title carries both halves.
@@ -64,10 +90,37 @@ public enum NativeNames {
     /// Keyed by `latinKey` and by the Simplified Han form, so it applies
     /// whichever direction the name arrives in — a track credited "黃麗玲"
     /// also displays as "A-Lin".
-    public static let displayOverrides: [String: String] = [
-        "alin": "A-Lin",
-        "黄丽玲": "A-Lin",
-    ]
+    /// The curated map, loaded from `Resources/artist-names.json`, indexed by
+    /// BOTH `latinKey` and the Simplified form so a credit matches whichever
+    /// way it arrives. This is the authoritative source — YouTube credits the
+    /// same artist under several names ("A Mei", "Chang Hui Mei", "aMEI" are
+    /// one person), which no live heuristic reliably reconciles.
+    public static let displayOverrides: [String: String] = loadCuratedNames()
+
+    private static func loadCuratedNames() -> [String: String] {
+        struct Doc: Decodable {
+            var romanizedPreferred: [String: String]?
+            var names: [String: String]
+        }
+        guard let url = Bundle.module.url(forResource: "artist-names", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let doc = try? JSONDecoder().decode(Doc.self, from: data)
+        else { return [:] }
+
+        var out: [String: String] = [:]
+        func index(_ name: String, _ display: String) {
+            let key = latinKey(name)
+            if !key.isEmpty { out[key] = display }
+            out[CJK.toSimplified(name.trimmingCharacters(in: .whitespaces))] = display
+        }
+        for (name, display) in doc.names { index(name, display) }
+        // Artists billed romanized map to themselves, and are indexed under
+        // their Han form too so a Han credit still shows the romanized name.
+        for (name, display) in doc.romanizedPreferred ?? [:] where !name.hasPrefix("_") {
+            index(name, display)
+        }
+        return out
+    }
 
     /// The name Charlie wants shown for this artist, when it's been pinned.
     public static func overrideName(for name: String) -> String? {
@@ -94,6 +147,7 @@ public enum NativeNames {
         // would throw "(Live)" away with it.
         let (stripped, keptGroups) = splitTrailingParentheticals(title)
         var out = stripped
+        var keptSegments: [String] = []
         if CJK.hasHan(out) {
             let separators = [" - ", " – ", " — "]
             for sep in separators where out.contains(sep) {
@@ -103,12 +157,29 @@ public enum NativeNames {
                 let han = segments.prefix { CJK.hasHan($0) }
                 if !han.isEmpty, han.count < segments.count {
                     out = han.joined(separator: sep)
+                    // …except a dropped segment that names a DIFFERENT
+                    // recording: "有一種悲傷 - From THE FIRST TAKE - A Kind of
+                    // Sorrow" must not collapse onto the studio cut. Distinct
+                    // only — these often repeat on both sides of the split.
+                    for segment in segments.dropFirst(han.count) {
+                        let trimmed = segment.trimmingCharacters(in: .whitespaces)
+                        if isVersionMarker(trimmed), !keptSegments.contains(trimmed) {
+                            keptSegments.append(trimmed)
+                        }
+                    }
                 }
                 break
             }
         }
+        // Splitting can expose a parenthetical that was in the MIDDLE of the
+        // original — "有一種悲傷 (電影…主題曲) - A Kind of Sorrow (…)" only shows
+        // its Chinese group once the English half is gone — so scan again.
+        let (rescanned, moreGroups) = splitTrailingParentheticals(out)
+        out = rescanned
+        for segment in keptSegments { out += " - " + segment }
+        let allGroups = keptGroups + moreGroups
         var joined = out
-        for group in keptGroups {
+        for group in allGroups {
             // Full-width brackets take no preceding space in CJK typography.
             let fullWidth = group.hasPrefix("（") || group.hasPrefix("【")
             joined += (fullWidth ? "" : " ") + group
@@ -125,7 +196,7 @@ public enum NativeNames {
     private static let versionMarkers = [
         "live", "acoustic", "remix", "remaster", "instrumental", "demo",
         "unplugged", "version", "edit", "mix", "cover", "piano", "orchestral",
-        "extended", "reprise", "session",
+        "extended", "reprise", "session", "first take",
         // Han: 重生版 / 鋼琴版 / 現場 / 伴奏 / 翻唱
         "版", "现场", "現場", "伴奏", "翻唱",
     ]
@@ -174,12 +245,17 @@ public enum NativeNames {
     /// is worse than showing the romanized one.
     public static func resolve(entityTitle: String, query: String) -> String? {
         if let pinned = overrideName(for: query) { return pinned }
-        guard let native = nativePart(of: entityTitle) else { return nil }
-        if let pinned = overrideName(for: native) { return pinned }
+        guard let rawNative = nativePart(of: entityTitle) else { return nil }
+        // NB: the curated name for `rawNative` is applied only AFTER the
+        // match checks below. Applying it here short-circuited them, so any
+        // entity whose Han name happened to be in the map was accepted even
+        // when it referred to a completely different artist.
+        let native = rawNative
         // A query that's already Han just needs normalizing.
         if CJK.hasHan(query) {
             let q = CJK.toSimplified(query.trimmingCharacters(in: .whitespaces))
-            return native.contains(q) || q.contains(native) ? native : nil
+            guard native.contains(q) || q.contains(native) else { return nil }
+            return overrideName(for: native) ?? native
         }
         let queryKey = latinKey(query)
         guard !queryKey.isEmpty else { return nil }
@@ -189,9 +265,15 @@ public enum NativeNames {
         guard let latin = latinPart(of: entityTitle) else { return nil }
         let latinKeyValue = latinKey(latin)
         guard !latinKeyValue.isEmpty else { return nil }
-        return latinKeyValue == queryKey
+        if latinKeyValue == queryKey
             || latinKeyValue.contains(queryKey)
-            || queryKey.contains(latinKeyValue) ? native : nil
+            || queryKey.contains(latinKeyValue) { return overrideName(for: native) ?? native }
+        // Same words, different order: "Sun Yanzi" vs the listing's
+        // "Yanzi Sun". Compare as word SETS so the order doesn't matter.
+        let queryWords = Set(query.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
+        let latinWords = Set(latin.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
+        if !queryWords.isEmpty, queryWords == latinWords { return overrideName(for: native) ?? native }
+        return nil
     }
 
     // MARK: - Lookup
@@ -206,7 +288,7 @@ public enum NativeNames {
     /// The version suffix invalidates everything when the RULES change (v2
     /// added the romanized-preferred overrides), since old entries were
     /// computed under the old rules.
-    private static let defaultsKey = "nativeArtistNames.v2"
+    private static let defaultsKey = "nativeArtistNames.v4"
 
     private static func loadPersisted() -> [String: String] {
         UserDefaults.standard.dictionary(forKey: defaultsKey) as? [String: String] ?? [:]
@@ -227,23 +309,25 @@ public enum NativeNames {
     public static func native(for name: String) async -> String? {
         let key = name.trimmingCharacters(in: .whitespaces).lowercased()
         guard !key.isEmpty else { return nil }
+        // A pinned display name wins over everything, and is checked BEFORE
+        // the cache: a name pinned after a lookup already cached a miss would
+        // otherwise keep returning that stale miss forever.
+        if let pinned = overrideName(for: name) {
+            cache.withLock { $0[key] = pinned }
+            return pinned
+        }
         if let hit = cache.withLock({ $0[key] }) { return hit.isEmpty ? nil : hit }
         if let saved = loadPersisted()[key] {
             cache.withLock { $0[key] = saved }
             return saved.isEmpty ? nil : saved
         }
-        // A pinned display name short-circuits everything — no network.
-        if let pinned = overrideName(for: name) {
-            cache.withLock { $0[key] = pinned }
-            persist(key, pinned)
-            return pinned
-        }
-        // A name that's already Han only needs normalizing — no network.
-        if CJK.hasHan(name) {
-            let native = CJK.toSimplified(name.trimmingCharacters(in: .whitespaces))
-            cache.withLock { $0[key] = native }
-            persist(key, native)
-            return native
+        // A name that already carries Han needs no network — just take the
+        // Han run, so "G.E.M. 鄧紫棋" displays as "邓紫棋".
+        if CJK.hasHan(name), let native = hanRun(in: name) {
+            let final = overrideName(for: native) ?? native
+            cache.withLock { $0[key] = final }
+            persist(key, final)
+            return final
         }
 
         var resolved = ""
@@ -260,6 +344,23 @@ public enum NativeNames {
                     resolved = native
                     break
                 }
+            }
+            // Fallback: YouTube lists plenty of CJK artists under a Han-only
+            // name, so a romanized query ("JJ Lin", "Chang Hui Mei") has no
+            // latin half to verify against and `resolve` refuses it. Trust
+            // the artist search's OWN TOP HIT in that case — it's a far
+            // narrower bet than accepting any of the five candidates, and
+            // without it most romanized CJK artists never resolve at all.
+            // …and when a stage name shares no letters with the real name
+            // ("Chang Hui Mei" is listed as "張惠妹 - aMEI"), nothing can be
+            // verified at all. Fall back to the artist search's OWN TOP HIT
+            // when it carries Han: for a real artist name that hit is
+            // reliably the right artist, and without this most romanized CJK
+            // artists never resolve. Non-top candidates still have to pass
+            // the checks above.
+            if resolved.isEmpty, let top = candidates.first,
+               let native = nativePart(of: top) {
+                resolved = overrideName(for: native) ?? native
             }
         }
         cache.withLock { $0[key] = resolved }
@@ -291,6 +392,7 @@ public enum NativeNames {
     public static func cached(for name: String) -> String? {
         let key = name.trimmingCharacters(in: .whitespaces).lowercased()
         guard !key.isEmpty else { return nil }
+        if let pinned = overrideName(for: name) { return pinned }
         guard let hit = cache.withLock({ $0[key] }) else { return nil }
         return hit.isEmpty ? nil : hit
     }
@@ -317,8 +419,14 @@ public enum NativeNames {
     /// Returns true if anything new was learned, so the caller can trigger a
     /// re-render. Every result (including misses) is persisted, so this is
     /// effectively one-time per artist.
+    ///
+    /// `limit` defaults to unlimited: a 692-track playlist has far more than
+    /// a screenful of artists, and capping this left everything below the
+    /// first stretch of rows romanized. Callers wanting progressive updates
+    /// should feed it in chunks and re-render between calls, rather than
+    /// capping it.
     @discardableResult
-    public static func warmUp(names: [String], limit: Int = 60) async -> Bool {
+    public static func warmUp(names: [String], limit: Int = .max) async -> Bool {
         seedFromDisk()
         var pending: [String] = []
         var seen = Set<String>()

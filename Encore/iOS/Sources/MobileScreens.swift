@@ -842,11 +842,16 @@ struct CollectionScreen: View {
     /// Follows the DISPLAYED order (sorted/filtered), not `page.tracks` —
     /// playlists open sorted by artist, so the raw order resolved artists
     /// that were nowhere near the top of the screen while the visible ones
-    /// stayed romanized. Deduped in first-seen order for the same reason.
+    /// stayed romanized. Deduped in first-seen order for the same reason:
+    /// what's on screen resolves first, then the rest of the list.
+    ///
+    /// EVERY track is walked, not a prefix — a 692-track playlist has far
+    /// more artists than one screenful, and capping this left the songs
+    /// further down permanently romanized.
     private func artistNames(in page: CollectionPage) -> [String] {
         var names: [String] = []
         var seen = Set<String>()
-        for track in shownTracks(page).prefix(60) {
+        for track in shownTracks(page) {
             for name in track.artists.map(\.name) + [track.artistLine]
             where !name.isEmpty && seen.insert(name).inserted {
                 names.append(name)
@@ -1136,10 +1141,18 @@ struct CollectionScreen: View {
 
         // Native names for the artists on this page (张学友, not "Jacky
         // Cheung"). Cached + persisted, so this only costs anything once.
+        // Fed in chunks so the visible rows update while the rest of a long
+        // playlist is still resolving, instead of everything landing at the
+        // end (or, as before, never).
         if let page {
-            if await NativeNames.warmUp(names: artistNames(in: page)) {
-                nameVersion &+= 1
-                player.nameVersion &+= 1
+            let names = artistNames(in: page)
+            for start in stride(from: 0, to: names.count, by: 24) {
+                let chunk = Array(names[start..<min(start + 24, names.count)])
+                if await NativeNames.warmUp(names: chunk) {
+                    nameVersion &+= 1
+                    player.nameVersion &+= 1
+                }
+                if Task.isCancelled { return }
             }
         }
     }

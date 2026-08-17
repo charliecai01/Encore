@@ -58,6 +58,82 @@ final class NativeNamesTests: XCTestCase {
         XCTAssertNil(NativeNames.overrideName(for: "张学友"))
     }
 
+    /// Same words, different order — the listing reads "孫燕姿 - Yanzi Sun"
+    /// while the credit says "Sun Yanzi".
+    func testWordOrderDifferenceStillMatches() {
+        XCTAssertEqual(NativeNames.resolve(entityTitle: "孫燕姿 - Yanzi Sun", query: "Sun Yanzi"),
+                       "孙燕姿")
+    }
+
+    // MARK: - The curated map (Resources/artist-names.json)
+
+    /// The map is the authoritative source; if it fails to load, every CJK
+    /// artist silently falls back to romanized, so assert it's really there.
+    func testCuratedMapLoads() {
+        XCTAssertFalse(NativeNames.displayOverrides.isEmpty,
+                       "artist-names.json didn't load — check the SwiftPM resource")
+    }
+
+    /// YouTube credits one artist under several names; all must land on the
+    /// same display name.
+    func testAllVariantsOfOneArtistAgree() {
+        for variant in ["A Mei", "aMEI", "Chang Hui Mei"] {
+            XCTAssertEqual(NativeNames.overrideName(for: variant), "张惠妹", "failed for \(variant)")
+        }
+        for variant in ["G.E.M.", "G.E.M. 鄧紫棋", "G.E.M.鄧紫棋"] {
+            XCTAssertEqual(NativeNames.overrideName(for: variant), "邓紫棋", "failed for \(variant)")
+        }
+        for variant in ["Leehom Wang", "Wang Leehom"] {
+            XCTAssertEqual(NativeNames.overrideName(for: variant), "王力宏", "failed for \(variant)")
+        }
+    }
+
+    /// The names Charlie confirmed by hand.
+    func testConfirmedNames() {
+        XCTAssertEqual(NativeNames.overrideName(for: "JJ Lin"), "林俊杰")
+        XCTAssertEqual(NativeNames.overrideName(for: "Shan Yi Chun"), "单依纯")
+        XCTAssertEqual(NativeNames.overrideName(for: "Eric Chou"), "周兴哲")
+        XCTAssertEqual(NativeNames.overrideName(for: "Sun Yanzi"), "孙燕姿")
+    }
+
+    /// A-Lin is billed romanized from either direction.
+    func testALinFromEitherScript() {
+        XCTAssertEqual(NativeNames.overrideName(for: "A-Lin"), "A-Lin")
+        XCTAssertEqual(NativeNames.overrideName(for: "黄丽玲"), "A-Lin")
+        XCTAssertEqual(NativeNames.overrideName(for: "黃麗玲"), "A-Lin")
+    }
+
+    func testWesternArtistsAreNotInTheMap() {
+        XCTAssertNil(NativeNames.overrideName(for: "Taylor Swift"))
+        XCTAssertNil(NativeNames.overrideName(for: "Olivia Dean"))
+        XCTAssertNil(NativeNames.overrideName(for: "Drake"))
+    }
+
+    // MARK: - Mixed-script names
+
+    /// "G.E.M. 鄧紫棋" should read 邓紫棋, "JJ 林俊傑" should read 林俊杰 — once
+    /// the real name is there the stage prefix is noise.
+    func testMixedScriptNamesShowOnlyTheHanPart() {
+        XCTAssertEqual(NativeNames.hanRun(in: "G.E.M. 鄧紫棋"), "邓紫棋")
+        XCTAssertEqual(NativeNames.hanRun(in: "G.E.M.鄧紫棋"), "邓紫棋")
+        XCTAssertEqual(NativeNames.hanRun(in: "JJ 林俊傑"), "林俊杰")
+        XCTAssertEqual(NativeNames.hanRun(in: "JJ林俊傑"), "林俊杰")
+    }
+
+    func testAllHanNameIsJustNormalized() {
+        XCTAssertEqual(NativeNames.hanRun(in: "周興哲"), "周兴哲")
+        XCTAssertEqual(NativeNames.hanRun(in: "單依純"), "单依纯")
+    }
+
+    func testNameWithNoHanHasNoHanRun() {
+        XCTAssertNil(NativeNames.hanRun(in: "Taylor Swift"))
+    }
+
+    /// The longest run wins, so a stray character can't beat the real name.
+    func testLongestHanRunWins() {
+        XCTAssertEqual(NativeNames.hanRun(in: "A 王 feat. 鄧紫棋"), "邓紫棋")
+    }
+
     // MARK: - Song titles
 
     func testTranslatedHalfIsStrippedFromTitles() {
@@ -121,6 +197,30 @@ final class NativeNamesTests: XCTestCase {
     /// Both rules together: translation split first, then the parenthetical.
     func testTranslationAndParentheticalTogether() {
         XCTAssertEqual(NativeNames.displayTitle("我恨我愛你 - Hate to Love You (Live)"), "我恨我爱你 (Live)")
+    }
+
+    // MARK: - Real titles from Charlie's Favorite Songs
+
+    /// The parenthetical sits in the MIDDLE of the raw string and only
+    /// becomes trailing once the English half is split off — the scan has to
+    /// run again after the split, or it survives on screen.
+    func testDescriptiveParentheticalExposedByTheSplitIsStripped() {
+        let raw = "有一種悲傷 (電影《比悲傷更悲傷的故事》主題曲) - A Kind of Sorrow (The movie theme song of \"More than Blue\")"
+        XCTAssertEqual(NativeNames.displayTitle(raw), "有一种悲伤")
+    }
+
+    /// A dash-suffixed version marker is a different recording and must
+    /// survive, or it collapses onto the studio cut in the list.
+    func testDashSuffixedVersionMarkerSurvivesTheSplit() {
+        let raw = "有一種悲傷 - From THE FIRST TAKE - A Kind of Sorrow - From THE FIRST TAKE"
+        XCTAssertEqual(NativeNames.displayTitle(raw), "有一种悲伤 - From THE FIRST TAKE")
+    }
+
+    /// The two above must not end up reading the same.
+    func testTheTwoRecordingsStayDistinct() {
+        let studio = NativeNames.displayTitle("有一種悲傷 (電影《比悲傷更悲傷的故事》主題曲) - A Kind of Sorrow")
+        let live = NativeNames.displayTitle("有一種悲傷 - From THE FIRST TAKE - A Kind of Sorrow")
+        XCTAssertNotEqual(studio, live)
     }
 
     /// An English title that happens to contain a dash must not lose half.

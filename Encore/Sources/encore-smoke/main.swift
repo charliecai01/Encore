@@ -156,9 +156,9 @@ Task {
 
     // Native artist names: CJK artists must resolve to a Simplified name,
     // English ones must resolve to nothing (and never to somebody else's).
-    for name in ["Jacky Cheung", "A Mei", "A-Lin", "Taylor Swift"] {
+    for name in ["Jacky Cheung", "Chang Hui Mei", "JJ Lin", "Leehom Wang", "Ronghao Li", "Sun Yanzi", "Taylor Swift", "Jackson Whalan"] {
         let native = await NativeNames.native(for: name)
-        let expectsNative = name != "Taylor Swift"
+        let expectsNative = !["Taylor Swift", "Jackson Whalan"].contains(name)
         check("native name: \(name)", expectsNative == (native != nil),
               native ?? "(none — not a CJK artist)")
     }

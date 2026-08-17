@@ -13,6 +13,8 @@ let package = Package(
     targets: [
         .target(
             name: "EncoreCore",
+            // Curated CJK artist display names — see Resources/artist-names.json.
+            resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .executableTarget(
