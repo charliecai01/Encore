@@ -48,14 +48,14 @@ final class PlayerClock: ObservableObject {
 final class PlayerEngine: NSObject, ObservableObject {
     static let shared = PlayerEngine()
 
-    @Published var current: Track? { didSet { onStateChange?() } }
+    @Published var current: Track?
     @Published var queue: [Track] = []
     @Published var index: Int = 0
     /// playlistId the current queue was played from, if it's an editable
     /// playlist. Enables "Remove from playlist" on the now-playing screen.
     /// nil for albums, radio, library songs, and home-shelf playback.
     @Published var playlistContextId: String?
-    @Published var isPlaying = false { didSet { onStateChange?() } }
+    @Published var isPlaying = false
     @Published var repeatMode: RepeatMode = .off
     @Published var shuffleOn = false
     @Published var likedIds: Set<String> = []
@@ -222,9 +222,6 @@ final class PlayerEngine: NSObject, ObservableObject {
         }
         restoreSession()
     }
-
-    /// CarPlay observes this to refresh its now-playing/queue templates.
-    var onStateChange: (() -> Void)?
 
     // MARK: - Session persistence (same keys as the Mac app)
 
@@ -1217,7 +1214,7 @@ final class PlayerEngine: NSObject, ObservableObject {
     /// a music video, otherwise the current track's own id.
     private var activePlaybackId: String? { playingVideoId ?? current?.videoId }
 
-    // MARK: - System now playing (lock screen + CarPlay)
+    // MARK: - System now playing (lock screen + Control Center)
 
     private var artworkCache: (videoId: String, artwork: MPMediaItemArtwork)?
 

@@ -9,14 +9,16 @@ import Foundation
 public enum HomeSections {
 
     /// The playlists Charlie wants pinned to the top of Home, in this order.
-    /// Matching is by title because the ids differ per account (and "Liked
-    /// Music" is the synthetic `LM` auto-playlist).
+    /// Matching is by title because the ids differ per account.
+    ///
+    /// "Liked Music" used to pin third; it was emptied and hidden entirely on
+    /// 2026-08-16 (see `YTM.hiddenAutoPlaylists`), so it is no longer here.
     ///
     /// These are PREFIXES, matched case-insensitively, so a playlist that
     /// gets renamed around its stem still pins — "R&B by Sonnet5" was
     /// renamed to "R&B by Sonnet" the same day this shipped, which an
     /// exact-equality match silently dropped to the bottom of the list.
-    public static let pinnedPlaylistTitles = ["Favorite Songs", "R&B by Sonnet", "Liked Music"]
+    public static let pinnedPlaylistTitles = ["Favorite Songs", "R&B by Sonnet"]
 
     /// `playlists` with the pinned titles first in `pinnedPlaylistTitles`
     /// order, then everything else in the order the server returned it.

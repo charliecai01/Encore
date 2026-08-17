@@ -55,8 +55,8 @@ final class HealthSweepTests: XCTestCase {
         // ---- LIBRARY ----
         let playlists = (try? await YTM.shared.libraryPlaylists()) ?? []
         print("SWEEP playlists=\(playlists.map { $0.title })")
-        if playlists.contains(where: { ($0.playlistId ?? "") == "RDPN" || ($0.playlistId ?? "") == "SE" }) {
-            print("SUSPECT episode auto-playlists still visible")
+        if playlists.contains(where: { ["RDPN", "SE", "LM"].contains($0.playlistId ?? "") }) {
+            print("SUSPECT hidden auto-playlists (episodes / Liked Music) still visible")
         }
         for p in playlists where p.playlistId == nil { print("SUSPECT playlist '\(p.title)' has no playlistId") }
 

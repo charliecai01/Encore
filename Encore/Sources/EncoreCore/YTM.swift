@@ -239,11 +239,12 @@ public final class YTM: @unchecked Sendable {
 
     // MARK: - Library
 
-    /// Episode auto-playlists hidden from every playlist list: "New Episodes"
-    /// (RDPN) and "Episodes for Later" (SE). Episodes surface via the Home
-    /// "New Podcast Episodes" shelf and the show pages instead — these two
-    /// only cluttered the sidebar/home/library lists.
-    private static let hiddenAutoPlaylists: Set<String> = ["RDPN", "SE"]
+    /// Auto-playlists hidden from every playlist list: "New Episodes" (RDPN)
+    /// and "Episodes for Later" (SE) — episodes surface via the Home "New
+    /// Podcast Episodes" shelf and the show pages instead — plus "Liked Music"
+    /// (LM), which Charlie emptied on 2026-08-16 and no longer wants listed.
+    /// Liking a song still works; only the auto-playlist row is gone.
+    private static let hiddenAutoPlaylists: Set<String> = ["RDPN", "SE", "LM"]
 
     public func libraryPlaylists() async throws -> [CardItem] {
         let r = try await net.post("browse", body: ["browseId": "FEmusic_liked_playlists"])

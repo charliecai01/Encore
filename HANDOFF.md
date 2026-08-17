@@ -67,7 +67,6 @@ picking up the work without the original chat history.
             ├── NowPlayingScreen.swift         ← full-screen now playing for SONGS (Song/Lyrics/Queue)
             ├── PodcastNowPlaying.swift        ← Apple-Podcasts-style episode player + NowPlayingSwitcher + video host
             ├── DevCredentials.swift           ← OPTIONAL dev auto-sign-in cookie; committed EMPTY, real value skip-worktree'd (see §7)
-            ├── CarPlay.swift                  ← CarPlaySceneDelegate (currently disabled in Info.plist — see §7)
             └── Assets.xcassets/AppIcon.appiconset/  ← iOS app icon
 ```
 
@@ -97,7 +96,7 @@ picking up the work without the original chat history.
   back over a script-message bridge 4×/sec **plus** an event-driven
   `onStateChange` hook (needed so the brief "ended" state isn't missed by
   polling). Everything else (queue, shuffle, radio, lyrics, media keys,
-  CarPlay, now-playing) is native. Because it's the real site, Premium quality
+  now-playing) is native. Because it's the real site, Premium quality
   applies and plays count toward recommendations.
 - **Auth**: in-app Google sign-in via `WKWebView` sharing
   `WKWebsiteDataStore.default()`. Google blocks "embedded/outdated" browsers,
@@ -192,13 +191,32 @@ code 4). Plain `xcodebuild … build` ad-hoc-signs for the simulator fine.
 
 ---
 
-## 4. Git workflow (STANDING INSTRUCTION)
+## 4. Git & deploy workflow (STANDING INSTRUCTIONS)
 
 **Commit & push to GitHub after every build change.** Remote `origin` =
 `https://github.com/charliecai01/Encore.git`, branch `main`. `gh` CLI is **not
 installed** — use plain `git` (HTTPS, osxkeychain creds already work). Use
 normal incremental commits; **do not force-push or amend**. End commit messages
 with the Co-Authored-By: Claude line.
+
+**Always ship BOTH platforms** (Charlie, 2026-08-16). A change is not delivered
+until it is installed on macOS *and* on the iPhone — never one alone, even for a
+change that only visibly touches one of them:
+
+```bash
+cd Encore && ./scripts/build_app.sh && ./scripts/deploy_ios.sh
+```
+
+Re-run `xcodegen generate` first if a source file was **added**. If the iPhone
+isn't reachable (unplugged / DDI flake after the built-in retry), ship macOS, say
+so plainly, and deploy iOS as soon as it's back — don't silently drop it.
+
+**Batch the deploy; don't deploy per feature.** Charlie often stacks several
+requests that belong in one build. Hold the build+install until the run of work
+settles (~5 min of no new instructions), then do one macOS+iOS deploy and one
+commit for the batch. Deploy immediately only when the build itself is the point
+— he's waiting to see or verify the change, or a later step needs the installed
+app.
 
 ---
 
@@ -547,31 +565,21 @@ Both platforms unless stated:
 - Media keys + system Now Playing widget (remote play/pause explicit — see §5);
   ⌘K palette, mouse back/forward, Space=play/pause, ⌘R reloads the current
   page (macOS)
-- **CarPlay** (iOS): tab bar (Home with Your Playlists + feed, Library) →
-  playlist → episodes/tracks → system Now Playing. **Verified working in the
-  CarPlay simulator.** Currently DISABLED in shipped Info.plist (see §7).
 - iOS app icon; iOS installable on a free Apple ID (see §7); **optional baked-in
   dev cookie auto-signs-in on launch** (see §7)
 
 ---
 
-## 7. CarPlay & iOS device install — IMPORTANT current state
+## 7. iOS device install — IMPORTANT current state
 
-To let Charlie install on his iPhone with a **free Apple ID**, the CarPlay
-entitlement AND the CarPlay scene declaration are **commented out** in
-`iOS/project.yml`:
-- The `com.apple.developer.carplay-audio` entitlement can't be provisioned by a
-  free/un-granted account → blocks device signing.
-- iOS refuses to launch an app that declares a CarPlay scene in Info.plist
-  WITHOUT that entitlement.
-
-So both are disabled together. **The CarPlay code (`CarPlay.swift`) is intact
-and verified working in the simulator.** To re-enable CarPlay (simulator demo,
-or once Apple grants the entitlement for a paid account): uncomment BOTH the
-`entitlements:` block and the `CPTemplateApplicationSceneSessionRoleApplication`
-block in `project.yml`, regenerate, rebuild. Real cars / TestFlight require the
-paid Apple Developer Program + Apple's granted **CarPlay Audio** entitlement
-(a separate request form, not self-serve).
+**CarPlay was removed on 2026-08-16** at Charlie's request — he never used it.
+`CarPlay.swift`, the commented-out `carplay-audio` entitlement, and the
+commented-out CarPlay scene declaration in `iOS/project.yml` are all gone. The
+app has no CarPlay surface; the lock-screen/Control Center Now Playing widget
+(`MPNowPlayingInfoCenter`, still wired in `MobilePlayer`) is unaffected. If it
+is ever wanted back, `git show 5efc57c:Encore/iOS/Sources/CarPlay.swift` has the
+last working version — it needs the paid Apple Developer Program plus Apple's
+granted CarPlay Audio entitlement to run anywhere but the CarPlay simulator.
 
 **iOS deploy steps for Charlie:** open `EncoreiOS.xcodeproj` in Xcode → select
 the `EncoreiOS` target → Signing & Capabilities → pick his Team (free personal
