@@ -686,10 +686,13 @@ teaching the resolver another special case.
 - `hanRun(in:)` handles mixed-script credits generically: "G.E.M. 鄧紫棋" and
   "JJ 林俊傑" display as 邓紫棋 and 林俊杰 with no per-artist entry needed.
 
-**Still unresolved** (left romanized on purpose rather than guessed): Shila
-Amzah (Malay, not Chinese), Zhijia Liu, KnowKnow / Higher Brothers, S.H.E and
-Youth With You (billed romanized). Add them to the JSON if Charlie wants
-them changed.
+**Still romanized on purpose**: Shila Amzah, KnowKnow, Higher Brothers,
+S.H.E and Youth With You. Verified — re-querying their songs with
+`hl=zh-Hans` still returns those credits romanized, so YouTube has no Chinese
+name for them; this isn't a gap in the map. When a name IS missing, look the
+artist's own SONG up under `hl=zh-Hans` rather than searching the artist:
+that's how Zhijia Liu was pinned (幸福了 然后呢 → 刘至佳) while the artist
+search only offered a phonetic "did you mean 指甲留".
 
 **Song titles** (`displayTitle`): drops the translated half ("我恨我愛你 - Hate
 to Love You" → 我恨我爱你) and DESCRIPTIVE parentheticals ("(電視劇…片尾曲)"),
