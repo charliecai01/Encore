@@ -92,10 +92,20 @@ struct SortFilterBar: View {
                         Text(sortLabel(sort)).font(.system(size: 12, weight: .medium))
                     }
                     .foregroundStyle(Theme.textSecondary)
+                    // Without an explicit hit shape the label is only
+                    // hittable on the glyphs themselves, and the tap fell
+                    // through to the card grid below — tapping "Recently
+                    // Added" in Library ▸ Artists opened Jay Chou, the card
+                    // nearest behind it (Charlie, 2026-08-18).
+                    .padding(.vertical, 7)
+                    .contentShape(Rectangle())
                 }
             }
         }
         .padding(.horizontal, 16)
+        // Hit-test above the content below it: siblings later in the stack
+        // win ties, so the grid could claim touches meant for this bar.
+        .zIndex(1)
     }
 }
 
@@ -660,6 +670,7 @@ struct LibraryScreen: View {
     @EnvironmentObject var auth: AuthManager
     @EnvironmentObject var player: PlayerEngine
     @EnvironmentObject var nav: Nav
+    @EnvironmentObject var library: LibraryStore
     @State private var tab: LibraryTab = .playlists
     @State private var cards: [CardItem] = []
     @State private var tracks: [Track] = []
@@ -755,8 +766,14 @@ struct LibraryScreen: View {
         .background(Theme.bg)
         .navigationTitle("Library")
         .toolbar { accountButton }
-        .refreshable { await load() }
+        .refreshable { await load(force: true) }
         .task(id: "\(auth.isSignedIn)-\(tab.rawValue)") { restoreSort(); await load() }
+        // The Songs list is handed a snapshot of the track cache, so when the
+        // background refresh lands it has to be told to pick the new one up.
+        .onChange(of: library.allTracksVersion) { _, _ in
+            guard tab == .songs else { return }
+            Task { tracks = await LibraryStore.shared.allKnownTracks() }
+        }
         .onChange(of: songSort) { _, v in UserDefaults.standard.set(v.rawValue, forKey: "sort-lib-songs") }
         .onChange(of: cardSort) { _, v in UserDefaults.standard.set(v.rawValue, forKey: "sort-lib-\(tab.rawValue)") }
     }
@@ -767,12 +784,12 @@ struct LibraryScreen: View {
         else { cardSort = .recent }
     }
 
-    private func load() async {
+    private func load(force: Bool = false) async {
         guard auth.isSignedIn else { return }
         loading = true
         switch tab {
         case .playlists: cards = (try? await YTM.shared.libraryPlaylists()) ?? []
-        case .songs: tracks = await LibraryStore.shared.allKnownTracks()
+        case .songs: tracks = await LibraryStore.shared.allKnownTracks(forceRefresh: force)
         case .albums: cards = (try? await YTM.shared.libraryAlbums()) ?? []
         case .artists:
             let corpus = (try? await YTM.shared.libraryArtists()) ?? []
