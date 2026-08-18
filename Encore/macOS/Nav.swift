@@ -10,12 +10,13 @@ enum LibraryTab: String, CaseIterable, Hashable {
     case history = "History"
 
     /// Tabs shown in the UI. Podcasts appears only when the feature is enabled
-    /// (see PodcastFeature / PODCASTS.md). Artists is hidden — Charlie never
-    /// used it (2026-08-18); the case and its aggregation code stay so it can
-    /// be restored by putting `.artists` back in this list. Artist PAGES are
+    /// (see PodcastFeature / PODCASTS.md). Artists and Songs are hidden —
+    /// Charlie doesn't use them (2026-08-18); their cases and loading code
+    /// stay, so restoring either is one entry in this list. Artist PAGES are
     /// unaffected: they're still reachable from any track and from search.
+    /// Most Played already sits directly below these in the sidebar.
     static var visible: [LibraryTab] {
-        var tabs: [LibraryTab] = [.playlists, .songs, .albums]
+        var tabs: [LibraryTab] = [.playlists, .albums]
         if PodcastFeature.enabled { tabs.append(.podcasts) }
         tabs.append(.history)
         return tabs

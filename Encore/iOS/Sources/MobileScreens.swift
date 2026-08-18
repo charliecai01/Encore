@@ -697,29 +697,13 @@ struct LibraryScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if auth.isSignedIn, PlayCountsFeature.enabled {
-                    Button { nav.go(.mostPlayed) } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "chart.bar.fill").font(.system(size: 15))
-                                .foregroundStyle(Theme.accent).frame(width: 26)
-                            Text("Most Played").font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(Theme.textPrimary)
-                            Spacer()
-                            Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Theme.textSecondary)
-                        }
-                        .padding(.horizontal, 16).padding(.vertical, 4)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
                 Picker("", selection: $tab) {
                     ForEach(LibraryTab.visible, id: \.self) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
 
-                if auth.isSignedIn && !loading {
+                if auth.isSignedIn && !loading && tab != .mostPlayed {
                     SortFilterBar(filter: $filter,
                                   sort: tab == .songs ? $songSort : $cardSort,
                                   sortOptions: sortOptions,
@@ -735,6 +719,8 @@ struct LibraryScreen: View {
                     .frame(maxWidth: .infinity).padding(.top, 60)
                 } else if loading {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
+                } else if tab == .mostPlayed {
+                    MostPlayedList()
                 } else if tab == .songs {
                     let shown = visibleTracks
                     if shown.count > 1 {
@@ -797,6 +783,8 @@ struct LibraryScreen: View {
             cards = Self.artistCards(corpus: corpus, tracks: all)
         case .podcasts:
             cards = (try? await YTM.shared.libraryPodcasts()) ?? []
+        case .mostPlayed:
+            break   // PlayCounts is local; MostPlayedList loads it itself.
         }
         loading = false
     }
@@ -1714,14 +1702,15 @@ struct BrowseScreen: View {
 
 // MARK: - Most Played
 
-struct MostPlayedScreen: View {
+/// The ranked play-count list. Shared by the Library ▸ Most Played tab and
+/// the standalone screen, so the two can't drift.
+struct MostPlayedList: View {
     @EnvironmentObject var player: PlayerEngine
     @State private var records: [PlayRecord] = []
 
     private var tracks: [Track] { records.map(\.track) }
 
     var body: some View {
-        ScrollView {
             LazyVStack(spacing: 0) {
                 if records.isEmpty {
                     VStack(spacing: 10) {
@@ -1765,12 +1754,21 @@ struct MostPlayedScreen: View {
                         .buttonStyle(.plain)
                     }
                 }
+            }
+            .task { records = PlayCounts.mostPlayed() }
+    }
+}
+
+struct MostPlayedScreen: View {
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                MostPlayedList()
                 Color.clear.frame(height: 80)
             }
             .padding(.top, 8)
         }
         .background(Theme.bg)
         .navigationTitle("Most Played").navigationBarTitleDisplayMode(.inline)
-        .task { records = PlayCounts.mostPlayed() }
     }
 }

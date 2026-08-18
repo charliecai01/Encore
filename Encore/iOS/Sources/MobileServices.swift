@@ -345,14 +345,18 @@ enum LibraryTab: String, CaseIterable, Hashable {
     case albums = "Albums"
     case artists = "Artists"
     case podcasts = "Podcasts"
+    case mostPlayed = "Most Played"
 
     /// Tabs shown in the UI. Podcasts appears only when the feature is enabled
-    /// (see PodcastFeature / PODCASTS.md). Artists is hidden — Charlie never
-    /// used it (2026-08-18); the case and its aggregation code stay so it can
-    /// be restored by putting `.artists` back in this list. Artist PAGES are
-    /// unaffected: they're still reachable from any track and from search.
+    /// (see PodcastFeature / PODCASTS.md). Artists and Songs are hidden —
+    /// Charlie doesn't use them (2026-08-18); their cases and loading code
+    /// stay, so restoring either is one entry in this list. Artist PAGES are
+    /// unaffected: still reachable from any track and from search. Most
+    /// Played moved DOWN into the tabs from the banner row that sat above
+    /// them, so it's a peer of the others rather than a separate screen.
     static var visible: [LibraryTab] {
-        var tabs: [LibraryTab] = [.playlists, .songs, .albums]
+        var tabs: [LibraryTab] = [.playlists, .albums]
+        if PlayCountsFeature.enabled { tabs.append(.mostPlayed) }
         if PodcastFeature.enabled { tabs.append(.podcasts) }
         return tabs
     }
@@ -364,6 +368,7 @@ enum LibraryTab: String, CaseIterable, Hashable {
         case .albums: return "square.stack"
         case .artists: return "music.mic"
         case .podcasts: return "mic"
+        case .mostPlayed: return "chart.bar.fill"
         }
     }
 }
