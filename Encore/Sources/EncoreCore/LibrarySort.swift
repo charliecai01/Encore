@@ -74,12 +74,21 @@ public enum LibrarySort {
             // Sorts on the DISPLAYED name (so an artist credited both
             // "David Tao" and "陶喆" stays in one place) and groups English
             // names first alphabetically, then Chinese names by pinyin.
-            return tracks.sorted { lhs, rhs in
-                let a = CJK.nameSortKey(NativeNames.displayArtist(for: lhs))
-                let b = CJK.nameSortKey(NativeNames.displayArtist(for: rhs))
-                if a != b { return a < b }
-                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
-            }
+            //
+            // The key is computed ONCE per track up front, not inside the
+            // comparator: displayArtist does a dictionary lookup + string
+            // replace per credited artist, and pinyin runs a full ICU
+            // transform. A naive `sorted { }` calls both sides' key on every
+            // comparison — O(n log n) transforms instead of O(n) — which on
+            // a 600+ track playlist sorted by Artist (iOS's default) took
+            // long enough to freeze the view, especially since resolving
+            // native names re-triggers this same sort several times as
+            // chunks land (Charlie, 2026-08-16, "iOS app is super slow").
+            let keyed = tracks.map { ($0, CJK.nameSortKey(NativeNames.displayArtist(for: $0))) }
+            return keyed.sorted { lhs, rhs in
+                if lhs.1 != rhs.1 { return lhs.1 < rhs.1 }
+                return lhs.0.title.localizedCaseInsensitiveCompare(rhs.0.title) == .orderedAscending
+            }.map(\.0)
         case .album:
             // Tracks with no album sort last (a "~" sentinel would sort them
             // FIRST under locale-aware comparison, where symbols precede letters).
