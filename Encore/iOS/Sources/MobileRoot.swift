@@ -267,7 +267,15 @@ struct RemoteImage: View {
         GeometryReader { geo in
             let side = max(geo.size.width, geo.size.height)
             let px = ImageCache.bucket(points: side, scale: displayScale)
-            content
+            // Read the cache DURING body, not only in .task — a task runs
+            // after the first render, so every rebuild of a row (returning to
+            // the Home tab, a list reassignment) flashed the grey placeholder
+            // for a frame before the already-decoded image reappeared. That
+            // flash is what read as "the graphics refresh every time"
+            // (Charlie, 2026-08-18). An NSCache lookup here is cheap.
+            content(cached: image ?? url.flatMap {
+                side >= 1 ? ImageCache.shared.cached(for: $0, maxPixel: px) : nil
+            })
                 .frame(width: geo.size.width, height: geo.size.height)
                 .task(id: "\(url?.absoluteString ?? "")|\(side >= 1 ? px : 0)") {
                     guard side >= 1 else { return }
@@ -277,9 +285,9 @@ struct RemoteImage: View {
     }
 
     @ViewBuilder
-    private var content: some View {
+    private func content(cached: UIImage?) -> some View {
         ZStack {
-            if let image {
+            if let image = cached {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)

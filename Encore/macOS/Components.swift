@@ -145,6 +145,11 @@ struct TrackRow: View {
     var index: Int? = nil
     var showsArtwork = true
     var showsAlbum = true
+    /// Shown when the track carries no artist credit of its own. YouTube omits
+    /// the per-track artist on many album pages (it's implied by the album),
+    /// which left the artist line blank on those rows while albums that do
+    /// carry it read "张学友". Album pages pass their header artist.
+    var fallbackArtist: String? = nil
     /// Personal play count (from `PlayCounts`); non-nil shows the column.
     var playCount: Int? = nil
     /// Bumped by the parent when native artist names resolve. The row's own
@@ -205,8 +210,9 @@ struct TrackRow: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(isCurrent ? Theme.fallbackAccent : Theme.textPrimary)
                     .lineLimit(1)
-                Text(NativeNames.rewriting(track.artistLine,
-                                           artists: track.artists.map(\.name) + [track.artistLine]))
+                let credited = track.artistLine.isEmpty ? (fallbackArtist ?? "") : track.artistLine
+                Text(NativeNames.rewriting(credited,
+                                           artists: track.artists.map(\.name) + [credited]))
                     .font(.system(size: 11.5))
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(1)

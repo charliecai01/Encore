@@ -310,6 +310,19 @@ struct CollectionView: View {
         }
     }
 
+    /// The artist an album page is billed to. Album subtitles arrive
+    /// pre-joined and artist-first ("David Tao • Album • 2014"), so the
+    /// leading component is the name. nil for playlists.
+    private func headerArtist(of page: CollectionPage) -> String? {
+        guard isAlbum else { return nil }
+        let first = page.subtitle
+            .components(separatedBy: CharacterSet(charactersIn: "•·"))
+            .first?
+            .trimmingCharacters(in: .whitespaces)
+        guard let first, !first.isEmpty else { return nil }
+        return first
+    }
+
     private func trackList(_ page: CollectionPage) -> some View {
         let shown = visibleTracks(page)
         // Snapshot once per render — PlayCounts.all() decodes UserDefaults.
@@ -321,6 +334,7 @@ struct CollectionView: View {
                          index: i,
                          showsArtwork: !isAlbum,
                          showsAlbum: !isAlbum,
+                         fallbackArtist: headerArtist(of: page),
                          playCount: showPlayCounts ? (counts[track.videoId]?.count ?? 0) : nil,
                          nameVersion: nameVersion,
                          isSelecting: selecting,

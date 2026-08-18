@@ -108,6 +108,12 @@ struct TrackRowView: View {
     /// Album pages: rows share the album art, so show the track number instead.
     var index: Int? = nil
     var showsArtwork = true
+    /// Shown when the track itself carries no artist credit. YouTube omits the
+    /// per-track artist on plenty of album pages (it's implied by the album),
+    /// which left those rows reading " · 70K plays" — a dangling separator and
+    /// no singer — while albums that DO carry it read "张学友 · 76K plays".
+    /// Album pages pass their header artist so every row reads the same way.
+    var fallbackArtist: String? = nil
     var onRemoveFromPlaylist: (() -> Void)?
     /// Bumped by the parent when native artist names finish resolving. The
     /// row's own data doesn't change, so without a property that DOES change
@@ -217,9 +223,12 @@ struct TrackRowView: View {
                     .lineLimit(1)
                 // CJK artists show their native name (张学友, not "Jacky
                 // Cheung") once it's resolved; everyone else is unchanged.
-                let artistLine = NativeNames.rewriting(track.artistLine,
-                                                       artists: track.artists.map(\.name) + [track.artistLine])
-                Text(track.playsText.map { "\(artistLine) · \($0)" } ?? artistLine)
+                let credited = track.artistLine.isEmpty ? (fallbackArtist ?? "") : track.artistLine
+                let artistLine = NativeNames.rewriting(credited,
+                                                       artists: track.artists.map(\.name) + [credited])
+                // Joined from the non-empty parts only: either half can be
+                // missing, and a hardcoded " · " left a dangling separator.
+                Text([artistLine, track.playsText ?? ""].filter { !$0.isEmpty }.joined(separator: " · "))
                     .font(.system(size: 13)).foregroundStyle(Theme.textSecondary).lineLimit(1)
             }
             Spacer()
@@ -404,6 +413,12 @@ struct ShelfRow: View {
 /// Classics, Discover, podcast episodes, drag-to-reorder shortcuts). The
 /// Explore tab is gone; R&B is still one tap away as a playlist here.
 /// Section ordering lives in `EncoreCore.HomeSections` so macOS matches.
+/// Last time Home actually refetched. Lives outside the view because the tab
+/// recreates HomeScreen on every selection, so view state can't remember it.
+@MainActor private enum HomeRefreshClock {
+    static var last: Date?
+}
+
 struct HomeScreen: View {
     @EnvironmentObject var auth: AuthManager
     @EnvironmentObject var nav: Nav
@@ -435,7 +450,7 @@ struct HomeScreen: View {
         .background(Theme.bg)
         .navigationTitle("Home")
         .toolbar { accountButton }
-        .refreshable { await load() }
+        .refreshable { await load(force: true) }
         .task(id: auth.isSignedIn) { await load() }
     }
 
@@ -488,8 +503,15 @@ struct HomeScreen: View {
             .filter { !$0.isEmpty }
     }
 
-    private func load() async {
-        loading = true
+    /// Refetched at most once every `refreshInterval`, or on demand via
+    /// pull-to-refresh. `.task(id:)` re-fires every time the Home TAB is
+    /// selected, and refetching there meant two network round-trips and a
+    /// full list reassignment on every visit — the rows rebuilt and the
+    /// artwork visibly reloaded (Charlie, 2026-08-18). Your own library
+    /// barely changes minute to minute, so this is nothing but churn.
+    private static let refreshInterval: TimeInterval = 300
+
+    private func load(force: Bool = false) async {
         // Seed instantly from the disk-backed cache (persists across launches)
         // so Home isn't a spinner on every cold start, then refresh below.
         if playlists.isEmpty, !PageCache.shared.homePlaylists.isEmpty {
@@ -500,15 +522,26 @@ struct HomeScreen: View {
         }
         guard auth.isSignedIn else { loading = false; return }
 
+        let haveContent = !playlists.isEmpty || !albums.isEmpty
+        if !force, haveContent, let last = HomeRefreshClock.last,
+           Date().timeIntervalSince(last) < Self.refreshInterval {
+            loading = false
+            return
+        }
+        loading = !haveContent
+
         async let playlistTask = (try? await YTM.shared.libraryPlaylists()) ?? []
         async let albumTask = (try? await YTM.shared.libraryAlbums()) ?? []
         let (freshPlaylists, freshAlbums) = await (playlistTask, albumTask)
+        HomeRefreshClock.last = Date()
+        // Only reassign when something actually CHANGED: an identical array of
+        // fresh CardItem values still invalidates every row.
         if !freshPlaylists.isEmpty {
-            playlists = freshPlaylists
+            if freshPlaylists.map(\.id) != playlists.map(\.id) { playlists = freshPlaylists }
             PageCache.shared.homePlaylists = freshPlaylists
         }
         if !freshAlbums.isEmpty {
-            albums = freshAlbums
+            if freshAlbums.map(\.id) != albums.map(\.id) { albums = freshAlbums }
             PageCache.shared.homeAlbums = freshAlbums
         }
         loading = false
@@ -856,6 +889,13 @@ struct CollectionScreen: View {
     private func artistNames(in page: CollectionPage) -> [String] {
         var names: [String] = []
         var seen = Set<String>()
+        // The header's own artist FIRST. Plenty of album pages carry no
+        // per-track artist at all, and harvesting only from tracks left those
+        // headers stuck on the romanized name ("David Tao • Album • 2014")
+        // while albums whose tracks do carry it resolved to 张学友.
+        if let headerArtist = headerArtist(of: page), seen.insert(headerArtist).inserted {
+            names.append(headerArtist)
+        }
         for track in shownTracks(page) {
             for name in track.artists.map(\.name) + [track.artistLine]
             where !name.isEmpty && seen.insert(name).inserted {
@@ -863,6 +903,20 @@ struct CollectionScreen: View {
             }
         }
         return names
+    }
+
+    /// The artist an album page is billed to. Album subtitles arrive
+    /// pre-joined and artist-first ("David Tao • Album • 2014"), so the
+    /// leading component is the name. nil for playlists, which are billed to
+    /// their owner rather than an artist.
+    private func headerArtist(of page: CollectionPage) -> String? {
+        guard isAlbum else { return nil }
+        let first = page.subtitle
+            .components(separatedBy: CharacterSet(charactersIn: "•·"))
+            .first?
+            .trimmingCharacters(in: .whitespaces)
+        guard let first, !first.isEmpty else { return nil }
+        return first
     }
     /// Save/remove this album in the library. Flips the local state first so the
     /// button responds immediately, and rolls back if YouTube rejects it.
@@ -947,6 +1001,7 @@ struct CollectionScreen: View {
                             TrackRowView(track: t,
                                          index: i,
                                          showsArtwork: !isAlbum,
+                                         fallbackArtist: headerArtist(of: page),
                                          onRemoveFromPlaylist: isPlaylist ? { remove(t) } : nil,
                                          nameVersion: nameVersion,
                                          isSelecting: selecting,
@@ -970,16 +1025,20 @@ struct CollectionScreen: View {
                 } else if loading {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
                 }
-                // Clears the pinned transport bar below, so the last
-                // tracks stay reachable.
-                Color.clear.frame(height: 150)
             }
         }
         .background(Theme.bg)
         // Play/Shuffle live pinned at the BOTTOM (Charlie, 2026-08-14): at
         // the top of a 100-track list they were a stretch for the thumb, and
         // scrolled away entirely. Sits above the mini player when one shows.
-        .overlay(alignment: .bottom) {
+        //
+        // safeAreaInset, NOT overlay (Charlie, 2026-08-18, "the play shuffle
+        // button kind of blocks"): an overlay floats ON TOP of the rows, so
+        // the bar sat over two tracks at every scroll position and a
+        // fixed-height spacer at the end of the list only rescued the last
+        // few. As an inset it occupies real layout space — the list is
+        // inset by exactly the bar's height, so no row is ever covered.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             if selecting {
                 selectionBar
             } else if let page {
@@ -1006,7 +1065,9 @@ struct CollectionScreen: View {
                 .padding(.vertical, 10)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
                 .padding(.horizontal, 12)
-                .padding(.bottom, player.current != nil ? 118 : 58)
+                // Clears the mini player, which floats over everything from
+                // MobileRoot (52pt artwork + 18pt padding + 3pt progress).
+                .padding(.bottom, player.current != nil ? 81 : 8)
             }
         }
         .navigationTitle(page?.title ?? "").navigationBarTitleDisplayMode(.inline)
