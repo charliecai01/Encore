@@ -192,6 +192,9 @@ final class PlayerEngine: NSObject, ObservableObject {
         var index: Int
         var shuffle: Bool
         var repeatRaw: Int
+        /// The playlist the queue was played from, so "Remove from Playlist"
+        /// still works after a relaunch. Optional so older snapshots decode.
+        var playlistId: String?
     }
 
     func persistSnapshot() {
@@ -203,7 +206,8 @@ final class PlayerEngine: NSObject, ObservableObject {
                                 unshuffled: unshuffledQueue.map { Array($0.prefix(300)) },
                                 index: min(index, 299),
                                 shuffle: shuffleOn,
-                                repeatRaw: repeatMode.rawValue)
+                                repeatRaw: repeatMode.rawValue,
+                                playlistId: playlistContextId)
         if let data = try? JSONEncoder().encode(snapshot) {
             UserDefaults.standard.set(data, forKey: "playerSnapshot")
         }
@@ -228,6 +232,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         index = min(max(snapshot.index, 0), snapshot.queue.count - 1)
         shuffleOn = snapshot.shuffle
         repeatMode = RepeatMode(rawValue: snapshot.repeatRaw) ?? .off
+        playlistContextId = snapshot.playlistId
         current = queue[index]
 
         // Restore the queue and the current track. Songs restart from the

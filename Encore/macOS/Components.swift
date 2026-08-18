@@ -102,7 +102,9 @@ struct CardView: View {
             if let id = item.playlistId {
                 Task {
                     if let page = try? await YTM.shared.playlist(id: id), !page.tracks.isEmpty {
-                        player.playCollection(page.tracks, startAt: 0)
+                        // Pass the id: without it the player bar has no playlist
+                        // context and "Remove from Playlist" stays hidden.
+                        player.playCollection(page.tracks, startAt: 0, playlistId: id)
                     }
                 }
             }
