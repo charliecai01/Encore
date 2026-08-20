@@ -202,6 +202,9 @@ struct CollectionScreen: View {
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
+                // Gap before the filter/sort row below (Charlie, 2026-08-20)
+                // — the safeAreaInset content otherwise sat flush against it.
+                .padding(.bottom, 12)
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {

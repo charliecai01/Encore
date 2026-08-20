@@ -21,7 +21,6 @@ struct NowPlayingScreen: View {
     @State private var lastIndex = 0
 
     @State private var showAddToPlaylist = false
-    @State private var showSongInfo = false
     @State private var showEQ = false
 
     /// Live offset while the card is being dragged down to dismiss.
@@ -85,11 +84,6 @@ struct NowPlayingScreen: View {
         .offset(y: dragOffset)
         .sheet(isPresented: $showAddToPlaylist) {
             if let t = player.current { AddToPlaylistSheet(track: t) }
-        }
-        .sheet(isPresented: $showSongInfo) {
-            if let t = player.current {
-                SongInfoSheet(track: t, fromPlaylist: currentPlaylistName)
-            }
         }
         .sheet(isPresented: $showEQ) {
             EqualizerSheet().environmentObject(player)
@@ -243,13 +237,6 @@ struct NowPlayingScreen: View {
 
     private var shareURL: URL? { player.current?.shareURL }
 
-    /// Name of the playlist the queue is playing from, if it's one of the
-    /// user's library playlists (used in the Song Info sheet).
-    private var currentPlaylistName: String? {
-        guard let pid = player.playlistContextId else { return nil }
-        return LibraryStore.shared.playlists.first { $0.playlistId == pid }?.title
-    }
-
     /// Overflow actions, shared between the ••• menu and the artwork long-press.
     @ViewBuilder private var trackActions: some View {
         if player.current?.album?.id != nil {
@@ -267,7 +254,6 @@ struct NowPlayingScreen: View {
         if Equalizer.featureEnabled {
             Button { showEQ = true } label: { Label("Equalizer", systemImage: "slider.vertical.3") }
         }
-        Button { showSongInfo = true } label: { Label("Song Info", systemImage: "info.circle") }
         if player.canRemoveCurrentFromPlaylist {
             Divider()
             Button(role: .destructive) { player.removeCurrentFromPlaylist() } label: {
@@ -582,50 +568,6 @@ struct AddToPlaylistSheet: View {
                                                        playlistTitle: pl.title))
             if added > 0 { PageCache.shared.collections["playlist-\(pid)"] = nil }
             onFinished?()
-        }
-    }
-}
-
-/// Read-only details for the current track.
-struct SongInfoSheet: View {
-    let track: Track
-    var fromPlaylist: String?
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    ArtworkView(url: track.artworkURL, corner: 12)
-                        .frame(width: 180, height: 180)
-                        .shadow(color: .black.opacity(0.3), radius: 12, y: 6)
-                        .padding(.top, 16)
-                    VStack(spacing: 14) {
-                        infoRow("Title", track.title)
-                        if !track.artistLine.isEmpty { infoRow("Artist", track.artistLine) }
-                        if let al = track.album?.name, !al.isEmpty { infoRow("Album", al) }
-                        if !track.durationText.isEmpty { infoRow("Duration", track.durationText) }
-                        if let fromPlaylist { infoRow("From Playlist", fromPlaylist) }
-                    }
-                    .padding(.horizontal, 22)
-                    Spacer(minLength: 20)
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .background(Theme.bg)
-            .navigationTitle("Song Info")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
-        }
-        .presentationDetents([.medium, .large])
-        .preferredColorScheme(.dark)
-    }
-
-    private func infoRow(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(label.uppercased()).font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.textTertiary)
-            Text(value).font(.system(size: 16)).foregroundStyle(Theme.textPrimary)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
