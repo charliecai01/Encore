@@ -336,11 +336,14 @@ final class LibraryStore: ObservableObject {
         guard !fetched.isEmpty else { return }
         loaded = true
         playlists = applyCustomOrder(fetched)
+        // Neither depends on the other, so fetch them concurrently rather
+        // than paying two sequential round-trips at sign-in.
+        async let albumsResult = YTM.shared.libraryAlbums()
         if PodcastFeature.enabled {
             podcastShows = ((try? await YTM.shared.libraryPodcasts()) ?? [])
                 .filter { $0.kind == .podcast }
         }
-        albums = (try? await YTM.shared.libraryAlbums()) ?? []
+        albums = (try? await albumsResult) ?? []
         // Warm the liked library so hearts are correct app-wide, not only
         // after visiting a library page.
         Task { _ = await self.songs() }
