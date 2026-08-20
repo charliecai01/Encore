@@ -109,11 +109,51 @@ struct PlayerWebHost: UIViewRepresentable {
 struct MiniPlayer: View {
     @EnvironmentObject var player: PlayerEngine
     @ObservedObject private var clock = PlayerClock.shared
+    /// Follows the finger during a swipe, then flies the old card fully off
+    /// and the new one in from the opposite edge — the same left=next,
+    /// right=previous gesture YouTube Music's mini player uses (Charlie,
+    /// 2026-08-20). `onTapGesture` + `.gesture` (not a wrapping Button,
+    /// which would eat the drag) matches TrackRowView's own swipe below.
+    @State private var dragOffset: CGFloat = 0
+
+    private var swipeGesture: some Gesture {
+        DragGesture(minimumDistance: 24, coordinateSpace: .local)
+            .onChanged { v in
+                guard abs(v.translation.width) > abs(v.translation.height) else { return }
+                dragOffset = v.translation.width
+            }
+            .onEnded { v in
+                guard abs(v.translation.width) > abs(v.translation.height) else {
+                    withAnimation(.spring(duration: 0.25)) { dragOffset = 0 }
+                    return
+                }
+                if v.translation.width < -60 {
+                    completeSwipe(next: true)
+                } else if v.translation.width > 60 {
+                    completeSwipe(next: false)
+                } else {
+                    withAnimation(.spring(duration: 0.25)) { dragOffset = 0 }
+                }
+            }
+    }
+
+    /// Slides the current card fully off-screen, advances the queue, then
+    /// slides the new card in from the opposite edge it exited toward.
+    private func completeSwipe(next: Bool) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let width: CGFloat = 420
+        withAnimation(.easeIn(duration: 0.18)) {
+            dragOffset = next ? -width : width
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            if next { player.next() } else { player.previous() }
+            dragOffset = next ? width : -width
+            withAnimation(.easeOut(duration: 0.22)) { dragOffset = 0 }
+        }
+    }
 
     var body: some View {
-        Button {
-            player.showNowPlaying = true
-        } label: {
+        Group {
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
                     ArtworkView(url: player.current?.thumbnailURL, corner: 6)
@@ -167,7 +207,10 @@ struct MiniPlayer: View {
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.stroke))
         }
-        .buttonStyle(.plain)
+        .offset(x: dragOffset)
+        .contentShape(Rectangle())
+        .onTapGesture { player.showNowPlaying = true }
+        .gesture(swipeGesture)
     }
 }
 

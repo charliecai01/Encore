@@ -154,6 +154,102 @@ public enum LibrarySort {
         sortCards(filterCards(cards, query: query), by: order)
     }
 
+    // MARK: - Artist aggregation
+
+    /// Library ▸ Artists: `corpus` (YTM's own artist list) annotated with
+    /// song counts, PLUS artists collected from `tracks` that the corpus
+    /// doesn't already cover — a channel-backed artist by id, everyone else
+    /// grouped by name. Was independently reimplemented on macOS and iOS
+    /// (identical logic, different formatting); moved here 2026-08-19 so a
+    /// fix in one can't silently miss the other, the way the R&B-rename pin
+    /// once did for `HomeSections`.
+    public static func artistCards(corpus: [CardItem], tracks: [Track]) -> [CardItem] {
+        struct Tally {
+            var name: String
+            var count = 0
+            var thumb: URL?
+        }
+        var byId: [String: Tally] = [:]
+        var byName: [String: Tally] = [:]
+
+        for track in tracks {
+            if track.artists.isEmpty {
+                let name = track.artistLine
+                    .components(separatedBy: CharacterSet(charactersIn: ",&"))
+                    .first?.trimmingCharacters(in: .whitespaces) ?? ""
+                guard !name.isEmpty else { continue }
+                var tally = byName[name.matchNormalized] ?? Tally(name: name)
+                tally.count += 1
+                if tally.thumb == nil { tally.thumb = track.thumbnailURL }
+                byName[name.matchNormalized] = tally
+                continue
+            }
+            for ref in track.artists {
+                // Only real channels make a navigable card; library-private
+                // artist refs group by name instead.
+                if let id = ref.id, id.hasPrefix("UC") {
+                    var tally = byId[id] ?? Tally(name: ref.name)
+                    tally.count += 1
+                    if tally.thumb == nil { tally.thumb = track.thumbnailURL }
+                    byId[id] = tally
+                } else if !ref.name.isEmpty {
+                    var tally = byName[ref.name.matchNormalized] ?? Tally(name: ref.name)
+                    tally.count += 1
+                    if tally.thumb == nil { tally.thumb = track.thumbnailURL }
+                    byName[ref.name.matchNormalized] = tally
+                }
+            }
+        }
+
+        func countLabel(_ n: Int) -> String {
+            "\(n) song\(n == 1 ? "" : "s")"
+        }
+
+        var out: [CardItem] = []
+        var seenIds = Set<String>()
+        var seenNames = Set<String>()
+        for card in corpus {
+            let channelId = card.browseId.map { $0.hasPrefix("MPLA") ? String($0.dropFirst(4)) : $0 }
+            var item = card
+            if let channelId, let tally = byId[channelId] {
+                item.subtitle = countLabel(tally.count)
+            }
+            out.append(item)
+            if let channelId { seenIds.insert(channelId) }
+            seenNames.insert(card.title.matchNormalized)
+        }
+        // "Jacky Cheung" from an upload duplicates "張學友 - Jacky Cheung";
+        // suppress aggregated cards whose name is contained in (or contains)
+        // an artist we already show.
+        func isDuplicate(_ name: String) -> Bool {
+            let n = name.matchNormalized
+            guard n.count >= 3 else { return seenNames.contains(n) }
+            return seenNames.contains { $0.contains(n) || n.contains($0) }
+        }
+
+        for (id, tally) in byId.sorted(by: { $0.value.count > $1.value.count })
+        where !seenIds.contains(id) && !isDuplicate(tally.name) {
+            seenNames.insert(tally.name.matchNormalized)
+            out.append(CardItem(kind: .artist, title: tally.name, subtitle: countLabel(tally.count),
+                                thumbnailURL: tally.thumb, browseId: id))
+        }
+        for (key, tally) in byName where !isDuplicate(tally.name) {
+            seenNames.insert(key)
+            out.append(CardItem(kind: .artist, title: tally.name, subtitle: countLabel(tally.count),
+                                thumbnailURL: tally.thumb))
+        }
+
+        // Most-collected artists first.
+        func count(_ item: CardItem) -> Int {
+            Int(item.subtitle.components(separatedBy: " ").first ?? "") ?? 0
+        }
+        return out.sorted {
+            let c0 = count($0), c1 = count($1)
+            if c0 != c1 { return c0 > c1 }
+            return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        }
+    }
+
     // MARK: -
 
     /// Compare primary keys case-insensitively, breaking ties on a secondary key.

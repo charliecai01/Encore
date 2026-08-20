@@ -310,17 +310,9 @@ struct CollectionView: View {
         }
     }
 
-    /// The artist an album page is billed to. Album subtitles arrive
-    /// pre-joined and artist-first ("David Tao • Album • 2014"), so the
-    /// leading component is the name. nil for playlists.
+    /// The artist an album page is billed to. nil for playlists.
     private func headerArtist(of page: CollectionPage) -> String? {
-        guard isAlbum else { return nil }
-        let first = page.subtitle
-            .components(separatedBy: CharacterSet(charactersIn: "•·"))
-            .first?
-            .trimmingCharacters(in: .whitespaces)
-        guard let first, !first.isEmpty else { return nil }
-        return first
+        page.headerArtist(isAlbum: isAlbum)
     }
 
     private func trackList(_ page: CollectionPage) -> some View {
@@ -567,15 +559,12 @@ struct CollectionView: View {
             // so what's on screen resolves first. Walks the whole list — a
             // 692-track playlist has far more artists than one screenful, and
             // capping this left the songs further down romanized. Chunked so
-            // rows update as it goes rather than all at the end.
-            var names: [String] = []
-            var seen = Set<String>()
-            for track in visibleTracks(result) {
-                for name in track.artists.map(\.name) + [track.artistLine]
-                where !name.isEmpty && seen.insert(name).inserted {
-                    names.append(name)
-                }
-            }
+            // rows update as it goes rather than all at the end. Includes the
+            // HEADER artist (fixed 2026-08-19): albums with no per-track
+            // credit at all — common, since it's implied by the album — used
+            // to stay romanized on macOS forever, because only iOS fed the
+            // header name into this warm-up; both call the same function now.
+            let names = artistNameCandidates(in: visibleTracks(result), headerArtist: headerArtist(of: result))
             for start in stride(from: 0, to: names.count, by: 24) {
                 let chunk = Array(names[start..<min(start + 24, names.count)])
                 if await NativeNames.warmUp(names: chunk) {

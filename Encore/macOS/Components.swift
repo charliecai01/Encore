@@ -210,9 +210,7 @@ struct TrackRow: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(isCurrent ? Theme.fallbackAccent : Theme.textPrimary)
                     .lineLimit(1)
-                let credited = track.artistLine.isEmpty ? (fallbackArtist ?? "") : track.artistLine
-                Text(NativeNames.rewriting(credited,
-                                           artists: track.artists.map(\.name) + [credited]))
+                Text(track.resolvedArtist(fallbackArtist: fallbackArtist))
                     .font(.system(size: 11.5))
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(1)

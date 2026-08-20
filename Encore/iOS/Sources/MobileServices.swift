@@ -346,6 +346,7 @@ enum LibraryTab: String, CaseIterable, Hashable {
     case artists = "Artists"
     case podcasts = "Podcasts"
     case mostPlayed = "Most Played"
+    case history = "History"
 
     /// Tabs shown in the UI. Podcasts appears only when the feature is enabled
     /// (see PodcastFeature / PODCASTS.md). Artists and Songs are hidden —
@@ -354,10 +355,13 @@ enum LibraryTab: String, CaseIterable, Hashable {
     /// unaffected: still reachable from any track and from search. Most
     /// Played moved DOWN into the tabs from the banner row that sat above
     /// them, so it's a peer of the others rather than a separate screen.
+    /// History added 2026-08-20 to match macOS, which has always had it
+    /// pinned at the end of the same tab list (`Nav.swift`).
     static var visible: [LibraryTab] {
         var tabs: [LibraryTab] = [.playlists, .albums]
         if PlayCountsFeature.enabled { tabs.append(.mostPlayed) }
         if PodcastFeature.enabled { tabs.append(.podcasts) }
+        tabs.append(.history)
         return tabs
     }
 
@@ -369,6 +373,7 @@ enum LibraryTab: String, CaseIterable, Hashable {
         case .artists: return "music.mic"
         case .podcasts: return "mic"
         case .mostPlayed: return "chart.bar.fill"
+        case .history: return "clock"
         }
     }
 }
