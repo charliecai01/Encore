@@ -206,6 +206,17 @@ struct NowPlayingScreen: View {
             .padding(.top, 22)
 
             HStack(spacing: 36) {
+                // Was buried in the ••• menu; Charlie wanted it as its own
+                // button, left of the sleep timer (2026-08-20). Copy Link
+                // dropped from that menu at the same time — ShareLink's own
+                // sheet already offers Copy, so it was a pure duplicate.
+                if let url = shareURL {
+                    ShareLink(item: url) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
+                }
                 sleepMenu
                 RoutePickerButton().frame(width: 26, height: 26)
                 Button { player.showNowPlaying = false } label: {
@@ -253,12 +264,6 @@ struct NowPlayingScreen: View {
             }
         }
         Button { showAddToPlaylist = true } label: { Label("Add to Playlist", systemImage: "text.badge.plus") }
-        if let url = shareURL {
-            ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") }
-            Button {
-                UIPasteboard.general.url = url
-            } label: { Label("Copy Link", systemImage: "link") }
-        }
         if Equalizer.featureEnabled {
             Button { showEQ = true } label: { Label("Equalizer", systemImage: "slider.vertical.3") }
         }

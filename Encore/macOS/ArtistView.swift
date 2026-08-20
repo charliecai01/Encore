@@ -48,20 +48,8 @@ struct ArtistView: View {
                         if !libraryTracks.isEmpty {
                             librarySection
                         }
-                        ForEach(page.shelves) { shelf in
+                        ForEach(visibleShelves(page)) { shelf in
                             ShelfView(shelf: shelf)
-                        }
-                        if let description = page.description, !description.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("About")
-                                    .font(.system(size: 20, weight: .bold))
-                                    .foregroundStyle(Theme.textPrimary)
-                                Text(description)
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(Theme.textSecondary)
-                                    .lineSpacing(4)
-                            }
-                            .padding(.horizontal, 24)
                         }
                     }
                     .padding(.bottom, 36)
@@ -69,6 +57,21 @@ struct ArtistView: View {
             }
         }
         .task { await load() }
+    }
+
+    /// Shelves YouTube returns that Charlie doesn't want shown here
+    /// (2026-08-20): "Playlists by [name]" (community playlists, low
+    /// signal), "Featured on" (YouTube's own curated playlists), and "From
+    /// your library" — redundant with `librarySection` above, which has
+    /// Play/Shuffle and full track rows this shelf doesn't. The "About"
+    /// section (page.description) is gone too — the Wikidata `artistSummary`
+    /// at the top is Charlie's own "About" now.
+    private func visibleShelves(_ page: ArtistPage) -> [Shelf] {
+        page.shelves.filter { shelf in
+            !shelf.title.hasPrefix("Playlists by")
+                && shelf.title != "Featured on"
+                && shelf.title != "From your library"
+        }
     }
 
     private func hero(_ page: ArtistPage) -> some View {

@@ -156,16 +156,30 @@ struct MiniPlayer: View {
         Group {
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
-                    ArtworkView(url: player.current?.thumbnailURL, corner: 6)
-                        .frame(width: 52, height: 52)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(player.current.map { NativeNames.displayTitle(for: $0) } ?? "")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Theme.textPrimary).lineLimit(1)
-                        Text(NativeNames.displayCached(player.current?.artistLine ?? ""))
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(Theme.textSecondary).lineLimit(1)
+                    // Only THIS (artwork + title/artist) slides during a swipe —
+                    // the card itself, the buttons, and the progress bar stay
+                    // put (Charlie, 2026-08-20: "the content move only, not the
+                    // entire mini player"). Fades out over the first 120pt of
+                    // travel rather than being clipped to a fixed viewport —
+                    // offset() doesn't shrink a view's own layout bounds, so a
+                    // hard .clipped() here would clip against the CONTENT's
+                    // own (small) natural width, cutting it off almost as soon
+                    // as the drag starts. Fading reaches full transparency
+                    // well before the slide could visually reach the buttons.
+                    HStack(spacing: 12) {
+                        ArtworkView(url: player.current?.thumbnailURL, corner: 6)
+                            .frame(width: 52, height: 52)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(player.current.map { NativeNames.displayTitle(for: $0) } ?? "")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Theme.textPrimary).lineLimit(1)
+                            Text(NativeNames.displayCached(player.current?.artistLine ?? ""))
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Theme.textSecondary).lineLimit(1)
+                        }
                     }
+                    .offset(x: dragOffset)
+                    .opacity(1 - min(1, abs(dragOffset) / 120))
                     Spacer()
                     Button {
                         if let t = player.current { player.toggleLike(t) }
@@ -207,7 +221,6 @@ struct MiniPlayer: View {
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.stroke))
         }
-        .offset(x: dragOffset)
         .contentShape(Rectangle())
         .onTapGesture { player.showNowPlaying = true }
         .gesture(swipeGesture)

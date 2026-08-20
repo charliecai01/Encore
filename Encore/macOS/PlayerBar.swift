@@ -10,6 +10,7 @@ struct PlayerBar: View {
     @Binding var nowPlayingExpanded: Bool
     @State private var showVideoSheet = false
     @State private var showEQ = false
+    @State private var showSongInfo = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -252,6 +253,14 @@ struct PlayerBar: View {
         .help("Playback speed (podcasts)")
     }
 
+    /// Name of the playlist the queue is playing from, if it's one of the
+    /// user's library playlists (used in the Song Info popover). Mirrors
+    /// iOS's NowPlayingScreen.currentPlaylistName.
+    private var currentPlaylistName: String? {
+        guard let pid = player.playlistContextId else { return nil }
+        return LibraryStore.shared.playlists.first { $0.playlistId == pid }?.title
+    }
+
     private var rightControls: some View {
         HStack(spacing: 14) {
             trackActionsMenu
@@ -260,6 +269,16 @@ struct PlayerBar: View {
             }
             .disabled(player.current == nil)
             .help("Copy link to song")
+            ControlButton(icon: "info.circle", size: 14) {
+                showSongInfo = true
+            }
+            .disabled(player.current == nil)
+            .help("Song info")
+            .popover(isPresented: $showSongInfo, arrowEdge: .top) {
+                if let track = player.current {
+                    SongInfoView(track: track, fromPlaylist: currentPlaylistName)
+                }
+            }
             sleepTimerMenu
             if Equalizer.featureEnabled {
                 ControlButton(icon: "slider.vertical.3", size: 14,
@@ -335,6 +354,40 @@ struct PlayerBar: View {
         case ..<0.4: return "speaker.wave.1.fill"
         case ..<0.75: return "speaker.wave.2.fill"
         default: return "speaker.wave.3.fill"
+        }
+    }
+}
+
+/// Title/artist/album/duration/playlist for the current track, in a popover
+/// (Charlie, 2026-08-20: "add song info button like iOS's"). Same fields,
+/// same order, as iOS's SongInfoSheet — just macOS-styled chrome instead of
+/// a full navigation sheet, since a popover doesn't need any.
+struct SongInfoView: View {
+    let track: Track
+    var fromPlaylist: String?
+
+    var body: some View {
+        VStack(spacing: 14) {
+            ArtworkView(url: track.artworkURL, corner: 8)
+                .frame(width: 140, height: 140)
+                .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
+            VStack(spacing: 10) {
+                infoRow("Title", track.title)
+                if !track.artistLine.isEmpty { infoRow("Artist", track.artistLine) }
+                if let al = track.album?.name, !al.isEmpty { infoRow("Album", al) }
+                if !track.durationText.isEmpty { infoRow("Duration", track.durationText) }
+                if let fromPlaylist { infoRow("From Playlist", fromPlaylist) }
+            }
+        }
+        .padding(18)
+        .frame(width: 260)
+    }
+
+    private func infoRow(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased()).font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.textTertiary)
+            Text(value).font(.system(size: 13)).foregroundStyle(Theme.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

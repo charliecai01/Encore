@@ -23,7 +23,8 @@ struct ArtistScreen: View {
                         }
                         .frame(height: 240).frame(maxWidth: .infinity).clipped()
                         .overlay(LinearGradient(colors: [.clear, Theme.bg], startPoint: .center, endPoint: .bottom))
-                        Text(page.name).font(.system(size: 30, weight: .heavy)).foregroundStyle(.white).padding(16)
+                        Text(page.name).font(.system(size: 30, weight: .heavy)).foregroundStyle(.white)
+                            .padding(.horizontal, 22).padding(.vertical, 16)
                     }
                     if let artistSummary {
                         // Wikidata bio: birthplace · age · country · career start
@@ -33,7 +34,7 @@ struct ArtistScreen: View {
                             .foregroundStyle(Theme.textSecondary)
                             .lineSpacing(3)
                             .fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, 22)
                     }
                     if !libraryTracks.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
@@ -42,12 +43,12 @@ struct ArtistScreen: View {
                                 Text("\(libraryTracks.count) song\(libraryTracks.count == 1 ? "" : "s") from your collection")
                                     .font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
                             }
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, 22)
                             let shown = libraryExpanded ? libraryTracks : Array(libraryTracks.prefix(8))
                             ForEach(Array(shown.enumerated()), id: \.offset) { i, t in
                                 TrackRowView(track: t, onRemoveFromPlaylist: nil) {
                                     player.playCollection(libraryTracks, startAt: i)
-                                }.padding(.horizontal, 16)
+                                }.padding(.horizontal, 22)
                             }
                             if libraryTracks.count > 8 {
                                 Button {
@@ -57,7 +58,7 @@ struct ArtistScreen: View {
                                         .font(.system(size: 14, weight: .semibold))
                                         .foregroundStyle(Theme.accent)
                                 }
-                                .padding(.horizontal, 16)
+                                .padding(.horizontal, 22)
                                 .padding(.top, 2)
                             }
                         }

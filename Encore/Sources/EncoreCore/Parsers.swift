@@ -527,6 +527,28 @@ public enum P {
                 .map(\.element)
             return s
         }
+
+        // "Albums" / "Singles & EPs": latest release first (left-most).
+        // YouTube already returns them this way in practice, but nothing
+        // guarantees it — enforced here so it can't silently drift (Charlie,
+        // 2026-08-20). Subtitles are "2026" for albums, "Single • 2024" for
+        // singles/EPs, so pull the first 4-digit run rather than assuming format.
+        func releaseYear(_ item: ShelfItem) -> Int {
+            guard case .card(let c) = item,
+                  let match = c.subtitle.range(of: #"\d{4}"#, options: .regularExpression)
+            else { return -1 }
+            return Int(c.subtitle[match]) ?? -1
+        }
+        page.shelves = page.shelves.map { shelf in
+            guard shelf.title == "Albums" || shelf.title == "Singles & EPs" else { return shelf }
+            var s = shelf
+            s.items = shelf.items.enumerated()
+                .sorted { releaseYear($0.element) != releaseYear($1.element)
+                    ? releaseYear($0.element) > releaseYear($1.element)
+                    : $0.offset < $1.offset }
+                .map(\.element)
+            return s
+        }
         return page
     }
 

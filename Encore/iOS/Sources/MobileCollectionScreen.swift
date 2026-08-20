@@ -168,20 +168,16 @@ struct CollectionScreen: View {
             }
         }
         .background(Theme.bg)
-        // Play/Shuffle live pinned at the BOTTOM (Charlie, 2026-08-14): at
-        // the top of a 100-track list they were a stretch for the thumb, and
-        // scrolled away entirely. Sits above the mini player when one shows.
-        //
-        // safeAreaInset, NOT overlay (Charlie, 2026-08-18, "the play shuffle
-        // button kind of blocks"): an overlay floats ON TOP of the rows, so
-        // the bar sat over two tracks at every scroll position and a
-        // fixed-height spacer at the end of the list only rescued the last
-        // few. As an inset it occupies real layout space — the list is
-        // inset by exactly the bar's height, so no row is ever covered.
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if selecting {
-                selectionBar
-            } else if let page {
+        // Play/Shuffle back at the TOP, fixed (Charlie, 2026-08-20: "move
+        // play/shuffle button back to the top fix location") — it had been
+        // moved to the bottom on 2026-08-14 over thumb-reach and scroll-away
+        // concerns, then kept there when the 2026-08-18 fix made it stop
+        // covering rows. safeAreaInset(edge: .top) keeps that same "never
+        // covers content" property while sitting at the top: real layout
+        // space, list inset by exactly the bar's height, always visible
+        // without scrolling.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !selecting, let page {
                 let shown = shownTracks(page)
                 HStack(spacing: 10) {
                     Button { player.playCollection(shown, startAt: 0, playlistId: playlistId) } label: {
@@ -205,10 +201,11 @@ struct CollectionScreen: View {
                 .padding(.vertical, 10)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
                 .padding(.horizontal, 12)
-                // Clears the mini player, which floats over everything from
-                // MobileRoot (52pt artwork + 18pt padding + 3pt progress).
-                .padding(.bottom, player.current != nil ? 81 : 8)
+                .padding(.top, 8)
             }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if selecting { selectionBar }
         }
         .navigationTitle(page?.title ?? "").navigationBarTitleDisplayMode(.inline)
         .toolbar {
