@@ -86,6 +86,18 @@ struct SidebarView: View {
                                 return true
                             }
                         }
+
+                        if !library.albums.isEmpty {
+                            SectionLabel("Albums")
+                            ForEach(library.albums) { album in
+                                SidebarPlaylistItem(playlist: album,
+                                                    selected: isCurrentAlbum(album)) {
+                                    if let id = album.browseId {
+                                        nav.go(.album(id))
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 10)
@@ -127,6 +139,13 @@ struct SidebarView: View {
 
     private func isCurrentShow(_ show: CardItem) -> Bool {
         if case .podcastShow(let id) = nav.current, id == show.browseId {
+            return true
+        }
+        return false
+    }
+
+    private func isCurrentAlbum(_ album: CardItem) -> Bool {
+        if case .album(let id) = nav.current, id == album.browseId {
             return true
         }
         return false
