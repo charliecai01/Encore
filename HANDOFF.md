@@ -403,6 +403,23 @@ app.
   `encoreGen` counter stops an older load's watchdog from fighting a newer one
   (user pressing next). Each correction emits a `hijack` bridge event → log
   line "hijack: site loaded X over Y". Don't remove the generation guard.
+  **A second, native-side layer of this same fix had a gap (fixed
+  2026-08-20):** the `state=1` bridge handler also silences+re-asserts a
+  hijack directly (log line "site autoplay started X over Y — silencing and
+  re-asserting"), but gated any correction behind `Date().timeIntervalSince(
+  lastLoadAt) > 0.5` — a debounce meant to tolerate one late, stale report of
+  the OUTGOING track landing right after `load()`. Verified live via `log
+  show --predicate 'subsystem == "dev.charlie.encore"'`: a genuine hijack (a
+  third id, neither outgoing nor wanted) can itself land inside that same
+  0.5s window, in which case the debounce silently *accepted* the wrong song
+  instead of correcting it — audible for the ~14s it then took the slow
+  `time`-handler mismatch recovery (6s grace + 8 ticks) to pull it back. That
+  is precisely "plays a random song for a few seconds, then plays the
+  correct one." Fix: track `previousVideoId` (the track being left, captured
+  in `load()` before `current` is overwritten) and only grant the 0.5s grace
+  when the reported id equals it — any other id is corrected immediately,
+  regardless of timing. Both engines (`PlayerEngine.swift` macOS,
+  `MobilePlayer+Bridge.swift`/`+Internals.swift` iOS).
 - **iOS track "jumps back to previous song" (fixed):** 250 ms polling misses the
   brief "ended" state, so the queue didn't advance and mismatch-recovery
   reloaded the stale `current`. The injected controller now also hooks
