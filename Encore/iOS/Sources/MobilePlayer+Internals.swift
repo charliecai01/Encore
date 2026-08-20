@@ -193,6 +193,7 @@ extension PlayerEngine {
         restoreSeekTime = startAt > 0 ? startAt : nil
         sleepStopActive = false
         suppressSiteAutoplay = false
+        previousVideoId = current?.videoId
         current = track
         currentTime = startAt
         duration = Double(track.durationSeconds ?? 0)

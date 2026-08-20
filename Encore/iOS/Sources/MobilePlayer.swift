@@ -154,6 +154,11 @@ final class PlayerEngine: NSObject, ObservableObject {
     /// false mid-recovery.
     var userWantsPlayback = false
     var lastLoadAt = Date.distantPast
+    /// The track we're transitioning AWAY from, captured at the start of
+    /// load(). Lets the hijack check tell a genuine site autoplay hijack
+    /// (any other id) from a stale late report of the outgoing track, which
+    /// still deserves the 0.5s grace.
+    var previousVideoId: String?
     var mismatchTicks = 0
     var loadedOnce = false
     /// Force the next web-player engage to do a clean loadVideoById rather than

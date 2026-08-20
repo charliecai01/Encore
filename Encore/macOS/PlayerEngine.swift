@@ -145,6 +145,11 @@ final class PlayerEngine: NSObject, ObservableObject {
     // site-initiated playback until the user explicitly plays something.
     private var suppressSiteAutoplay = true
     private var lastLoadAt = Date.distantPast
+    /// The track we're transitioning AWAY from, captured at the start of
+    /// load(). Lets the hijack check below tell a genuine site autoplay
+    /// hijack (any other id) from a stale late report of the outgoing
+    /// track, which still deserves the 0.5s grace.
+    private var previousVideoId: String?
     private var mismatchTicks = 0
     /// Guards one play-count increment per track load (recorded after a threshold).
     private var playCountRecorded = false
@@ -661,6 +666,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         restoreSeekTime = startAt > 0 ? startAt : nil
         sleepStopActive = false
         suppressSiteAutoplay = false // explicit user intent overrides the launch guard
+        previousVideoId = current?.videoId
         current = track
         currentTime = startAt
         duration = Double(track.durationSeconds ?? 0)
@@ -973,8 +979,19 @@ final class PlayerEngine: NSObject, ObservableObject {
                 // `time` handler only acts after 6s of grace plus 8 ticks, which
                 // is long enough to hear a chunk of a song nobody queued — the
                 // "plays something random for a few seconds" report.
+                //
+                // The 0.5s grace exists so a late, stale state=1 for the track
+                // we just left doesn't get misread as a hijack — but a hijack
+                // can itself land inside that window (verified in the macOS
+                // log 2026-08-20: two site-autoplay swaps arrived ~0.3-0.4s
+                // after load and were silently accepted, playing the wrong
+                // song for ~14s until the slow `time`-handler recovery). Any
+                // id that ISN'T the outgoing track is unambiguous — there's no
+                // legitimate reason for a third id to appear — so only the
+                // outgoing track's id gets the grace period.
+                let reportedVid = body["vid"] as? String
                 if !reportedMatchesCurrent(body),
-                   Date().timeIntervalSince(lastLoadAt) > 0.5,
+                   reportedVid != previousVideoId || Date().timeIntervalSince(lastLoadAt) > 0.5,
                    let track = current {
                     Log.player.notice("site autoplay started \(body["vid"] as? String ?? "?") over \(track.videoId) — silencing and re-asserting")
                     js("window.__encore && __encore.pause()")

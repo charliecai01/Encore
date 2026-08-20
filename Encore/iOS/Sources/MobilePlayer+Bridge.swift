@@ -73,8 +73,19 @@ extension PlayerEngine {
                 // `time` handler only acts after 6s of grace plus 8 ticks, which
                 // is long enough to hear a chunk of a song nobody queued — the
                 // "plays something random for a few seconds" report.
+                //
+                // The 0.5s grace exists so a late, stale state=1 for the track
+                // we just left doesn't get misread as a hijack — but a hijack
+                // can itself land inside that window (verified in the macOS
+                // log 2026-08-20: two site-autoplay swaps arrived ~0.3-0.4s
+                // after load and were silently accepted, playing the wrong
+                // song for ~14s until the slow `time`-handler recovery). Any
+                // id that ISN'T the outgoing track is unambiguous — there's no
+                // legitimate reason for a third id to appear — so only the
+                // outgoing track's id gets the grace period.
+                let reportedVid = body["vid"] as? String
                 if !reportedMatchesCurrent(body),
-                   Date().timeIntervalSince(lastLoadAt) > 0.5,
+                   reportedVid != previousVideoId || Date().timeIntervalSince(lastLoadAt) > 0.5,
                    let playId = activePlaybackId {
                     Log.player.notice("site autoplay started \(body["vid"] as? String ?? "?") over \(playId) — silencing and re-asserting")
                     js("window.__encore && __encore.pause()")
