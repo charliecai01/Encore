@@ -753,28 +753,51 @@ the first stretch of rows romanized.
 
 - **`encore-playlist-tool`** (`Sources/encore-playlist-tool/`, run via `swift
   run encore-playlist-tool` from `Encore/`) — creates/rotates the **"R&B by
-  Sonnet5"** library playlist for Charlie. Composition rule (Charlie's,
-  2026-08-13): **100 songs** = 80 R&B songs split evenly across five decades
-  — 1980s/1990s/2000s/2010s/2020s, 16 each ("the MJ era (80s) to the curr
-  era") — plus fixed quotas of **15 Taylor Swift** + **5 Olivia Dean** songs.
-  Era pools come from searching `"<decade> R&B"` (e.g. "90s R&B"), preferring
-  human-curated decade playlists over raw song search — verified live that
-  song search alone pulls in adjacent-decade "vibe" matches (a plain "90s
-  R&B" search included 2003-2004 tracks); playlist-sourced tracks are put
-  first in the pool so `curate()`'s dedup favors them. **Era boundaries are
-  still approximate**, not exact — YouTube doesn't expose a per-track release
-  year anywhere `EncoreCore` parses, so there's no ground truth to filter
-  against, only search/playlist relevance as a heuristic. Spot-checks after
-  the fix still found some cross-decade bleed (worse near adjacent decades,
-  e.g. a few 70s/90s tracks in the 80s bucket) — acceptable given Charlie
-  said he doesn't need exact precision on generated content (see
-  [[feedback-precision-and-automation]] in agent memory), but worth knowing
-  if this is ever revisited. Artist quotas come from each artist's page
-  (`ytm.artist(browseId:)`) plus a name-filtered song search as a top-up.
-  `MonthlyRotation` (same algorithm as `WeeklyRotation`, keyed to the
-  calendar month instead of the week) is applied per-segment — each era
-  pool and each artist pool rotates its own window monthly, independent of
-  the others.
+  Sonnet5"** library playlist for Charlie (renamed "R&B by Sonnet" in the
+  library on 2026-08-14; see the id-first lookup note below). Composition
+  rule (Charlie's, 2026-08-13; updated 2026-08-21): **100 songs** = 75 R&B
+  songs split evenly across five decades — 1980s/1990s/2000s/2010s/2020s, 15
+  each ("the MJ era (80s) to the curr era") — plus fixed quotas of **15
+  Taylor Swift** + **10 Olivia Dean** songs (Olivia Dean bumped 5→10 on
+  2026-08-21; the era quota was trimmed 16→15/era in the same change to hold
+  the 100-song ceiling). Era pools come from searching `"<decade> R&B"` (e.g.
+  "90s R&B"), preferring human-curated decade playlists over raw song search
+  — verified live that song search alone pulls in adjacent-decade "vibe"
+  matches (a plain "90s R&B" search included 2003-2004 tracks);
+  playlist-sourced tracks are put first in the pool so `curate()`'s dedup
+  favors them. **Era boundaries are still approximate**, not exact — YouTube
+  doesn't expose a per-track release year anywhere `EncoreCore` parses, so
+  there's no ground truth to filter against, only search/playlist relevance
+  as a heuristic. Spot-checks after the fix still found some cross-decade
+  bleed (worse near adjacent decades, e.g. a few 70s/90s tracks in the 80s
+  bucket) — acceptable given Charlie said he doesn't need exact precision on
+  generated content (see [[feedback-precision-and-automation]] in agent
+  memory), but worth knowing if this is ever revisited. Artist quotas come
+  from each artist's page (`ytm.artist(browseId:)`) plus a name-filtered song
+  search as a top-up. `MonthlyRotation` (same algorithm as `WeeklyRotation`,
+  keyed to the calendar month instead of the week) is applied per-segment —
+  each era pool and each artist pool rotates its own window monthly,
+  independent of the others.
+
+  **No rap** (Charlie's rule, 2026-08-21 — he doesn't like rap/spoken-word
+  vocals; his "Favorite Songs" library playlist is almost entirely sung
+  romantic/breakup tracks, no rap, corroborating the rule): `curate()` drops
+  any track whose title+artist text contains a whole-word match against
+  `excludedRapArtists`, a hand-maintained blocklist of ~150 rap/hip-hop
+  artists. Checking combined title+artist text (not just the structured
+  artist field) matters because YT Music frequently folds a feature credit
+  into the title string ("Frontin' (feat. JAY-Z) — Pharrell Williams") and
+  fan-uploaded titles sometimes drop the parens entirely ("Ray J ... featuring
+  Yung Berg EXPLICIT VERSION"), so any credit-position assumption misses
+  real cases. Matching is whole-word (diacritic-folded, alphanumeric-only
+  tokens) rather than substring, so "nas" doesn't false-positive inside
+  "Anastasia" and a stylized credit like YT Music's "JAŸ-Z" still matches
+  plain "jay-z". This is inherently best-effort — the blocklist can't be
+  exhaustive and the live catalog changes what surfaces on every `--force`
+  re-derive, so a spot-check after any future rotation may still turn up a
+  rap track that needs adding to the list (e.g. this was built by iterating
+  `--dry-run --force` ~8 times against live search results until it
+  converged).
 
   Re-run it anytime — same calendar month is a cached no-op (see below),
   a new month re-derives and reconciles. `--dry-run` previews without

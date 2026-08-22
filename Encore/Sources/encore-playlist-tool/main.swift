@@ -1,8 +1,11 @@
 // Creates (or, on later runs, rotates) the "R&B by Sonnet5" playlist: 100
-// songs — 80 R&B songs split evenly across five decades (1980s–2020s, 16
-// each), plus fixed quotas of 15 Taylor Swift songs and 5 Olivia Dean songs
-// (Charlie's rule, 2026-08-13). Refreshed to a different window once a
-// month via MonthlyRotation.
+// songs — 75 R&B songs split evenly across five decades (1980s–2020s, 15
+// each), plus fixed quotas of 15 Taylor Swift songs and 10 Olivia Dean songs
+// (Charlie's rule, 2026-08-13; Olivia Dean bumped 5→10 and the era quota
+// trimmed 16→15/era to hold the 100-song ceiling on 2026-08-21). Rap/hip-hop
+// tracks are filtered out of the R&B pools (Charlie doesn't want spoken-word
+// rap verses in this playlist — see `excludedArtists` below). Refreshed to a
+// different window once a month via MonthlyRotation.
 //
 // Idempotent by design: finds the playlist by title in the signed-in
 // library. Missing → create + populate. Present → reconcile (add whatever
@@ -50,15 +53,101 @@ let eras: [EraSpec] = [
     EraSpec(label: "2010s", query: "2010s R&B"),
     EraSpec(label: "2020s", query: "2020s R&B"),
 ]
-let eraQuota = 16              // 5 eras × 16 = 80
+let eraQuota = 15              // 5 eras × 15 = 75
 let maxPerArtistInEra = 2      // keep any one era from being one artist's greatest hits
 
 struct ArtistQuota { let name: String; let count: Int }
 let artistQuotas: [ArtistQuota] = [
     ArtistQuota(name: "Taylor Swift", count: 15),
-    ArtistQuota(name: "Olivia Dean", count: 5),
+    ArtistQuota(name: "Olivia Dean", count: 10),
 ]
 let targetCount = eras.count * eraQuota + artistQuotas.map(\.count).reduce(0, +)   // 100
+
+// Artists whose catalog is overwhelmingly rap/hip-hop with spoken-word
+// verses rather than sung R&B — Charlie doesn't want rap vocals in this
+// playlist (2026-08-21), even though the era/genre searches above surface
+// them as "vibe"-adjacent results (verified live: the era and general R&B
+// pools pulled in a lot of hip-hop, mostly via feature credits — "Frontin'
+// (feat. JAY-Z) — Pharrell Williams", "Ms. Jackson — Outkast", "Ray J
+// 'Sexy Can I' featuring Yung Berg" (feature folded into a messy
+// fan-uploaded title with no closing paren), etc.). A feature credit
+// excludes the track same as a primary credit, since a rap verse anywhere
+// in the song is still "people speaking words in it". Necessarily a
+// best-effort, hand-maintained list — extend it if a future rotation still
+// turns up rap tracks.
+let excludedRapArtists: [String] = [
+    "eminem", "dj khaled", "waka flocka flame", "rick ross", "wiz khalifa",
+    "petey pablo", "ludacris", "run dmc", "run-d.m.c.", "dj paul",
+    "ku$h drifter", "millyz", "fivio foreign", "seed of 6ix", "b.o.b",
+    "queen nu", "omeretta the great", "snoop dogg", "t-pain", "roscoe dash",
+    "wale", "styles p", "kanye west", "meek mill", "lil wayne", "50 cent",
+    "jay-z", "fugees", "method man", "mase", "drake",
+    "dr. dre", "queen pen", "slim thug", "ghostface killah", "nate dogg",
+    "trife", "saigon", "ol' dirty bastard", "ol dirty bastard", "odb",
+    "pras michel", "lil' kim", "lil kim", "fat joe", "kardinal offishall",
+    "ja rule", "ying yang twins", "lil jon & the east side boyz", "lil jon",
+    "the east side boyz", "boosie badazz", "remy ma", "terror squad",
+    "fabolous", "flo rida", "styles of beyond", "fort minor", "afroman",
+    "toosii", "kendrick lamar", "cardi b", "doechii", "21 savage", "outkast",
+    "timbaland", "missy elliott", "jabba", "nelly", "busta rhymes", "dmx",
+    "the game", "young jeezy", "jeezy", "t.i.", "gucci mane", "young thug",
+    "future", "migos", "quavo", "offset", "takeoff", "travis scott",
+    "tyler, the creator", "playboi carti", "lil baby", "lil durk", "polo g",
+    "roddy ricch", "dababy", "megan thee stallion", "nicki minaj",
+    "juicy j", "2 chainz", "big sean", "j. cole", "j cole", "common",
+    "talib kweli", "mos def", "yasiin bey", "pusha t", "clipse",
+    "rae sremmurd", "chief keef", "lil uzi vert", "trippie redd",
+    "denzel curry", "vince staples", "earl sweatshirt", "schoolboy q",
+    "ab-soul", "kodak black", "moneybagg yo", "lil tjay", "nba youngboy",
+    "youngboy never broke again", "central cee", "stormzy", "skepta",
+    "headie one", "aitch", "russ millions", "digga d", "cassidy",
+    "will smith", "city high", "the black eyed peas", "black eyed peas",
+    "madcon", "sean paul", "notorious b.i.g.", "biggie", "tupac", "2pac",
+    "eazy-e", "ice cube", "nas", "puff daddy", "p. diddy", "diddy",
+    "sean combs", "black rob", "mark curry", "the fresh prince",
+    "dj jazzy jeff & the fresh prince", "left eye", "yg", "baby bash",
+    "bone thugs-n-harmony", "bone thugs n harmony", "m.i.a.", "will.i.am",
+    "eve", "ll cool j", "coolio", "n.w.a.", "n.w.a", "the notorious b.i.g.",
+    "shaggy", "tyga", "foxy brown", "babytron", "so solid crew", "twista",
+    "chingy", "tee grizzley", "m.o.p.", "mop", "cam'ron", "juelz santana",
+    "freekey zeekey", "mc lyte", "jacques berman webster", "jacques webster",
+    "lil flip", "yung berg", "soulja boy", "soulja boy tell'em", "g-unit",
+    "bubba sparxxx", "whodini", "grandmaster flash",
+    "grandmaster flash & the furious five", "the furious five", "young money",
+    "lil yachty", "chance the rapper", "tory lanez", "childish gambino",
+    "a$ap ferg", "asap ferg", "french montana", "andre 3000", "kodie shane",
+    "chamillionaire", "krayzie bone", "big pun", "big punisher",
+]
+
+/// Splits normalized (diacritic-folded, lowercased) text into words on any
+/// non-alphanumeric boundary — "B.O.B", "Jay-Z"/"Jaÿ-Z", "(feat. X)" and
+/// "featuring X" (no parens at all, seen in messy fan-uploaded titles) all
+/// reduce to the same word stream, so a single whole-word phrase match
+/// against `excludedRapArtists` covers every credit style without needing
+/// to parse "feat."/comma/parenthesis structure at all.
+func words(_ text: String) -> [String] {
+    let normalized = text.folding(options: [.diacriticInsensitive], locale: nil).lowercased()
+    return normalized.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+}
+
+/// True if `phrase`'s words appear as a contiguous run inside `haystack`.
+/// Whole-word matching (not substring) so "nas" never matches inside
+/// "Anastasia" — both are reduced to single words ("nas" vs "anastasia")
+/// that only compare equal to each other, never partially.
+func containsPhrase(_ haystack: [String], _ phrase: [String]) -> Bool {
+    guard !phrase.isEmpty, haystack.count >= phrase.count else { return false }
+    for start in 0...(haystack.count - phrase.count) where Array(haystack[start..<(start + phrase.count)]) == phrase {
+        return true
+    }
+    return false
+}
+
+let excludedRapPhrases: [[String]] = excludedRapArtists.map(words)
+
+func isExcludedRapTrack(_ track: Track) -> Bool {
+    let haystack = words(track.title + " " + track.artistLine)
+    return excludedRapPhrases.contains { containsPhrase(haystack, $0) }
+}
 
 let repoRoot = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent()   // Sources/encore-playlist-tool
@@ -179,7 +268,7 @@ func curate(_ pool: [Track], maxPerArtist: Int) -> [Track] {
     var seenSongs = Set<String>()
     var perArtist: [String: Int] = [:]
     var out: [Track] = []
-    for t in pool where !t.isUnavailable {
+    for t in pool where !t.isUnavailable && !isExcludedRapTrack(t) {
         guard seenIds.insert(t.videoId).inserted else { continue }
         let songKey = t.artistLine.lowercased() + "::" + normalizedTitle(t.title)
         guard seenSongs.insert(songKey).inserted else { continue }
