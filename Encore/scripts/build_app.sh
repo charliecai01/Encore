@@ -53,8 +53,15 @@ if [ -f assets/AppIcon.icns ]; then
     cp assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 fi
 
-codesign --force --sign - "$APP"
-echo "Built $APP"
+# Ad-hoc signing (--sign -) gives every rebuild a throwaway identity with no
+# Team ID, which breaks TCC-gated APIs that key permission off a stable
+# signing identity (e.g. per-app audio capture/routing tools using macOS
+# 14.4's Core Audio process tap — they silently omit ad-hoc-signed apps).
+# Prefer a real installed identity so Encore has a consistent identity across
+# builds; fall back to ad-hoc if none is available (e.g. a fresh machine).
+SIGN_ID=$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 -oE '"[^"]+"' | tr -d '"')
+codesign --force --sign "${SIGN_ID:--}" "$APP"
+echo "Built $APP (signed: ${SIGN_ID:-ad-hoc})"
 
 # Keep the installed copy in /Applications up to date.
 if [ -d "/Applications/Encore.app" ] || [ -w "/Applications" ]; then
