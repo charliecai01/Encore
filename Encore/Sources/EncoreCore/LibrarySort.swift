@@ -25,6 +25,22 @@ public enum ArtistMatch {
         let line = track.artistLine.matchNormalized
         return !line.isEmpty && (page.contains(line) || line.contains(page))
     }
+
+    /// Shelves YouTube returns that Charlie doesn't want shown on an artist
+    /// page (2026-08-20): "Playlists by [name]" (community playlists, low
+    /// signal), "Featured on" (YouTube's own curated playlists), and "From
+    /// your library" — redundant with the "In your playlists & likes"
+    /// section both apps render above the shelves, which has Play/Shuffle
+    /// and full track rows this shelf doesn't. "Fans might also like" (other
+    /// artists) was cut 2026-08-22 — Charlie's call, not useful here.
+    public static func visibleShelves(_ shelves: [Shelf]) -> [Shelf] {
+        shelves.filter { shelf in
+            !shelf.title.hasPrefix("Playlists by")
+                && shelf.title != "Featured on"
+                && shelf.title != "From your library"
+                && shelf.title != "Fans might also like"
+        }
+    }
 }
 
 /// Shared, pure sort/filter logic for library & collection lists, so the macOS

@@ -1,4 +1,33 @@
 import Foundation
+import os
+
+/// Best-effort release year for an album, resolved off its browseId when a
+/// track doesn't already carry one — the common case for anything queued
+/// from a mixed playlist/radio/library rather than the album page itself,
+/// which is the only place YouTube states a year on the row data this app
+/// parses. In-memory only per launch (Charlie, 2026-08-22: mini player
+/// "artist • album • year" line) — cheap enough to refetch, and correctness
+/// matters more than persistence since `Track.year`'s own fallback already
+/// covers the far more common "play from the album" path for free.
+public enum AlbumYear {
+    private static let cache = OSAllocatedUnfairLock<[String: String]>(initialState: [:])
+
+    /// The year if it's already known, without doing any network work.
+    public static func cached(albumId: String) -> String? {
+        let hit = cache.withLock { $0[albumId] }
+        return (hit?.isEmpty ?? true) ? nil : hit
+    }
+
+    /// Fetches the album page and extracts its year, caching the result —
+    /// including a cached miss (empty string), so an album with no stated
+    /// year isn't refetched every time one of its tracks plays.
+    public static func resolve(albumId: String) async -> String? {
+        if let cached = cache.withLock({ $0[albumId] }) { return cached.isEmpty ? nil : cached }
+        let year = (try? await YTM.shared.album(browseId: albumId))?.headerYear(isAlbum: true)
+        cache.withLock { $0[albumId] = year ?? "" }
+        return year
+    }
+}
 
 /// Display logic for album/playlist pages and their rows, shared so macOS and
 /// iOS can't drift. Both apps used to carry their own copy of every function
@@ -28,6 +57,16 @@ public extension CollectionPage {
     func headerArtist(isAlbum: Bool) -> String? {
         guard isAlbum else { return nil }
         return subtitle.subtitleParts.first
+    }
+
+    /// The year an ALBUM page was released — the last "•"-joined subtitle
+    /// part, when it's a plain number ("张学友 • Album • 2004" → "2004").
+    /// nil for playlists/podcasts and for the rare album whose subtitle
+    /// omits a year.
+    func headerYear(isAlbum: Bool) -> String? {
+        guard isAlbum, let last = subtitle.subtitleParts.last, !last.isEmpty,
+              last.allSatisfy(\.isNumber) else { return nil }
+        return last
     }
 }
 
@@ -70,5 +109,38 @@ public extension Track {
     func rowSubtitle(fallbackArtist: String? = nil) -> String {
         [resolvedArtist(fallbackArtist: fallbackArtist), playsText ?? ""]
             .filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    /// A copy with `artistLine` (and, when given, an `artists` ref) filled
+    /// from the album header when this track carries none of its own. Bake
+    /// this in BEFORE queueing (not just at row display) so every consumer
+    /// downstream of the queue — MiniPlayer, Now Playing, the lock-screen/
+    /// Control-Center metadata — shows the same artist the row itself
+    /// showed, instead of reading the still-blank `artistLine` straight off
+    /// the un-fallback-applied Track (Charlie, 2026-08-22: mini player
+    /// showed a title with no artist line under it for album tracks YouTube
+    /// omits the per-track credit on).
+    ///
+    /// `fallbackRef` additionally seeds `artists` — without an id there,
+    /// "tap the artist name to open their page" has a name to show but
+    /// nowhere to navigate to, since that's the only place `openArtist()`
+    /// looks (Charlie, 2026-08-22: "clicking on artist name do not go to
+    /// artist page").
+    func withFallbackArtist(_ fallbackArtist: String?, ref fallbackRef: Ref? = nil) -> Track {
+        guard artistLine.isEmpty else { return self }
+        var copy = self
+        if let fallbackArtist, !fallbackArtist.isEmpty { copy.artistLine = fallbackArtist }
+        if copy.artists.isEmpty, let fallbackRef { copy.artists = [fallbackRef] }
+        return copy
+    }
+
+    /// A copy with `year` filled in when this track doesn't carry one of its
+    /// own — same fallback pattern as `withFallbackArtist`, for the macOS
+    /// mini player's "artist • album • year" line (Charlie, 2026-08-22).
+    func withYear(_ fallbackYear: String?) -> Track {
+        guard year == nil, let fallbackYear, !fallbackYear.isEmpty else { return self }
+        var copy = self
+        copy.year = fallbackYear
+        return copy
     }
 }

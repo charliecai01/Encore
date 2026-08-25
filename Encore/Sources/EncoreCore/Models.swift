@@ -47,6 +47,10 @@ public struct Track: Identifiable, Hashable, Codable {
     /// only ever yields player error 150, so the apps show it dimmed and
     /// unplayable and skip past it when building queues.
     public var isUnavailable: Bool
+    /// Release year as display text (e.g. "2004"). Not present on the row
+    /// itself — album pages carry it once in the header — so this is nil
+    /// until a caller bakes it in via `withYear(_:)` (CollectionDisplay.swift).
+    public var year: String?
 
     public var id: String { videoId }
 
@@ -54,7 +58,7 @@ public struct Track: Identifiable, Hashable, Codable {
                 album: Ref? = nil, durationSeconds: Int? = nil, thumbnailURL: URL? = nil,
                 setVideoId: String? = nil, isEpisode: Bool = false, isVideo: Bool = false,
                 dateText: String? = nil, details: String? = nil, playsText: String? = nil,
-                isUnavailable: Bool = false, isLiked: Bool? = nil) {
+                isUnavailable: Bool = false, isLiked: Bool? = nil, year: String? = nil) {
         self.isLiked = isLiked
         self.videoId = videoId
         self.title = title
@@ -70,6 +74,7 @@ public struct Track: Identifiable, Hashable, Codable {
         self.details = details
         self.playsText = playsText
         self.isUnavailable = isUnavailable
+        self.year = year
     }
 
     // Tolerant decoder so older cached payloads (without the episode fields)
@@ -91,6 +96,7 @@ public struct Track: Identifiable, Hashable, Codable {
         playsText = try? c.decode(String.self, forKey: .playsText)
         isLiked = try? c.decode(Bool.self, forKey: .isLiked)
         isUnavailable = (try? c.decode(Bool.self, forKey: .isUnavailable)) ?? false
+        year = try? c.decode(String.self, forKey: .year)
     }
 
     /// `playsText` parsed to a number, for ranking (e.g. "1.1M plays" → 1_100_000).
@@ -251,17 +257,27 @@ public struct CollectionPage: Codable {
     /// The playlist the library toggle acts on (an `OLAK5uy_…` audio playlist,
     /// which is not always the same as `playlistId`).
     public var libraryTargetPlaylistId: String?
+    /// The billed artist's own Ref (name + channel browseId), when the header
+    /// strapline names one — albums only. Album rows that omit a per-track
+    /// artist (implied by the album) have no `artists` entry of their own, so
+    /// without this, tapping the fallback artist name anywhere downstream
+    /// (mini player, Now Playing) had a name to show but no id to navigate
+    /// to (Charlie, 2026-08-22: "clicking on artist name do not go to artist
+    /// page"). Optional so old cached pages without it still decode.
+    public var headerArtistRef: Ref?
 
     public init(title: String = "", subtitle: String = "", secondSubtitle: String = "",
                 description: String? = nil, thumbnailURL: URL? = nil,
                 tracks: [Track] = [], playlistId: String? = nil,
-                savedToLibrary: Bool? = nil, libraryTargetPlaylistId: String? = nil) {
+                savedToLibrary: Bool? = nil, libraryTargetPlaylistId: String? = nil,
+                headerArtistRef: Ref? = nil) {
         self.title = title
         self.subtitle = subtitle
         self.secondSubtitle = secondSubtitle
         self.description = description
         self.thumbnailURL = thumbnailURL
         self.tracks = tracks
+        self.headerArtistRef = headerArtistRef
         self.playlistId = playlistId
         self.savedToLibrary = savedToLibrary
         self.libraryTargetPlaylistId = libraryTargetPlaylistId

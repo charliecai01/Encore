@@ -14,15 +14,30 @@ struct PlayerBar: View {
     var body: some View {
         VStack(spacing: 0) {
             Rectangle().fill(Theme.stroke).frame(height: 1)
-            HStack(spacing: 16) {
+            ZStack {
+                // trackInfo as an overlay centered on the FULL bar width,
+                // independent of the side controls' widths — flanking it
+                // with Spacers inside the HStack centered it only relative
+                // to transport(340)/rightControls(250), and since those two
+                // aren't equal width that still visibly leaned right
+                // (Charlie, 2026-08-22, twice: "the middle info is not
+                // centered"). This is the only arrangement that's centered
+                // on the bar itself regardless of the side widths.
                 trackInfo
-                    .frame(width: 280, alignment: .leading)
 
-                transport
-                    .frame(maxWidth: .infinity)
-
-                rightControls
-                    .frame(width: 250, alignment: .trailing)
+                HStack(spacing: 16) {
+                    // Controls fixed-width on the left — matches
+                    // music.youtube.com's own layout and gives the
+                    // "artist • album • year" line room to actually show
+                    // instead of clipping at a narrow fixed column
+                    // (Charlie, 2026-08-22: "the entire string is too long
+                    // to see").
+                    transport
+                        .frame(width: 340, alignment: .center)
+                    Spacer(minLength: 12)
+                    rightControls
+                        .frame(width: 250, alignment: .trailing)
+                }
             }
             .padding(.horizontal, 16)
             .frame(height: 86)
@@ -56,11 +71,7 @@ struct PlayerBar: View {
                         .onTapGesture {
                             if let albumId = track.album?.id { nav.go(.album(albumId)) }
                         }
-                    Text(NativeNames.rewriting(track.artistLine,
-                                               artists: track.artists.map(\.name) + [track.artistLine]))
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(Theme.textSecondary)
-                        .lineLimit(1)
+                    TrackInfoSubtitle(track: track)
                         .onTapGesture {
                             if let artist = track.artists.first {
                                 nav.goArtist(id: artist.id, name: artist.name)
@@ -336,6 +347,38 @@ struct PlayerBar: View {
         case ..<0.75: return "speaker.wave.2.fill"
         default: return "speaker.wave.3.fill"
         }
+    }
+}
+
+/// The mini player's second line: "Artist • Album • Year". `track.year` is
+/// already populated when queued from the album page itself; anything queued
+/// from a mixed playlist/radio/library doesn't carry one, so this resolves it
+/// off the album's own browseId in the background and re-renders once it
+/// lands (Charlie, 2026-08-22: "where is the year").
+private struct TrackInfoSubtitle: View {
+    let track: Track
+    @State private var resolvedYear: String?
+
+    var body: some View {
+        Text(subtitle)
+            .font(.system(size: 11.5))
+            .foregroundStyle(Theme.textSecondary)
+            .lineLimit(1)
+            .task(id: track.videoId) {
+                resolvedYear = nil
+                guard track.year == nil, let albumId = track.album?.id else { return }
+                if let cached = AlbumYear.cached(albumId: albumId) {
+                    resolvedYear = cached
+                } else {
+                    resolvedYear = await AlbumYear.resolve(albumId: albumId)
+                }
+            }
+    }
+
+    private var subtitle: String {
+        let artist = NativeNames.rewriting(track.artistLine, artists: track.artists.map(\.name) + [track.artistLine])
+        return [artist, track.album?.name, track.year ?? resolvedYear]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " • ")
     }
 }
 

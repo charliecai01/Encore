@@ -108,6 +108,7 @@ struct PlayerWebHost: UIViewRepresentable {
 
 struct MiniPlayer: View {
     @EnvironmentObject var player: PlayerEngine
+    @EnvironmentObject var nav: Nav
     @ObservedObject private var clock = PlayerClock.shared
     /// Follows the finger during a swipe, then flies the old card fully off
     /// and the new one in from the opposite edge — the same left=next,
@@ -176,6 +177,15 @@ struct MiniPlayer: View {
                             Text(NativeNames.displayCached(player.current?.artistLine ?? ""))
                                 .font(.system(size: 12.5))
                                 .foregroundStyle(Theme.textSecondary).lineLimit(1)
+                                .contentShape(Rectangle())
+                                // Wins over the card's own tap-to-open-Now-Playing
+                                // gesture for touches landing on this label
+                                // specifically (Charlie, 2026-08-22: "clicking on
+                                // artist name do not go to artist page").
+                                .highPriorityGesture(TapGesture().onEnded {
+                                    guard let artist = player.current?.artists.first else { return }
+                                    nav.goArtist(id: artist.id, name: artist.name)
+                                })
                         }
                     }
                     .offset(x: dragOffset)
@@ -222,8 +232,20 @@ struct MiniPlayer: View {
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.stroke))
         }
         .contentShape(Rectangle())
-        .onTapGesture { player.showNowPlaying = true }
-        .gesture(swipeGesture)
+        // A separate `.onTapGesture` + `.gesture(swipeGesture)` don't compose
+        // reliably — the drag recognizer can claim the touch before the tap
+        // gesture resolves, so taps intermittently do nothing instead of
+        // opening Now Playing (Charlie, 2026-08-22: "clicking on artist name
+        // do not go to artist page" — the whole card had stopped opening,
+        // not just that one label). `.exclusively(before:)` makes the
+        // ordering explicit: a plain tap (no movement) always resolves to
+        // TapGesture first; anything that moves past the drag's own
+        // minimumDistance falls through to the swipe.
+        .gesture(
+            TapGesture()
+                .onEnded { player.showNowPlaying = true }
+                .exclusively(before: swipeGesture)
+        )
     }
 }
 

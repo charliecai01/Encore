@@ -347,7 +347,8 @@ public enum P {
 
     public static func headerInfo(from root: JSONValue) -> (title: String, subtitle: String,
                                                      second: String, description: String?,
-                                                     thumb: URL?, playlistId: String?) {
+                                                     thumb: URL?, playlistId: String?,
+                                                     artistRef: Ref?) {
         let header = root.findFirst("musicResponsiveHeaderRenderer")
             ?? root.findFirst("musicDetailHeaderRenderer")
             ?? root.findFirst("musicImmersiveHeaderRenderer")
@@ -355,8 +356,17 @@ public enum P {
 
         let title = header["title"].runsText ?? ""
         var subtitleParts: [String] = []
+        var artistRef: Ref?
         if let strapline = header["straplineTextOne"].runsText {
             subtitleParts.append(strapline)
+            // The strapline artist name is itself a link to the artist's
+            // channel on album pages — grab its browseId so a track with no
+            // per-row artist of its own (implied by the album) still has
+            // somewhere for "tap the artist name" to navigate to.
+            if let browseId = header["straplineTextOne"].runs.first?["navigationEndpoint"]["browseEndpoint"]["browseId"].string,
+               browseId.hasPrefix("UC") {
+                artistRef = Ref(name: strapline, id: browseId)
+            }
         }
         if let sub = header["subtitle"].runsText {
             subtitleParts.append(sub)
@@ -373,7 +383,7 @@ public enum P {
         let thumb = thumbnailURL(in: header["thumbnail"]) ?? thumbnailURL(in: header)
         let playlistId = header.findFirst("watchEndpoint")?["playlistId"].string
             ?? header.findFirst("watchPlaylistEndpoint")?["playlistId"].string
-        return (title, subtitle, second, description, thumb, playlistId)
+        return (title, subtitle, second, description, thumb, playlistId, artistRef)
     }
 
     /// - Parameter albumBrowseId: the album's own browseId. Album rows don't
@@ -386,7 +396,8 @@ public enum P {
         let info = headerInfo(from: root)
         var page = CollectionPage(title: info.title, subtitle: info.subtitle,
                                   secondSubtitle: info.second, description: info.description,
-                                  thumbnailURL: info.thumb)
+                                  thumbnailURL: info.thumb,
+                                  headerArtistRef: isAlbum ? info.artistRef : nil)
 
         let shelf = root.findFirst("musicPlaylistShelfRenderer") ?? root.findFirst("musicShelfRenderer") ?? .null
         page.playlistId = shelf["playlistId"].string ?? info.playlistId

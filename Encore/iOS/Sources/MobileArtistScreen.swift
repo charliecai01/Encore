@@ -63,7 +63,7 @@ struct ArtistScreen: View {
                             }
                         }
                     }
-                    ForEach(page.shelves) { ShelfRow(shelf: $0) }
+                    ForEach(ArtistMatch.visibleShelves(page.shelves)) { ShelfRow(shelf: $0) }
                 } else if loading {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
                 }

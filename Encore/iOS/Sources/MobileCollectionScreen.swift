@@ -82,7 +82,10 @@ struct CollectionScreen: View {
     /// reports it available and it comes straight back — no bookkeeping and
     /// no extra polling needed.
     private func shownTracks(_ page: CollectionPage) -> [Track] {
+        let fallback = headerArtist(of: page)
+        let year = page.headerYear(isAlbum: isAlbum)
         let available = page.tracks.filter { !$0.isUnavailable }
+            .map { $0.withFallbackArtist(fallback, ref: page.headerArtistRef).withYear(year) }
         return TrackSort.apply(available, filter: filter, sort: sort, keepOrder: sort == .recent)
     }
 
@@ -208,7 +211,14 @@ struct CollectionScreen: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if selecting { selectionBar }
+            if selecting {
+                selectionBar
+            } else {
+                // Reserve space for the floating MiniPlayer overlay (MobileRoot),
+                // which sits outside this NavigationStack's safe area and would
+                // otherwise cover the last row(s) of a long track list.
+                Color.clear.frame(height: player.current != nil ? 118 : 58)
+            }
         }
         .navigationTitle(page?.title ?? "").navigationBarTitleDisplayMode(.inline)
         .toolbar {

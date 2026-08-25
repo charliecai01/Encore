@@ -113,7 +113,10 @@ struct CollectionView: View {
         // Unavailable tracks are HIDDEN, not dimmed (Charlie, 2026-08-16).
         // Self-healing: `isUnavailable` is re-read on every load, so a track
         // that stops being greyed out reappears on the next fetch.
+        let fallback = headerArtist(of: page)
+        let year = page.headerYear(isAlbum: isAlbum)
         let available = page.tracks.filter { !$0.isUnavailable }
+            .map { $0.withFallbackArtist(fallback, ref: page.headerArtistRef).withYear(year) }
         return LibrarySort.arrange(available, query: filterText, order: order)
     }
 

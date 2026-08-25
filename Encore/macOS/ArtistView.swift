@@ -59,19 +59,12 @@ struct ArtistView: View {
         .task { await load() }
     }
 
-    /// Shelves YouTube returns that Charlie doesn't want shown here
-    /// (2026-08-20): "Playlists by [name]" (community playlists, low
-    /// signal), "Featured on" (YouTube's own curated playlists), and "From
-    /// your library" — redundant with `librarySection` above, which has
-    /// Play/Shuffle and full track rows this shelf doesn't. The "About"
-    /// section (page.description) is gone too — the Wikidata `artistSummary`
-    /// at the top is Charlie's own "About" now.
+    /// The "About" section (page.description) is gone too — the Wikidata
+    /// `artistSummary` at the top is Charlie's own "About" now. The shelf
+    /// filtering itself lives in EncoreCore.ArtistMatch.visibleShelves so
+    /// iOS gets the same behavior.
     private func visibleShelves(_ page: ArtistPage) -> [Shelf] {
-        page.shelves.filter { shelf in
-            !shelf.title.hasPrefix("Playlists by")
-                && shelf.title != "Featured on"
-                && shelf.title != "From your library"
-        }
+        ArtistMatch.visibleShelves(page.shelves)
     }
 
     private func hero(_ page: ArtistPage) -> some View {
