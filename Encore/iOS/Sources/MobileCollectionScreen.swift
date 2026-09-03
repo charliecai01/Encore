@@ -35,6 +35,9 @@ struct CollectionScreen: View {
     private var sortStorageKey: String { "sort-\(cacheKey)" }
     private var isAlbum: Bool { if case .album = kind { return true }; return false }
     private var isPlaylist: Bool { if case .playlist = kind { return true }; return false }
+    /// Matches the condition that shows the title+subtitle block in the
+    /// scroll content, so the nav bar knows whether to stay blank.
+    private var showsTitleInBody: Bool { !(page?.subtitle.isEmpty ?? true) && !isPlaylist }
 
     /// Artist names credited on this page, for rewriting the header subtitle
     /// and rows to native names. The subtitle arrives pre-joined, so the
@@ -119,15 +122,21 @@ struct CollectionScreen: View {
                     // the tracks down. Art still shows everywhere you PICK a
                     // collection (Home, Library, search) and on the row/now-
                     // playing surfaces.
-                    // The title is already in the nav bar — repeating it here
-                    // just cost a screenful (Charlie, 2026-08-14). Albums keep
-                    // their subtitle line; playlists show nothing at all, so
-                    // the tracks start at the top.
+                    // The nav bar title truncates long album names ("Live
+                    // At..."), so repeat it here in full, right above the
+                    // subtitle line (Charlie, 2026-09-03). Playlists still
+                    // show nothing, so their tracks start at the top.
                     if !page.subtitle.isEmpty, !isPlaylist {
+                        Text(page.title)
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(Theme.textPrimary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 8)
+                            .multilineTextAlignment(.center)
                         // "Jacky Cheung · Album · 2004" → "张学友 · Album · 2004"
                         Text(NativeNames.rewriting(page.subtitle, artists: artistNames(in: page)))
                             .font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
-                            .frame(maxWidth: .infinity).padding(.top, 8)
+                            .frame(maxWidth: .infinity)
                     }
                     let shown = shownTracks(page)
                     SortFilterBar(filter: $filter, sort: $sort,
@@ -181,7 +190,12 @@ struct CollectionScreen: View {
                 Color.clear.frame(height: player.current != nil ? 118 : 58)
             }
         }
-        .navigationTitle(page?.title ?? "").navigationBarTitleDisplayMode(.inline)
+        // Albums show the full title in the scroll content now, above the
+        // subtitle line, so the nav bar stays blank instead of showing a
+        // truncated copy. Playlists get no in-body title, so they keep it
+        // in the nav bar as before.
+        .navigationTitle(showsTitleInBody ? "" : (page?.title ?? ""))
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let page {
                 if selecting {
