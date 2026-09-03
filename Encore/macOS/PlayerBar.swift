@@ -78,6 +78,11 @@ struct PlayerBar: View {
                             }
                         }
                 }
+                // Fixed width, not sized to the title/artist text — a long
+                // song name used to push the heart button and shift the
+                // whole trackInfo block around instead of staying put
+                // (Charlie, 2026-08-31).
+                .frame(width: 260, alignment: .leading)
 
                 Button {
                     player.toggleLike(track)
