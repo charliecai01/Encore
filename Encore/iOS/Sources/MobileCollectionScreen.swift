@@ -171,45 +171,6 @@ struct CollectionScreen: View {
             }
         }
         .background(Theme.bg)
-        // Play/Shuffle back at the TOP, fixed (Charlie, 2026-08-20: "move
-        // play/shuffle button back to the top fix location") — it had been
-        // moved to the bottom on 2026-08-14 over thumb-reach and scroll-away
-        // concerns, then kept there when the 2026-08-18 fix made it stop
-        // covering rows. safeAreaInset(edge: .top) keeps that same "never
-        // covers content" property while sitting at the top: real layout
-        // space, list inset by exactly the bar's height, always visible
-        // without scrolling.
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if !selecting, let page {
-                let shown = shownTracks(page)
-                HStack(spacing: 10) {
-                    Button { player.playCollection(shown, startAt: 0, playlistId: playlistId) } label: {
-                        Label("Play", systemImage: "play.fill").frame(maxWidth: .infinity)
-                    }.buttonStyle(.borderedProminent).tint(Theme.accent)
-                    Button { player.playShuffled(shown, playlistId: playlistId) } label: {
-                        Label("Shuffle", systemImage: "shuffle").frame(maxWidth: .infinity)
-                    }.buttonStyle(.bordered)
-                    // Albums carry a library toggle; playlists don't.
-                    if let saved = page.savedToLibrary, let target = page.libraryTargetPlaylistId {
-                        Button { setSaved(!saved, target: target) } label: {
-                            Image(systemName: saved ? "checkmark" : "plus").frame(minWidth: 28)
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(savingToLibrary)
-                        .accessibilityLabel(saved ? "Remove album from library" : "Save album to library")
-                    }
-                }
-                .controlSize(.large)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-                // Gap before the filter/sort row below (Charlie, 2026-08-20)
-                // — the safeAreaInset content otherwise sat flush against it.
-                .padding(.bottom, 12)
-            }
-        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if selecting {
                 selectionBar
@@ -222,11 +183,56 @@ struct CollectionScreen: View {
         }
         .navigationTitle(page?.title ?? "").navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if page != nil {
-                ToolbarItem(placement: .topBarTrailing) {
-                    if selecting {
+            if let page {
+                if selecting {
+                    ToolbarItem(placement: .topBarTrailing) {
                         Button("Done") { endSelection() }
-                    } else {
+                    }
+                } else {
+                    // Play/Shuffle/Save moved up into the nav bar itself,
+                    // level with the pencil menu (Charlie, 2026-09-02) —
+                    // previously their own row below the title. Declared in
+                    // this order so the pencil, added last, lands rightmost
+                    // (closest to the edge), matching where it always sat.
+                    let shown = shownTracks(page)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { player.playCollection(shown, startAt: 0, playlistId: playlistId) } label: {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 32, height: 32)
+                                .background(Theme.accent, in: Circle())
+                        }
+                        .accessibilityLabel("Play")
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { player.playShuffled(shown, playlistId: playlistId) } label: {
+                            Image(systemName: "shuffle")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Theme.textPrimary)
+                                .frame(width: 30, height: 30)
+                                .background(.ultraThinMaterial, in: Circle())
+                                .overlay(Circle().strokeBorder(Theme.stroke))
+                        }
+                        .accessibilityLabel("Shuffle")
+                    }
+                    // Albums carry a library toggle; playlists don't.
+                    if let saved = page.savedToLibrary, let target = page.libraryTargetPlaylistId {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button { setSaved(!saved, target: target) } label: {
+                                Image(systemName: saved ? "checkmark" : "plus")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .frame(width: 30, height: 30)
+                                    .background(.ultraThinMaterial, in: Circle())
+                                    .overlay(Circle().strokeBorder(Theme.stroke))
+                            }
+                            .disabled(savingToLibrary)
+                            .opacity(savingToLibrary ? 0.5 : 1)
+                            .accessibilityLabel(saved ? "Remove album from library" : "Save album to library")
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
                         // The pencil covers both kinds of editing: picking
                         // songs in bulk (any collection) and the playlist's
                         // own details (your own playlists).
