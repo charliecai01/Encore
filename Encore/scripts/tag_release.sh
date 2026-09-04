@@ -38,16 +38,14 @@ fi
 
 echo "$NEW" > "$VERSION_FILE"
 
-# macOS: the two Info.plist version strings embedded in build_app.sh.
-sed -i '' \
-    -e "s/<key>CFBundleShortVersionString<\/key>\$/<key>CFBundleShortVersionString<\/key>/" \
+# macOS: the two Info.plist version strings embedded in build_app.sh. BSD
+# sed (macOS default) has no GNU `0,/regex/` first-match address, so match
+# each value by the <key> line immediately above it instead.
+sed -i '' -E \
+    "/<key>CFBundleShortVersionString<\/key>/{n;s/<string>$CURRENT<\/string>/<string>$NEW<\/string>/;}" \
     scripts/build_app.sh
-# (sed above is a no-op placeholder for the key line; the value line below is what changes.)
-sed -i '' \
-    -e "0,/<string>$CURRENT<\/string>/{s/<string>$CURRENT<\/string>/<string>$NEW<\/string>/}" \
-    scripts/build_app.sh
-sed -i '' \
-    -e "0,/<string>$CURRENT<\/string>/{s/<string>$CURRENT<\/string>/<string>$NEW<\/string>/}" \
+sed -i '' -E \
+    "/<key>CFBundleVersion<\/key>/{n;s/<string>$CURRENT<\/string>/<string>$NEW<\/string>/;}" \
     scripts/build_app.sh
 
 # iOS: CFBundleShortVersionString / CFBundleVersion in project.yml.
