@@ -22,7 +22,7 @@ build() {
         DEVELOPMENT_TEAM="$TEAM_ID" build
 }
 
-echo "Building EncoreiOS for device $DEVICE_ID…"
+echo "Building EncoreiOS for device $DEVICE_ID …"
 # The developer disk image sometimes fails to mount right after the phone
 # connects — unlock it and retry once.
 if ! build; then
