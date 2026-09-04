@@ -34,8 +34,11 @@ picking up the work without the original chat history.
     ├── Sources/
     │   ├── EncoreCore/                        ← PLATFORM-AGNOSTIC core (Foundation + CryptoKit only)
     │   │   ├── InnerTube.swift                ← low-level YouTube InnerTube API client + SAPISID auth
-    │   │   ├── YTM.swift                      ← high-level API (search/browse/library/queue/lyrics/podcasts/playlist-edit)
-    │   │   ├── Parsers.swift                  ← resilient recursive parsers for InnerTube JSON
+    │   │   ├── YTM.swift + YTM+*.swift         ← high-level API, split into per-area extensions 2026-09-04 (see git log)
+    │   │   ├── Parsers.swift + Parsers+*.swift ← InnerTube JSON parsers, split into per-renderer extensions 2026-09-04
+    │   │   ├── PlaylistID.swift                ← String.strippingPlaylistVLPrefix, deduped 2026-09-04
+    │   │   ├── LookupCache.swift               ← shared name-lookup cache, deduped 2026-09-04
+    │   │   ├── DiskCache.swift                 ← JSON disk cache, moved here from per-platform copies 2026-09-04
     │   │   ├── Models.swift                   ← Track (incl. podcast isEpisode/dateText/details), CardItem, Shelf, CollectionPage…
     │   │   ├── JSONValue.swift                ← dynamic JSON wrapper with findAll/findFirst tree search
     │   │   ├── LibrarySort.swift              ← shared, unit-tested sort/filter for tracks & cards (both apps delegate here)
@@ -61,7 +64,7 @@ picking up the work without the original chat history.
         └── Sources/
             ├── AppMain.swift                  ← @main AppDelegate + PhoneSceneDelegate; AVAudioSession setup
             ├── MobilePlayer.swift             ← iOS PlayerEngine (UIKit port); playback speed, skip 15/30, call-interruption handling
-            ├── MobileServices.swift           ← Theme, DiskCache, PageCache, AuthManager (auto-sign-in), LibraryStore, Nav, Login
+            ├── MobileServices.swift           ← Theme, PageCache (DiskCache now lives in EncoreCore), AuthManager (auto-sign-in), LibraryStore, Nav, Login
             ├── MobileRoot.swift               ← TabView (Home/Search/Library), MiniPlayer, ArtworkView, route destinations
             ├── MobileScreens.swift            ← Home/Search/Library/Collection/Artist/Browse/PodcastScreen + sort (delegates to LibrarySort)
             ├── NowPlayingScreen.swift         ← full-screen now playing for SONGS (Song/Lyrics/Queue)

@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 /// Shows CJK artists under their native name — "张学友" rather than "Jacky
 /// Cheung", "张惠妹" rather than "A-Mei" (Charlie's request, 2026-08-14).
@@ -308,26 +307,12 @@ public enum NativeNames {
     // MARK: - Lookup
 
     /// romanized name → native name ("" = known miss, e.g. every English
-    /// artist). Same scoped async-safe lock ArtistInfo uses; NSLock can't be
-    /// held across an await under the Swift 6 language mode.
-    private static let cache = OSAllocatedUnfairLock<[String: String]>(initialState: [:])
-
-    /// Persisted so the lookups survive relaunches — the answer for a given
-    /// artist never changes, and Charlie prefers storage over spinners.
-    /// The version suffix invalidates everything when the RULES change (v2
-    /// added the romanized-preferred overrides), since old entries were
-    /// computed under the old rules.
-    private static let defaultsKey = "nativeArtistNames.v4"
-
-    private static func loadPersisted() -> [String: String] {
-        UserDefaults.standard.dictionary(forKey: defaultsKey) as? [String: String] ?? [:]
-    }
-
-    private static func persist(_ key: String, _ value: String) {
-        var all = loadPersisted()
-        all[key] = value
-        UserDefaults.standard.set(all, forKey: defaultsKey)
-    }
+    /// artist), persisted so the lookups survive relaunches — the answer for
+    /// a given artist never changes, and Charlie prefers storage over
+    /// spinners. The version suffix invalidates everything when the RULES
+    /// change (v2 added the romanized-preferred overrides), since old entries
+    /// were computed under the old rules.
+    private static let cache = LookupCache(defaultsKey: "nativeArtistNames.v4")
 
     /// The Simplified native name for `name`, or nil if there isn't one (an
     /// English-language artist) or it can't be verified. Cached in memory and
@@ -342,20 +327,19 @@ public enum NativeNames {
         // the cache: a name pinned after a lookup already cached a miss would
         // otherwise keep returning that stale miss forever.
         if let pinned = overrideName(for: name) {
-            cache.withLock { $0[key] = pinned }
+            cache.setMemory(pinned, for: key)
             return pinned
         }
-        if let hit = cache.withLock({ $0[key] }) { return hit.isEmpty ? nil : hit }
-        if let saved = loadPersisted()[key] {
-            cache.withLock { $0[key] = saved }
+        if let hit = cache.memoryValue(for: key) { return hit.isEmpty ? nil : hit }
+        if let saved = cache.diskValue(for: key) {
+            cache.setMemory(saved, for: key)
             return saved.isEmpty ? nil : saved
         }
         // A name that already carries Han needs no network — just take the
         // Han run, so "G.E.M. 鄧紫棋" displays as "邓紫棋".
         if CJK.hasHan(name), let native = hanRun(in: name) {
             let final = overrideName(for: native) ?? native
-            cache.withLock { $0[key] = final }
-            persist(key, final)
+            cache.store(final, for: key)
             return final
         }
 
@@ -392,8 +376,7 @@ public enum NativeNames {
                 resolved = overrideName(for: native) ?? native
             }
         }
-        cache.withLock { $0[key] = resolved }
-        persist(key, resolved)
+        cache.store(resolved, for: key)
         return resolved.isEmpty ? nil : resolved
     }
 
@@ -408,11 +391,7 @@ public enum NativeNames {
     /// Loads the persisted map into memory. Call once at launch so the
     /// synchronous lookups below can answer without touching the network.
     public static func seedFromDisk() {
-        let saved = loadPersisted()
-        guard !saved.isEmpty else { return }
-        cache.withLock { current in
-            for (k, v) in saved where current[k] == nil { current[k] = v }
-        }
+        cache.mergeDiskIntoMemory()
     }
 
     /// The native name if it's ALREADY resolved, without doing any work.
@@ -422,7 +401,7 @@ public enum NativeNames {
         let key = name.trimmingCharacters(in: .whitespaces).lowercased()
         guard !key.isEmpty else { return nil }
         if let pinned = overrideName(for: name) { return pinned }
-        guard let hit = cache.withLock({ $0[key] }) else { return nil }
+        guard let hit = cache.memoryValue(for: key) else { return nil }
         return hit.isEmpty ? nil : hit
     }
 
@@ -471,7 +450,7 @@ public enum NativeNames {
         for name in names {
             let key = name.trimmingCharacters(in: .whitespaces).lowercased()
             guard !key.isEmpty, seen.insert(key).inserted else { continue }
-            if cache.withLock({ $0[key] }) == nil { pending.append(name) }
+            if cache.memoryValue(for: key) == nil { pending.append(name) }
         }
         guard !pending.isEmpty else { return false }
 

@@ -15,30 +15,6 @@ enum Theme {
     static let accent = Color(red: 1.0, green: 0.32, blue: 0.38)
 }
 
-// MARK: - Disk cache
-
-enum DiskCache {
-    static var dir: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Encore", isDirectory: true)
-    }
-
-    static func save<T: Encodable>(_ value: T, as name: String) {
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        guard let data = try? JSONEncoder().encode(value) else { return }
-        try? data.write(to: dir.appendingPathComponent(name))
-    }
-
-    static func load<T: Decodable>(_ type: T.Type, from name: String) -> T? {
-        guard let data = try? Data(contentsOf: dir.appendingPathComponent(name)) else { return nil }
-        return try? JSONDecoder().decode(T.self, from: data)
-    }
-
-    static func remove(_ name: String) {
-        try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
-    }
-}
-
 @MainActor
 final class PageCache {
     static let shared = PageCache()

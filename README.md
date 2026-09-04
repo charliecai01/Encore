@@ -65,8 +65,8 @@ in too.
 Encore/
 ├── Sources/EncoreCore/      # platform-agnostic core — SHARED by both apps
 │   ├── InnerTube.swift      # YouTube Music internal API client (SAPISID cookie auth)
-│   ├── Parsers.swift        # resilient recursive parsers for InnerTube responses
-│   ├── YTM.swift            # high-level API: search/browse/library/queue/lyrics/podcasts
+│   ├── Parsers.swift + Parsers+*.swift  # resilient recursive parsers for InnerTube responses
+│   ├── YTM.swift + YTM+*.swift          # high-level API: search/browse/library/queue/lyrics/podcasts
 │   ├── LibrarySort.swift    # shared, unit-tested sort/filter for tracks & cards
 │   ├── LRCLib.swift         # synced-lyrics fallback provider
 │   └── Models.swift, JSONValue.swift, CJK.swift

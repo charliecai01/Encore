@@ -1,30 +1,6 @@
 import Foundation
 import EncoreCore
 
-/// Simple JSON disk cache under Application Support — performance over
-/// storage, per Charlie's preference.
-enum DiskCache {
-    static var dir: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Encore", isDirectory: true)
-    }
-
-    static func save<T: Encodable>(_ value: T, as name: String) {
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        guard let data = try? JSONEncoder().encode(value) else { return }
-        try? data.write(to: dir.appendingPathComponent(name))
-    }
-
-    static func load<T: Decodable>(_ type: T.Type, from name: String) -> T? {
-        guard let data = try? Data(contentsOf: dir.appendingPathComponent(name)) else { return nil }
-        return try? JSONDecoder().decode(T.self, from: data)
-    }
-
-    static func remove(_ name: String) {
-        try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
-    }
-}
-
 /// Cache of fetched pages so navigation renders instantly; views refresh
 /// contents silently in the background after serving from here. Collection
 /// pages (playlists/albums) persist to disk across launches.

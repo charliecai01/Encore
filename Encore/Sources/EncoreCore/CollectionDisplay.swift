@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 /// Best-effort release year for an album, resolved off its browseId when a
 /// track doesn't already carry one — the common case for anything queued
@@ -10,21 +9,25 @@ import os
 /// matters more than persistence since `Track.year`'s own fallback already
 /// covers the far more common "play from the album" path for free.
 public enum AlbumYear {
-    private static let cache = OSAllocatedUnfairLock<[String: String]>(initialState: [:])
+    private static let cache = LookupCache()
 
     /// The year if it's already known, without doing any network work.
     public static func cached(albumId: String) -> String? {
-        let hit = cache.withLock { $0[albumId] }
-        return (hit?.isEmpty ?? true) ? nil : hit
+        if case .hit(let year) = cache.state(for: albumId) { return year }
+        return nil
     }
 
     /// Fetches the album page and extracts its year, caching the result —
     /// including a cached miss (empty string), so an album with no stated
     /// year isn't refetched every time one of its tracks plays.
     public static func resolve(albumId: String) async -> String? {
-        if let cached = cache.withLock({ $0[albumId] }) { return cached.isEmpty ? nil : cached }
+        switch cache.state(for: albumId) {
+        case .hit(let year): return year
+        case .miss: return nil
+        case .notCached: break
+        }
         let year = (try? await YTM.shared.album(browseId: albumId))?.headerYear(isAlbum: true)
-        cache.withLock { $0[albumId] = year ?? "" }
+        cache.store(year, for: albumId)
         return year
     }
 }

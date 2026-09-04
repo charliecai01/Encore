@@ -95,7 +95,7 @@ Everything reads `PodcastFeature.enabled`:
 | Podcast Now Playing screen (iOS) | `iOS/Sources/PodcastNowPlaying.swift` `NowPlayingSwitcher` | episodes get the song screen |
 | Podcast transport in the player bar (macOS) | `macOS/PlayerBar.swift` `transport` | episodes get the song transport |
 | Mark-as-played button + menu on episode rows (iOS) | `iOS/Sources/MobileScreens.swift` `TrackRowView` | hidden |
-| Episodes inside playlists (e.g. "New Episodes") | `Sources/EncoreCore/YTM.swift` `playlist(id:)` | not parsed, so the playlist reads empty |
+| Episodes inside playlists (e.g. "New Episodes") | `Sources/EncoreCore/YTM+Browse.swift` `playlist(id:)` | not parsed, so the playlist reads empty |
 
 `PodcastFeature.videoEnabled` additionally gates the two video buttons (iOS
 `PodcastNowPlayingScreen`, macOS `PlayerBar`), currently `false` per the bug
