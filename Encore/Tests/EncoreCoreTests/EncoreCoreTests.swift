@@ -201,6 +201,15 @@ final class EncoreCoreTests: XCTestCase {
         XCTAssertEqual(LibrarySort.filter(t, query: "爱").count, 1)
     }
 
+    func testTrackFilterMatchesNativeNameAgainstRomanizedCredit() {
+        // YouTube credits her tracks romanized ("aMEI"), but the row displays
+        // "张惠妹" via NativeNames.displayArtist — the filter must search
+        // that same name, or it silently misses her romanized-credit tracks.
+        let t = [Track(videoId: "x", title: "解脫", artists: [Ref(name: "aMEI")], artistLine: "aMEI")]
+        XCTAssertEqual(LibrarySort.filter(t, query: "张惠妹").count, 1)
+        XCTAssertEqual(LibrarySort.filter(t, query: "aMEI").count, 1)
+    }
+
     // MARK: - LibrarySort: cards
 
     private func sampleCards() -> [CardItem] {

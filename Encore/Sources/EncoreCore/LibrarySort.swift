@@ -74,6 +74,11 @@ public enum LibrarySort {
         return tracks.filter {
             $0.title.matches(normalizedQuery: q)
                 || $0.artistLine.matches(normalizedQuery: q)
+                // Credits come back romanized ("aMEI"), but the row displays
+                // the native name ("张惠妹") via NativeNames — search the
+                // same name the user sees, or a native-name query never
+                // matches a romanized-credit track (Charlie, 2026-09-04).
+                || NativeNames.displayArtist(for: $0).matches(normalizedQuery: q)
                 || ($0.album?.name.matches(normalizedQuery: q) ?? false)
         }
     }
