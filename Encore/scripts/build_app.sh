@@ -16,6 +16,13 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/Encore "$APP/Contents/MacOS/Encore"
 
+# EncoreCore's SwiftPM resource bundle (curated CJK artist-name data,
+# Sources/EncoreCore/Resources) — NativeNames.swift fatal-errors via
+# NSBundle.module if this isn't next to the executable.
+for bundle in .build/release/*.bundle; do
+    [ -d "$bundle" ] && cp -R "$bundle" "$APP/Contents/Resources/"
+done
+
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
