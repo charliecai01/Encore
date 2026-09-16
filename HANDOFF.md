@@ -802,8 +802,8 @@ the first stretch of rows romanized.
   `--dry-run --force` ~8 times against live search results until it
   converged).
 
-  Re-run it anytime — same calendar month is a cached no-op (see below),
-  a new month re-derives and reconciles. `--dry-run` previews without
+  Re-run it anytime — same calendar month is a cached no-op (see below), a
+  new month re-derives and adds on top. `--dry-run` previews without
   touching the account; `--force` bypasses the monthly cache and re-derives
   immediately (needed right after changing the selection rule mid-month, as
   happened here); `--check=<playlistId>` and `--list-playlists` are
@@ -813,15 +813,20 @@ the first stretch of rows romanized.
   so a local launchd job was the only real automation option and he
   preferred none. Rotate it by just asking the next agent to run it.
 
-  **Never removes a track it didn't add itself.** A local gitignored state
-  file (`Encore/.encore-playlist-tool-state.json`) records exactly which
-  videoIds the tool selected last time; only those are ever candidates for
-  removal, and only if this month's rotation dropped them. Anything else in
-  the playlist — hand-added, or from anywhere else — is left alone,
-  permanently. This was a real bug on the first build (reconciling against
-  "whatever's live" instead of "what I previously added" would eventually
-  have deleted hand-added tracks) and is worth keeping if this tool is ever
-  extended to manage another playlist.
+  **Accumulate, don't regenerate — never removes anything on a normal run**
+  (Charlie's call, 2026-09-16, superseding the original reconcile-to-target
+  design below). Each month's rotation only *adds* whatever it picked that
+  isn't already in the live playlist; it never removes a track just because
+  this month's window dropped it. The one deliberate exception is
+  `--restore=<month>`, an explicit "go back to exactly this" command, which
+  still removes tool-managed tracks the restored snapshot doesn't include —
+  same mechanism as before: a local gitignored state file
+  (`Encore/.encore-playlist-tool-state.json`) tracks every videoId the tool
+  has ever selected (`managedEver`), and only those are ever candidates for
+  removal, only during a restore. A hand-added track, or one from any other
+  flow, is never touched by any path. `--purge-unselected` remains a
+  separate, explicit opt-in escape hatch for manually clearing stray tracks;
+  it's unaffected by this change and still never runs automatically.
 
   Two things learned live while standing this up, relevant if `YTM.genre`/
   `YTM.playlist` misbehave again elsewhere:

@@ -25,9 +25,21 @@
 // formula Charlie liked at 100, scaled up.
 //
 // Idempotent by design: finds the playlist by title in the signed-in
-// library. Missing → create + populate. Present → reconcile (add whatever
-// this month's selection is missing, remove whatever it dropped). The same
-// invocation is meant to be re-run monthly.
+// library. Missing → create + populate. Present → additive sync (add
+// whatever this month's selection is missing; never remove a track just
+// because this month's rotation window dropped it). The same invocation is
+// meant to be re-run monthly.
+//
+// Accumulate, don't regenerate (Charlie's call, 2026-09-16): earlier
+// versions of this tool treated "this month's rotation dropped it" as
+// license to remove a track it had previously added — a reconcile-to-target
+// model. Charlie wants the playlist to only ever grow: every month's
+// selection adds on top of everything already there instead of replacing
+// it. `--restore=<month>` is the one deliberate exception — it's an
+// explicit "go back to exactly this" command, so it still removes
+// tool-managed tracks the restored snapshot doesn't include. The manual
+// `--purge-unselected` escape hatch is unaffected either way (opt-in,
+// never run automatically).
 //
 // Stability: the live catalog (search results, genre pages, sub-playlists)
 // is NOT stable across fetches — two calls minutes apart can return
@@ -48,13 +60,15 @@
 // 2026-09-02 after a mid-month rebalance destroyed the only record of the
 // prior selection Charlie liked, with no way back to it.
 //
-// Safety: this tool must never remove a track it didn't add itself — a
-// playlist can carry songs the user put there by hand (or from some other
-// flow), and "not in this month's rotation" is not license to delete them.
-// The same state file records which videoIds THIS TOOL selected last time;
-// only those are candidates for removal on a rotation. Anything else in the
-// playlist — including the cache miss case (no prior snapshot) — is left
-// alone, forever, no matter what.
+// Safety: a normal rotation run never removes anything — not a hand-added
+// track, not even a track this tool selected in some earlier month. The
+// state file's `managedEver` set (every videoId this tool has ever chosen,
+// across the current snapshot and retained history) exists only to support
+// `--restore=<month>`, which is the sole path that still removes tool-
+// managed tracks (to sync exactly to a past selection). Everything else —
+// hand-added tracks, tracks from any other flow, and this tool's own past
+// picks that a later month's rotation didn't re-select — is left alone,
+// forever, on a normal run.
 //
 // Auth: ENCORE_TEST_COOKIE env var, else the local (skip-worktree'd)
 // iOS/Sources/DevCredentials.swift — same lookup as the test suite's
@@ -831,16 +845,15 @@ Task {
             print("Created playlist \(newId).")
         }
 
-        // Reconcile: add what's missing, remove only what WE selected at
-        // some point (this run or any retained past one) and this month's
-        // rotation dropped. A track this tool never selected — hand-added,
-        // or from anywhere else — is never touched. Widened from "just the
-        // immediately-previous snapshot" to "every snapshot the history log
-        // still retains" on 2026-09-02: several forced re-derivations in a
-        // row (each landing on a different live-search-dependent selection)
-        // left earlier runs' picks stranded — untracked by the time the NEXT
-        // run only looked one snapshot back — and they piled up in the live
-        // playlist with no way to clean them out short of hand-editing.
+        // Additive sync: add whatever this month's selection has that isn't
+        // in the live playlist yet. Nothing is ever removed here — that's
+        // the whole point of accumulate-don't-regenerate (2026-09-16). The
+        // only path that still removes tool-managed tracks is
+        // `--restore=<month>` below, via `managedEver` (every videoId this
+        // tool has picked across the current snapshot and retained history —
+        // widened from "just the immediately-previous snapshot" on
+        // 2026-09-02 so a restore can clean out picks from several
+        // in-between runs, not just the last one).
         let managedEver = Set((previousEntry.map { [$0.current] + $0.history } ?? [])
             .flatMap(\.tracks).map(\.videoId))
         let priorIds = Set(priorTracks.map(\.videoId))
@@ -861,10 +874,16 @@ Task {
             }
         }
 
+        // Only a `--restore` run removes anything — it's syncing to an
+        // exact past snapshot, which is a deliberate exception to
+        // accumulate-don't-regenerate. A normal monthly run never reaches
+        // this branch's removal side.
         var removed = 0, removeFailed = 0
-        for t in priorTracks where managedEver.contains(t.videoId) && !chosenIds.contains(t.videoId) {
-            let ok = (try? await ytm.removeFromPlaylist(playlistId: playlistId, videoId: t.videoId, setVideoId: t.setVideoId)) ?? false
-            if ok { removed += 1 } else { removeFailed += 1 }
+        if restoreSnapshot != nil {
+            for t in priorTracks where managedEver.contains(t.videoId) && !chosenIds.contains(t.videoId) {
+                let ok = (try? await ytm.removeFromPlaylist(playlistId: playlistId, videoId: t.videoId, setVideoId: t.setVideoId)) ?? false
+                if ok { removed += 1 } else { removeFailed += 1 }
+            }
         }
 
         saveSnapshot(RotationSnapshot(monthIndex: nowMonth, tracks: chosen.map {
