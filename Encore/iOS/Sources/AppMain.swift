@@ -18,9 +18,13 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Background audio: required for playback to continue when the app is
-        // backgrounded and for the lock-screen Now Playing surface.
+        // backgrounded and for the lock-screen Now Playing surface. Activation
+        // is async — the synchronous setActive(true) blocks the main thread
+        // and triggers an AVAudioSession UI-unresponsiveness warning.
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-        try? AVAudioSession.sharedInstance().setActive(true)
+        DispatchQueue.global(qos: .userInitiated).async {
+            try? AVAudioSession.sharedInstance().setActive(true)
+        }
 
         if let saved = UserDefaults.standard.string(forKey: "lyricsProvider"),
            let provider = LyricsService.Provider(rawValue: saved) {
