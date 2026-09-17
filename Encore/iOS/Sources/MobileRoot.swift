@@ -10,35 +10,11 @@ struct MobileRoot: View {
     @StateObject private var library = LibraryStore.shared
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            TabView(selection: $nav.selectedTab) {
-                // Home is the minimal playlists + albums launcher. It replaced
-                // both the old Home (the Favorite Songs playlist) and the old
-                // Explore shelf feed, which is why there's no Explore tab.
-                NavigationStack(path: $nav.homePath) {
-                    HomeScreen().routeDestinations()
-                }
-                .tabItem { Label("Home", systemImage: "house.fill") }
-                .tag(0)
-
-                NavigationStack(path: $nav.searchPath) {
-                    SearchScreen().routeDestinations()
-                }
-                .tabItem { Label("Search", systemImage: "magnifyingglass") }
-                .tag(1)
-
-                NavigationStack(path: $nav.libraryPath) {
-                    LibraryScreen().routeDestinations()
-                }
-                .tabItem { Label("Library", systemImage: "square.stack.fill") }
-                .tag(2)
-            }
-            .tint(Theme.accent)
-
-            if player.current != nil {
-                MiniPlayer()
-                    .padding(.horizontal, 8)
-                    .padding(.bottom, 49) // sit just above the tab bar
+        Group {
+            if #available(iOS 26.2, *) {
+                modernTabView
+            } else {
+                legacyTabView
             }
         }
         .environmentObject(player)
@@ -72,6 +48,77 @@ struct MobileRoot: View {
         }
         // Hidden player web view, kept in the hierarchy so WebKit keeps audio alive.
         .background(PlayerWebHost().frame(width: 1, height: 1).opacity(0.01))
+    }
+
+    /// iOS 26.2+: the system-managed tab bar that minimizes to an icon on
+    /// scroll (Apple Podcasts/Music-style), with the mini player living in
+    /// its bottom-accessory slot and Search split off into its own floating
+    /// button via `role: .search` — matches the Podcasts screenshot Charlie
+    /// asked to replicate (2026-09-17). `isEnabled:` (not an `if` inside the
+    /// accessory closure) is what keeps the accessory's presence from being
+    /// toggled by content changes — SwiftUI's early-26 betas crashed
+    /// (`_bottomAccessory.displayStyle`) when the accessory's view identity
+    /// flipped between empty/non-empty inside the closure itself.
+    @available(iOS 26.2, *)
+    private var modernTabView: some View {
+        TabView(selection: $nav.selectedTab) {
+            // Home is the minimal playlists + albums launcher. It replaced
+            // both the old Home (the Favorite Songs playlist) and the old
+            // Explore shelf feed, which is why there's no Explore tab.
+            Tab("Home", systemImage: "house.fill", value: 0) {
+                NavigationStack(path: $nav.homePath) {
+                    HomeScreen().routeDestinations()
+                }
+            }
+            Tab("Search", systemImage: "magnifyingglass", value: 1, role: .search) {
+                NavigationStack(path: $nav.searchPath) {
+                    SearchScreen().routeDestinations()
+                }
+            }
+            Tab("Library", systemImage: "square.stack.fill", value: 2) {
+                NavigationStack(path: $nav.libraryPath) {
+                    LibraryScreen().routeDestinations()
+                }
+            }
+        }
+        .tint(Theme.accent)
+        .tabBarMinimizeBehavior(.onScrollDown)
+        .tabViewBottomAccessory(isEnabled: player.current != nil) {
+            MiniPlayerAccessory()
+        }
+    }
+
+    /// Pre-26.2 fallback: manual floating overlay: full-size tab bar always,
+    /// mini player pinned just above it, no scroll-to-minimize.
+    private var legacyTabView: some View {
+        ZStack(alignment: .bottom) {
+            TabView(selection: $nav.selectedTab) {
+                NavigationStack(path: $nav.homePath) {
+                    HomeScreen().routeDestinations()
+                }
+                .tabItem { Label("Home", systemImage: "house.fill") }
+                .tag(0)
+
+                NavigationStack(path: $nav.searchPath) {
+                    SearchScreen().routeDestinations()
+                }
+                .tabItem { Label("Search", systemImage: "magnifyingglass") }
+                .tag(1)
+
+                NavigationStack(path: $nav.libraryPath) {
+                    LibraryScreen().routeDestinations()
+                }
+                .tabItem { Label("Library", systemImage: "square.stack.fill") }
+                .tag(2)
+            }
+            .tint(Theme.accent)
+
+            if player.current != nil {
+                MiniPlayer()
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 49) // sit just above the tab bar
+            }
+        }
     }
 }
 
@@ -239,6 +286,105 @@ struct MiniPlayer: View {
                 .onEnded { player.showNowPlaying = true }
                 .exclusively(before: swipeGesture)
         )
+    }
+}
+
+// MARK: - Mini player (modern tab-bar accessory, iOS 26.2+)
+
+/// Content for `.tabViewBottomAccessory`: the system draws the glass pill
+/// around it, so unlike `MiniPlayer` this has no background/border of its
+/// own. Squeezes down to a single line when the tab bar (and this accessory
+/// with it) minimizes to `.inline`. No swipe-to-skip here — that gesture
+/// would fight the system's own scroll-to-minimize recognizer, so it stays
+/// exclusive to `MiniPlayer` (the legacy overlay and the pre-minimize look).
+@available(iOS 26.2, *)
+struct MiniPlayerAccessory: View {
+    @EnvironmentObject var player: PlayerEngine
+    @ObservedObject private var clock = PlayerClock.shared
+    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
+
+    var body: some View {
+        Group {
+            if placement == .inline {
+                compact
+            } else {
+                expanded
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { player.showNowPlaying = true }
+    }
+
+    private var compact: some View {
+        HStack(spacing: 10) {
+            ArtworkView(url: player.current?.thumbnailURL, corner: 5)
+                .frame(width: 30, height: 30)
+            Text(player.current.map { NativeNames.displayTitle(for: $0) } ?? "")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            Button { player.togglePlay() } label: {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private var expanded: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 12) {
+                ArtworkView(url: player.current?.thumbnailURL, corner: 6)
+                    .frame(width: 44, height: 44)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(player.current.map { NativeNames.displayTitle(for: $0) } ?? "")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary).lineLimit(1)
+                    Text(NativeNames.displayCached(player.current?.artistLine ?? ""))
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.textSecondary).lineLimit(1)
+                }
+                Spacer()
+                Button {
+                    if let t = player.current { player.toggleLike(t) }
+                } label: {
+                    Image(systemName: player.current.map { player.likedIds.contains($0.videoId) } == true
+                          ? "heart.fill" : "heart")
+                        .font(.system(size: 18))
+                        .foregroundStyle(player.current.map { player.likedIds.contains($0.videoId) } == true
+                                         ? Theme.accent : Theme.textSecondary)
+                        .frame(width: 38, height: 44)
+                }
+                .buttonStyle(.plain)
+                Button { player.togglePlay() } label: {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 21, weight: .bold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .frame(width: 42, height: 44)
+                }
+                .buttonStyle(.plain)
+                Button { player.next() } label: {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 17))
+                        .foregroundStyle(Theme.textPrimary)
+                        .frame(width: 38, height: 44)
+                }
+                .buttonStyle(.plain)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Rectangle().fill(.white.opacity(0.12)).frame(height: 3)
+                    Rectangle().fill(Theme.accent)
+                        .frame(width: max(0, geo.size.width * clock.progress), height: 3)
+                }
+            }
+            .frame(height: 3)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
     }
 }
 

@@ -68,6 +68,14 @@ skip-worktree'd `iOS/Sources/DevCredentials.swift`); skips cleanly without one.
 cd Encore && swift run encore-playlist-tool [--dry-run|--force|--check=<playlistId>|--list-playlists]
 ```
 
+**Cut a version tag** (bumps `Encore/VERSION` + macOS Info.plist + iOS
+`project.yml`, commits, tags `vX.Y.Z`, pushes — requires a clean working
+tree):
+```bash
+Encore/scripts/tag_release.sh [major|minor|patch]   # default: patch
+```
+Cut a tag after a meaningful batch of work settles, not after every commit.
+
 ## Architecture
 
 ```
@@ -124,6 +132,12 @@ two-platform app and features are expected to match across both.
 
 ## Working in this repo — key constraints
 
+- **Commit & push to GitHub after every build change** (plain `git`, no `gh`
+  — it isn't installed). **Ship both platforms together**: a change isn't
+  delivered until it's built+installed on macOS *and* the iPhone
+  (`./scripts/build_app.sh && ./scripts/deploy_ios.sh`), even if it visibly
+  touches only one. Batch the deploy across a run of related requests
+  instead of building per feature — see HANDOFF.md §4.
 - **Read [HANDOFF.md](HANDOFF.md) §5 ("Hard-won gotchas") before touching
   playback, session restore, sleep timer, CJK naming, autoplay/radio, or the
   WKWebView bridge** — most of that section documents subtle bugs that were
