@@ -331,7 +331,7 @@ struct MiniPlayerAccessory: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 12)
     }
 
     private var expanded: some View {
@@ -383,8 +383,8 @@ struct MiniPlayerAccessory: View {
             }
             .frame(height: 3)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 }
 
