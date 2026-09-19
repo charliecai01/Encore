@@ -8,29 +8,32 @@ struct RootView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    SidebarView()
-                        .frame(width: 224)
-                    Rectangle()
-                        .fill(Theme.stroke)
-                        .frame(width: 1)
-                    VStack(spacing: 0) {
-                        TopBar()
-                        ContentRouter()
-                    }
-                    .frame(maxWidth: .infinity)
-
-                    // Up Next is pinned — always visible, no close control.
-                    Rectangle()
-                        .fill(Theme.stroke)
-                        .frame(width: 1)
-                    QueuePanel()
-                        .frame(width: 300)
+            // The floating pill bar belongs inside the center column, not as
+            // a full-width row below the whole sidebar/content/queue HStack
+            // — it used to span edge to edge, floating underneath the
+            // sidebar and the Up Next panel too, instead of staying within
+            // the center pane like Podcasts' own bar does (Charlie,
+            // 2026-09-19: "the pill should not extend beyond right and left
+            // pane"). Sidebar and QueuePanel now run the full window height.
+            HStack(spacing: 0) {
+                SidebarView()
+                    .frame(width: 224)
+                Rectangle()
+                    .fill(Theme.stroke)
+                    .frame(width: 1)
+                VStack(spacing: 0) {
+                    TopBar()
+                    ContentRouter()
+                    PlayerBar(nowPlayingExpanded: $player.showNowPlaying)
                 }
-                .frame(maxHeight: .infinity)
+                .frame(maxWidth: .infinity)
 
-                PlayerBar(nowPlayingExpanded: $player.showNowPlaying)
+                // Up Next is pinned — always visible, no close control.
+                Rectangle()
+                    .fill(Theme.stroke)
+                    .frame(width: 1)
+                QueuePanel()
+                    .frame(width: 300)
             }
 
             if player.showNowPlaying {

@@ -11,39 +11,71 @@ struct PlayerBar: View {
     @State private var showVideoSheet = false
     @State private var showEQ = false
 
+    // Floating capsule, matching macOS 27 Podcasts' mini-player pill instead
+    // of the old edge-to-edge bar with a top divider. The icon rows
+    // (transport left, rightControls right) are single-row now — previously
+    // transport stacked its own icons-then-seek VStack inside an 86pt-tall
+    // bar, which centered both side clusters in a box taller than their
+    // content and left them looking inset rather than filling the bar's
+    // height. Pulling the seek/time row out into its own full-width strip
+    // below lets both side clusters sit full-height in the (shorter) top
+    // row, the way Podcasts' left (1x/±15/±30) and right (transcript/queue/
+    // AirPlay/volume) clusters do (Charlie, 2026-09-19: "the left and right
+    // to be full length vertically like macos 27 podcast").
     var body: some View {
-        VStack(spacing: 0) {
-            Rectangle().fill(Theme.stroke).frame(height: 1)
-            ZStack {
-                // trackInfo as an overlay centered on the FULL bar width,
-                // independent of the side controls' widths — flanking it
-                // with Spacers inside the HStack centered it only relative
-                // to transport(340)/rightControls(250), and since those two
-                // aren't equal width that still visibly leaned right
-                // (Charlie, 2026-08-22, twice: "the middle info is not
-                // centered"). This is the only arrangement that's centered
-                // on the bar itself regardless of the side widths.
-                trackInfo
-
-                HStack(spacing: 16) {
-                    // Controls fixed-width on the left — matches
-                    // music.youtube.com's own layout and gives the
-                    // "artist • album • year" line room to actually show
-                    // instead of clipping at a narrow fixed column
-                    // (Charlie, 2026-08-22: "the entire string is too long
-                    // to see").
-                    transport
-                        .frame(width: 340, alignment: .center)
-                    Spacer(minLength: 12)
-                    rightControls
-                        .frame(width: 250, alignment: .trailing)
-                }
+        Group {
+            // Liquid Glass on 26+ (matches Apple Music/Podcasts' own
+            // mini-player material); older systems keep the flat fill
+            // (Charlie, 2026-09-19: "there's liquid glass effect for apple
+            // music mini bar, i want the same").
+            if #available(macOS 26.0, *) {
+                barContent
+                    .glassEffect(.clear, in: Capsule(style: .continuous))
+            } else {
+                barContent
+                    .background(Capsule(style: .continuous).fill(Theme.bgElevated))
+                    .overlay(Capsule(style: .continuous).strokeBorder(Theme.stroke, lineWidth: 1))
             }
-            .padding(.horizontal, 16)
-            .frame(height: 86)
-            .background(Theme.bgElevated)
         }
+        .shadow(color: .black.opacity(0.35), radius: 18, y: 6)
+        .padding(.horizontal, 14)
+        .padding(.top, 6)
+        .padding(.bottom, 12)
         .sheet(isPresented: $showVideoSheet) { PodcastVideoSheet() }
+    }
+
+    // Charlie, 2026-09-19: "keep trying it's not right, you first iteration
+    // was the best" — so the spacing/sizing below (icon gaps, artwork size,
+    // padding) are back to that first pass's numbers. The CONTAINER is not
+    // reverted, though: that first pass used a ZStack with trackInfo
+    // centered on the full bar independently of the side columns' widths
+    // (flanking it with Spacers inside one HStack only centers it relative
+    // to those two columns, and unequal column widths visibly leaned it
+    // right — Charlie, 2026-08-22, twice: "the middle info is not
+    // centered"). That trick only looked fine back then because the bar
+    // still spanned the full window; now that it's confined to the center
+    // pane (see `body`'s comment), trackInfo's independently-centered span
+    // actually overlapped the transport column's own right-aligned icons
+    // (the repeat button was rendering half-behind the artwork). A plain
+    // flexible HStack can't overlap its children — worst case it just
+    // compresses the Spacers and trackInfo drifts slightly off true center,
+    // which is far less noticeable than an icon sitting on top of the
+    // artwork.
+    private var barContent: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 16) {
+                transportIcons
+                    .frame(height: 40)
+                Spacer(minLength: 12)
+                trackInfo
+                Spacer(minLength: 12)
+                rightControls
+                    .frame(height: 40)
+            }
+            seekRow
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
     }
 
     private var trackInfo: some View {
@@ -54,7 +86,7 @@ struct PlayerBar: View {
                 } label: {
                     ZStack {
                         ArtworkView(url: track.thumbnailURL, corner: 6)
-                            .frame(width: 56, height: 56)
+                            .frame(width: 40, height: 40)
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(.white)
@@ -96,7 +128,7 @@ struct PlayerBar: View {
             } else {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Theme.card)
-                    .frame(width: 56, height: 56)
+                    .frame(width: 40, height: 40)
                 Text("Nothing playing")
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.textTertiary)
@@ -104,10 +136,12 @@ struct PlayerBar: View {
         }
     }
 
-    private var transport: some View {
-        VStack(spacing: 7) {
-            // Episodes get the Apple-Podcasts bar (speed · ±15/30 · video);
-            // songs keep shuffle/prev/next/repeat.
+    // Episodes get the Apple-Podcasts bar (speed · ±15/30 · video); songs
+    // keep shuffle/prev/next/repeat. Icons only — the seek/time row used to
+    // live in this same column as a second stacked row (see `seekRow` for
+    // why it moved out to span the full bar instead).
+    private var transportIcons: some View {
+        Group {
             if PodcastFeature.enabled, player.current?.isEpisode == true {
                 HStack(spacing: 18) {
                     speedMenu
@@ -145,22 +179,31 @@ struct PlayerBar: View {
                     }
                 }
             }
-
-            HStack(spacing: 9) {
-                Text(Track.format(seconds: Int(clock.currentTime)))
-                    .font(.system(size: 10.5).monospacedDigit())
-                    .foregroundStyle(Theme.textTertiary)
-                    .frame(width: 40, alignment: .trailing)
-                SeekBar(progress: clock.progress, accent: .white) { fraction in
-                    player.seek(fraction: fraction)
-                }
-                .frame(maxWidth: 480)
-                Text(Track.format(seconds: Int(clock.duration)))
-                    .font(.system(size: 10.5).monospacedDigit())
-                    .foregroundStyle(Theme.textTertiary)
-                    .frame(width: 40, alignment: .leading)
-            }
         }
+    }
+
+    // Pulled out of `transportIcons` into its own row (see that property's
+    // comment) but capped to roughly trackInfo's width and centered — the
+    // VStack in `body` centers children narrower than itself by default —
+    // so it sits under the artwork/title instead of stretching corner to
+    // corner under the transport and rightControls icons too (Charlie,
+    // 2026-09-19: "the sound track width should be the width of center
+    // content, not all across").
+    private var seekRow: some View {
+        HStack(spacing: 9) {
+            Text(Track.format(seconds: Int(clock.currentTime)))
+                .font(.system(size: 10.5).monospacedDigit())
+                .foregroundStyle(Theme.textTertiary)
+                .frame(width: 40, alignment: .trailing)
+            SeekBar(progress: clock.progress, accent: .white) { fraction in
+                player.seek(fraction: fraction)
+            }
+            Text(Track.format(seconds: Int(clock.duration)))
+                .font(.system(size: 10.5).monospacedDigit())
+                .foregroundStyle(Theme.textTertiary)
+                .frame(width: 40, alignment: .leading)
+        }
+        .frame(maxWidth: 340)
     }
 
     /// The "..." menu, mirroring the iOS Now Playing one: jump to the album
