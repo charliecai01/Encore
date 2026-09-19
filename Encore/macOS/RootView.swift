@@ -23,8 +23,22 @@ struct RootView: View {
                     .frame(width: 1)
                 VStack(spacing: 0) {
                     TopBar()
-                    ContentRouter()
-                    PlayerBar(nowPlayingExpanded: $player.showNowPlaying)
+                    // PlayerBar overlays ContentRouter instead of sitting in
+                    // its own row below it — Liquid Glass shows whatever's
+                    // directly behind the pill in the view hierarchy, and a
+                    // reserved row below the content put nothing there,
+                    // which is why the glass looked flat/opaque instead of
+                    // showing the playlist through it (Charlie, 2026-09-19:
+                    // "i cannot see the playlist through the pill"). The
+                    // safeAreaInset keeps scrollable content from ending up
+                    // permanently hidden under the pill's footprint.
+                    ZStack(alignment: .bottom) {
+                        ContentRouter()
+                            .safeAreaInset(edge: .bottom) {
+                                Color.clear.frame(height: 96)
+                            }
+                        PlayerBar(nowPlayingExpanded: $player.showNowPlaying)
+                    }
                 }
                 .frame(maxWidth: .infinity)
 

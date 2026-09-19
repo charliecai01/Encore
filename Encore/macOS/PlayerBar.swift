@@ -87,7 +87,14 @@ struct PlayerBar: View {
             seekRow
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        // Asymmetric on purpose: the icon row was the VStack's first child
+        // with the (shorter) seek row below it, so equal top/bottom padding
+        // left the icons sitting noticeably above the pill's true vertical
+        // center — the seek row's own height pulls the visual middle down
+        // (Charlie, 2026-09-19: "i want this group of button to move down,
+        // ... align to center").
+        .padding(.top, 22)
+        .padding(.bottom, 12)
     }
 
     private var trackInfo: some View {
