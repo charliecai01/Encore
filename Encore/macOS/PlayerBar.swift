@@ -61,16 +61,28 @@ struct PlayerBar: View {
     // compresses the Spacers and trackInfo drifts slightly off true center,
     // which is far less noticeable than an icon sitting on top of the
     // artwork.
+    //
+    // The Spacers used to sit *between* the three clusters (transport -
+    // Spacer - trackInfo - Spacer - rightControls), which greedily ate all
+    // the slack between them — since transport and rightControls are
+    // different natural widths (rightControls carries the volume slider),
+    // that pushed the two side clusters out toward the pill's rounded edges
+    // instead of keeping them close to trackInfo (Charlie, 2026-09-19: "the
+    // left and right side pane are overflow"). Moving both Spacers to the
+    // *outside* of one fixed-spacing inner HStack centers the whole
+    // three-cluster group as a single compact block instead.
     private var barContent: some View {
         VStack(spacing: 6) {
-            HStack(spacing: 16) {
-                transportIcons
-                    .frame(height: 40)
-                Spacer(minLength: 12)
-                trackInfo
-                Spacer(minLength: 12)
-                rightControls
-                    .frame(height: 40)
+            HStack(spacing: 0) {
+                Spacer(minLength: 8)
+                HStack(spacing: 28) {
+                    transportIcons
+                        .frame(height: 40)
+                    trackInfo
+                    rightControls
+                        .frame(height: 40)
+                }
+                Spacer(minLength: 8)
             }
             seekRow
         }
