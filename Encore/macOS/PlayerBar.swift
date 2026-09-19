@@ -29,7 +29,16 @@ struct PlayerBar: View {
             // (Charlie, 2026-09-19: "there's liquid glass effect for apple
             // music mini bar, i want the same").
             if #available(macOS 26.0, *) {
+                // Now that the glass is genuinely transparent, whatever's
+                // scrolling behind it can wash out the icons/text — a
+                // uniform drop shadow on the whole content layer (not just
+                // the capsule) keeps everything legible against a busy
+                // backdrop without hand-tuning every glyph (Charlie,
+                // 2026-09-19: "make each interface bolder because i can
+                // barely see with now being transparent").
                 barContent
+                    .compositingGroup()
+                    .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
                     .glassEffect(.clear, in: Capsule(style: .continuous))
             } else {
                 barContent
@@ -40,7 +49,7 @@ struct PlayerBar: View {
         .shadow(color: .black.opacity(0.35), radius: 18, y: 6)
         .padding(.horizontal, 14)
         .padding(.top, 6)
-        .padding(.bottom, 12)
+        .padding(.bottom, 8)
         .sheet(isPresented: $showVideoSheet) { PodcastVideoSheet() }
     }
 
@@ -71,20 +80,29 @@ struct PlayerBar: View {
     // left and right side pane are overflow"). Moving both Spacers to the
     // *outside* of one fixed-spacing inner HStack centers the whole
     // three-cluster group as a single compact block instead.
+    // seekRow used to be a separate row spanning (and centered on) the
+    // whole bar, independent of trackInfo's own position within the
+    // three-cluster group — so it rarely actually lined up under the
+    // artwork/title above it (Charlie, 2026-09-19: "the progress bar and
+    // song info should align"). Nesting it directly under trackInfo in a
+    // leading-aligned VStack ties its position to trackInfo's, whatever
+    // that ends up being; `alignment: .top` on the outer HStack keeps the
+    // icon clusters level with the artwork/title row instead of centering
+    // on the now-taller trackInfo+seekRow column.
     private var barContent: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 0) {
-                Spacer(minLength: 8)
-                HStack(spacing: 28) {
-                    transportIcons
-                        .frame(height: 40)
+        HStack(alignment: .top, spacing: 0) {
+            Spacer(minLength: 8)
+            HStack(alignment: .top, spacing: 28) {
+                transportIcons
+                    .frame(height: 32)
+                VStack(alignment: .leading, spacing: 4) {
                     trackInfo
-                    rightControls
-                        .frame(height: 40)
+                    seekRow
                 }
-                Spacer(minLength: 8)
+                rightControls
+                    .frame(height: 32)
             }
-            seekRow
+            Spacer(minLength: 8)
         }
         .padding(.horizontal, 20)
         // Asymmetric on purpose: the icon row was the VStack's first child
@@ -93,8 +111,8 @@ struct PlayerBar: View {
         // center — the seek row's own height pulls the visual middle down
         // (Charlie, 2026-09-19: "i want this group of button to move down,
         // ... align to center").
-        .padding(.top, 22)
-        .padding(.bottom, 12)
+        .padding(.top, 14)
+        .padding(.bottom, 8)
     }
 
     private var trackInfo: some View {
@@ -105,7 +123,7 @@ struct PlayerBar: View {
                 } label: {
                     ZStack {
                         ArtworkView(url: track.thumbnailURL, corner: 6)
-                            .frame(width: 40, height: 40)
+                            .frame(width: 34, height: 34)
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(.white)
@@ -116,7 +134,7 @@ struct PlayerBar: View {
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(NativeNames.displayTitle(for: track))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(Theme.textPrimary)
                         .lineLimit(1)
                         .onTapGesture {
@@ -139,7 +157,7 @@ struct PlayerBar: View {
                     player.toggleLike(track)
                 } label: {
                     Image(systemName: player.likedIds.contains(track.videoId) ? "heart.fill" : "heart")
-                        .font(.system(size: 14))
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(player.likedIds.contains(track.videoId)
                                          ? Theme.fallbackAccent : Theme.textSecondary)
                 }
@@ -147,9 +165,9 @@ struct PlayerBar: View {
             } else {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Theme.card)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 34, height: 34)
                 Text("Nothing playing")
-                    .font(.system(size: 12.5))
+                    .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(Theme.textTertiary)
             }
         }

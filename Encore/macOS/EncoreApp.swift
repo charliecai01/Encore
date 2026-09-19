@@ -18,11 +18,17 @@ struct EncoreApp: App {
                 .environmentObject(nav)
                 .environmentObject(library)
                 // Min width fits sidebar (224) + the content column's natural
-                // minimum (the album/playlist header: 212 artwork +
-                // Play/Shuffle/Radio/Edit buttons ≈ 730) + the pinned Up Next
-                // pane (300) + dividers, so neither edge clips at the smallest
-                // window size. Verified empirically at this width.
-                .frame(minWidth: 1264, minHeight: 680)
+                // minimum + the pinned Up Next pane (300) + dividers, so
+                // neither edge clips at the smallest window size. The
+                // content column's own minimum jumped when the mini player
+                // became a floating pill with a centered transport/
+                // trackInfo/rightControls cluster (~900pt, vs. the ~730pt
+                // the old edge-to-edge bar needed) — at the old 1264 the
+                // sidebar rendered clipped down to a sliver of its 224pt
+                // width instead of the window just refusing to shrink that
+                // far (Charlie, 2026-09-19: "the left and right pane is
+                // only half visible"). Verified empirically at this width.
+                .frame(minWidth: 1550, minHeight: 680)
                 .preferredColorScheme(.dark)
                 .task { await auth.bootstrap() }
         }
