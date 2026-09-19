@@ -92,7 +92,7 @@ struct PlayerBar: View {
     private var barContent: some View {
         HStack(alignment: .top, spacing: 0) {
             Spacer(minLength: 8)
-            HStack(alignment: .top, spacing: 28) {
+            HStack(alignment: .top, spacing: 18) {
                 transportIcons
                     .frame(height: 32)
                 VStack(alignment: .leading, spacing: 4) {
@@ -150,8 +150,10 @@ struct PlayerBar: View {
                 // Fixed width, not sized to the title/artist text — a long
                 // song name used to push the heart button and shift the
                 // whole trackInfo block around instead of staying put
-                // (Charlie, 2026-08-31).
-                .frame(width: 260, alignment: .leading)
+                // (Charlie, 2026-08-31). Narrower than it used to be (260)
+                // to shrink the pill's minimum width (Charlie, 2026-09-19:
+                // "narrow the center content so the window is less wide").
+                .frame(width: 190, alignment: .leading)
 
                 Button {
                     player.toggleLike(track)
@@ -198,7 +200,7 @@ struct PlayerBar: View {
                     }
                 }
             } else {
-                HStack(spacing: 22) {
+                HStack(spacing: 18) {
                     ControlButton(icon: "shuffle", size: 13,
                                   active: player.shuffleOn) {
                         player.toggleShuffle()
@@ -240,7 +242,7 @@ struct PlayerBar: View {
                 .foregroundStyle(Theme.textTertiary)
                 .frame(width: 40, alignment: .leading)
         }
-        .frame(maxWidth: 340)
+        .frame(maxWidth: 266)
     }
 
     /// The "..." menu, mirroring the iOS Now Playing one: jump to the album
@@ -349,7 +351,7 @@ struct PlayerBar: View {
     }
 
     private var rightControls: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 11) {
             trackActionsMenu
             ControlButton(icon: "square.and.arrow.up", size: 14) {
                 player.copyCurrentLink()
@@ -382,10 +384,7 @@ struct PlayerBar: View {
                 SeekBar(progress: player.volume, accent: .white) { fraction in
                     player.volume = fraction
                 }
-                .frame(width: 84)
-            }
-            ControlButton(icon: "chevron.up", size: 13) {
-                nowPlayingExpanded = true
+                .frame(width: 64)
             }
         }
     }

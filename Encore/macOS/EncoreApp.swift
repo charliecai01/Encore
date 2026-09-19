@@ -22,13 +22,15 @@ struct EncoreApp: App {
                 // neither edge clips at the smallest window size. The
                 // content column's own minimum jumped when the mini player
                 // became a floating pill with a centered transport/
-                // trackInfo/rightControls cluster (~900pt, vs. the ~730pt
-                // the old edge-to-edge bar needed) — at the old 1264 the
+                // trackInfo/rightControls cluster — at the old 1264 the
                 // sidebar rendered clipped down to a sliver of its 224pt
                 // width instead of the window just refusing to shrink that
                 // far (Charlie, 2026-09-19: "the left and right pane is
-                // only half visible"). Verified empirically at this width.
-                .frame(minWidth: 1550, minHeight: 680)
+                // only half visible"). Narrowed back down from 1550 by
+                // trimming the pill's own fixed widths/spacing (Charlie:
+                // "narrow the center content so the window is less wide").
+                // Verified empirically at this width.
+                .frame(minWidth: 1380, minHeight: 680)
                 .preferredColorScheme(.dark)
                 .task { await auth.bootstrap() }
         }
