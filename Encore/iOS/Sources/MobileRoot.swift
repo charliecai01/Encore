@@ -300,8 +300,50 @@ struct MiniPlayer: View {
 @available(iOS 26.2, *)
 struct MiniPlayerAccessory: View {
     @EnvironmentObject var player: PlayerEngine
-    @ObservedObject private var clock = PlayerClock.shared
     @Environment(\.tabViewBottomAccessoryPlacement) private var placement
+    /// Restores the swipe-to-skip gesture the legacy `MiniPlayer` has
+    /// always had — this accessory shipped without it on the theory that a
+    /// horizontal drag here would fight the system's vertical
+    /// scroll-to-minimize recognizer on the tab view's content, but that
+    /// recognizer lives on the scrolling content, not on this fixed
+    /// bottom-accessory view, so a same-axis conflict never actually
+    /// applies here. Charlie, 2026-09-19, after it shipped: "the ios mini
+    /// bar swipe left and right is gone" / "that was a feature before."
+    @State private var dragOffset: CGFloat = 0
+
+    private var swipeGesture: some Gesture {
+        DragGesture(minimumDistance: 24, coordinateSpace: .local)
+            .onChanged { v in
+                guard abs(v.translation.width) > abs(v.translation.height) else { return }
+                dragOffset = v.translation.width
+            }
+            .onEnded { v in
+                guard abs(v.translation.width) > abs(v.translation.height) else {
+                    withAnimation(.spring(duration: 0.25)) { dragOffset = 0 }
+                    return
+                }
+                if v.translation.width < -60 {
+                    completeSwipe(next: true)
+                } else if v.translation.width > 60 {
+                    completeSwipe(next: false)
+                } else {
+                    withAnimation(.spring(duration: 0.25)) { dragOffset = 0 }
+                }
+            }
+    }
+
+    private func completeSwipe(next: Bool) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let width: CGFloat = 420
+        withAnimation(.easeIn(duration: 0.18)) {
+            dragOffset = next ? -width : width
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            if next { player.next() } else { player.previous() }
+            dragOffset = next ? width : -width
+            withAnimation(.easeOut(duration: 0.22)) { dragOffset = 0 }
+        }
+    }
 
     var body: some View {
         Group {
@@ -312,17 +354,29 @@ struct MiniPlayerAccessory: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { player.showNowPlaying = true }
+        // Same ordering fix as `MiniPlayer`: a separate onTapGesture +
+        // .gesture(swipe) don't compose reliably, so make it explicit — a
+        // plain tap always resolves first, anything past the drag's
+        // minimumDistance falls through to the swipe.
+        .gesture(
+            TapGesture()
+                .onEnded { player.showNowPlaying = true }
+                .exclusively(before: swipeGesture)
+        )
     }
 
     private var compact: some View {
         HStack(spacing: 10) {
-            ArtworkView(url: player.current?.thumbnailURL, corner: 5)
-                .frame(width: 30, height: 30)
-            Text(player.current.map { NativeNames.displayTitle(for: $0) } ?? "")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Theme.textPrimary)
-                .lineLimit(1)
+            HStack(spacing: 10) {
+                ArtworkView(url: player.current?.thumbnailURL, corner: 5)
+                    .frame(width: 30, height: 30)
+                Text(player.current.map { NativeNames.displayTitle(for: $0) } ?? "")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+            }
+            .offset(x: dragOffset)
+            .opacity(1 - min(1, abs(dragOffset) / 120))
             Spacer(minLength: 4)
             Button { player.togglePlay() } label: {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
@@ -334,11 +388,20 @@ struct MiniPlayerAccessory: View {
         .padding(.horizontal, 12)
     }
 
+    // The artwork's corner radius (9) is deliberately close to the capsule's
+    // own curvature at this height, and it gets extra leading inset beyond
+    // the rest of the row's padding — a 44pt square with only a slight round
+    // sat close enough to the pill's much-rounder corner that it visibly
+    // poked out past the capsule's edge instead of looking contained in it
+    // (Charlie, 2026-09-18). No progress bar here (unlike the legacy
+    // `MiniPlayer` overlay) — this accessory's pill never rendered one
+    // regardless of layout, so it was just dead space.
     private var expanded: some View {
-        VStack(spacing: 6) {
+        HStack(spacing: 12) {
             HStack(spacing: 12) {
-                ArtworkView(url: player.current?.thumbnailURL, corner: 6)
+                ArtworkView(url: player.current?.thumbnailURL, corner: 9)
                     .frame(width: 44, height: 44)
+                    .padding(.leading, 4)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(player.current.map { NativeNames.displayTitle(for: $0) } ?? "")
                         .font(.system(size: 15, weight: .semibold))
@@ -347,41 +410,35 @@ struct MiniPlayerAccessory: View {
                         .font(.system(size: 12.5))
                         .foregroundStyle(Theme.textSecondary).lineLimit(1)
                 }
-                Spacer()
-                Button {
-                    if let t = player.current { player.toggleLike(t) }
-                } label: {
-                    Image(systemName: player.current.map { player.likedIds.contains($0.videoId) } == true
-                          ? "heart.fill" : "heart")
-                        .font(.system(size: 18))
-                        .foregroundStyle(player.current.map { player.likedIds.contains($0.videoId) } == true
-                                         ? Theme.accent : Theme.textSecondary)
-                        .frame(width: 38, height: 44)
-                }
-                .buttonStyle(.plain)
-                Button { player.togglePlay() } label: {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 21, weight: .bold))
-                        .foregroundStyle(Theme.textPrimary)
-                        .frame(width: 42, height: 44)
-                }
-                .buttonStyle(.plain)
-                Button { player.next() } label: {
-                    Image(systemName: "forward.fill")
-                        .font(.system(size: 17))
-                        .foregroundStyle(Theme.textPrimary)
-                        .frame(width: 38, height: 44)
-                }
-                .buttonStyle(.plain)
             }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Rectangle().fill(.white.opacity(0.12)).frame(height: 3)
-                    Rectangle().fill(Theme.accent)
-                        .frame(width: max(0, geo.size.width * clock.progress), height: 3)
-                }
+            .offset(x: dragOffset)
+            .opacity(1 - min(1, abs(dragOffset) / 120))
+            Spacer()
+            Button {
+                if let t = player.current { player.toggleLike(t) }
+            } label: {
+                Image(systemName: player.current.map { player.likedIds.contains($0.videoId) } == true
+                      ? "heart.fill" : "heart")
+                    .font(.system(size: 18))
+                    .foregroundStyle(player.current.map { player.likedIds.contains($0.videoId) } == true
+                                     ? Theme.accent : Theme.textSecondary)
+                    .frame(width: 38, height: 44)
             }
-            .frame(height: 3)
+            .buttonStyle(.plain)
+            Button { player.togglePlay() } label: {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 21, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .frame(width: 42, height: 44)
+            }
+            .buttonStyle(.plain)
+            Button { player.next() } label: {
+                Image(systemName: "forward.fill")
+                    .font(.system(size: 17))
+                    .foregroundStyle(Theme.textPrimary)
+                    .frame(width: 38, height: 44)
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
