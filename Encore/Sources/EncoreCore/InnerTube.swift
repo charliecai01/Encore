@@ -112,6 +112,8 @@ public final class InnerTube: @unchecked Sendable {
                      idempotent: Bool = true) async throws -> JSONValue {
         let attempts = idempotent ? max(1, maxAttempts) : 1
         var attempt = 0
+        let started = Date()
+        let tag = "\(endpoint)\(Self.describe(body)) [\(client)]"
         while true {
             attempt += 1
             do {
@@ -119,18 +121,38 @@ public final class InnerTube: @unchecked Sendable {
                 let req = try makeRequest(endpoint: endpoint, body: body, client: client, query: query)
                 let (data, response) = try await session.data(for: req)
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                if status == 200 { return JSONValue.parse(data) }
+                if status == 200 {
+                    let ms = Int(Date().timeIntervalSince(started) * 1000)
+                    Log.net.notice("\(tag) -> 200 (\(data.count)B, \(ms)ms" + (attempt > 1 ? ", attempt \(attempt)" : "") + ")")
+                    return JSONValue.parse(data)
+                }
                 if Self.isRetryableStatus(status), attempt < attempts {
+                    Log.net.error("\(tag) -> \(status), retrying (attempt \(attempt)/\(attempts))")
                     try await sleepBeforeRetry(attempt)
                     continue
                 }
                 let snippet = String(data: data.prefix(300), encoding: .utf8) ?? ""
+                Log.net.error("\(tag) -> \(status) (final, attempt \(attempt)/\(attempts)): \(snippet)")
                 throw InnerTubeError.badStatus(status, snippet)
             } catch let error as URLError where Self.isTransient(error) && attempt < attempts {
+                Log.net.error("\(tag) transient error \(error.code.rawValue), retrying (attempt \(attempt)/\(attempts))")
                 try await sleepBeforeRetry(attempt)
                 continue
+            } catch let error as URLError {
+                Log.net.error("\(tag) -> \(error.code.rawValue) \(error.localizedDescription) (final, attempt \(attempt)/\(attempts))")
+                throw error
             }
         }
+    }
+
+    /// Pull the identifying field out of a request body for log lines — plain
+    /// `"browse"` is useless when every library/home/artist/album call shares
+    /// that one endpoint name.
+    private static func describe(_ body: [String: Any]) -> String {
+        for key in ["browseId", "playlistId", "videoId", "query", "input", "continuation"] {
+            if let value = body[key] as? String { return " \(key)=\(value)" }
+        }
+        return ""
     }
 
     private func makeRequest(endpoint: String, body: [String: Any],

@@ -27,6 +27,7 @@ final class AuthManager: ObservableObject {
         InnerTube.shared.cookieHeader = header.isEmpty ? nil : header
         if isSignedIn != hasAuth {
             isSignedIn = hasAuth
+            Log.auth.notice("session \(hasAuth ? "signed in" : "signed out") (\(relevant.count) youtube.com cookies)")
         }
     }
 
@@ -62,8 +63,12 @@ final class AuthManager: ObservableObject {
             await store.setCookie(cookie)
             count += 1
         }
-        guard count > 0 else { return false }
+        guard count > 0 else {
+            Log.auth.error("importCookies: no parseable cookie pairs in pasted text")
+            return false
+        }
         await refresh()
+        Log.auth.notice("importCookies: imported \(count) cookies, signedIn=\(isSignedIn)")
         if isSignedIn {
             PlayerEngine.shared.reloadSite()
             LibraryStore.shared.invalidate()
@@ -72,6 +77,7 @@ final class AuthManager: ObservableObject {
     }
 
     func signOut() async {
+        Log.auth.notice("signOut")
         let store = WKWebsiteDataStore.default()
         let records = await store.dataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes())
         let targets = records.filter {
@@ -333,7 +339,10 @@ final class LibraryStore: ObservableObject {
         // transient cold-launch failure left the store (sidebar, add-to-
         // playlist menus) empty for the whole session.
         let fetched = (try? await YTM.shared.libraryPlaylists()) ?? []
-        guard !fetched.isEmpty else { return }
+        guard !fetched.isEmpty else {
+            Log.library.error("loadIfNeeded: libraryPlaylists() returned empty — not latching `loaded`, will retry")
+            return
+        }
         loaded = true
         playlists = applyCustomOrder(fetched)
         // Neither depends on the other, so fetch them concurrently rather
@@ -424,7 +433,10 @@ final class LibraryStore: ObservableObject {
                     }
                 }
                 for await (id, page) in group {
-                    guard let page else { continue }
+                    guard let page else {
+                        Log.library.error("fetchAllKnownTracks: playlist \(id) failed to fetch — dropped from this pass")
+                        continue
+                    }
                     PageCache.shared.collections["playlist-\(id)"] = page
                     all.append(contentsOf: page.tracks)
                 }
@@ -432,7 +444,9 @@ final class LibraryStore: ObservableObject {
         }
 
         var seen = Set<String>()
-        return all.filter { seen.insert($0.videoId).inserted }
+        let deduped = all.filter { seen.insert($0.videoId).inserted }
+        Log.library.notice("fetchAllKnownTracks: \(deduped.count) tracks across \(ids.count) playlists + liked songs")
+        return deduped
     }
 
     private var discoverCache: [Track]?
@@ -457,6 +471,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func invalidate() {
+        Log.library.notice("invalidate: clearing library caches")
         loaded = false
         playlists = []
         albums = []

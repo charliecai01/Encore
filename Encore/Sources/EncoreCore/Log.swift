@@ -43,6 +43,11 @@ public enum Log {
     /// Playback-engine lifecycle: session restore, first play, web-player engage
     /// decisions, state transitions, queue advance.
     public static let player = LogCategory("player")
-    /// InnerTube networking (reserved for future tracing).
+    /// InnerTube networking: every request's endpoint/status/timing, retries,
+    /// and final failures.
     public static let net = LogCategory("net")
+    /// Sign-in/sign-out, cookie capture, session validity.
+    public static let auth = LogCategory("auth")
+    /// Library/queue/playlist mutations and disk/page cache behavior.
+    public static let library = LogCategory("library")
 }

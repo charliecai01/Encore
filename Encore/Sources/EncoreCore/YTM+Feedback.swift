@@ -36,7 +36,9 @@ extension YTM {
             "playlistId": pid,
             "actions": [["action": "ACTION_ADD_VIDEO", "addedVideoId": videoId]],
         ], idempotent: false)
-        return succeeded(r)
+        let ok = succeeded(r)
+        if !ok { Log.library.error("addToPlaylist \(pid) videoId=\(videoId): server returned non-success status") }
+        return ok
     }
 
     public func removeFromPlaylist(playlistId: String, videoId: String, setVideoId: String?) async throws -> Bool {
@@ -47,7 +49,9 @@ extension YTM {
             "playlistId": pid,
             "actions": [action],
         ], idempotent: false)
-        return succeeded(r)
+        let ok = succeeded(r)
+        if !ok { Log.library.error("removeFromPlaylist \(pid) videoId=\(videoId): server returned non-success status") }
+        return ok
     }
 
     /// Rename / re-describe / re-scope an owned playlist. Pass nil to leave a
@@ -63,7 +67,9 @@ extension YTM {
         if let privacy { actions.append(["action": "ACTION_SET_PLAYLIST_PRIVACY", "playlistPrivacy": privacy]) }
         guard !actions.isEmpty else { return true }
         let r = try await net.post("browse/edit_playlist", body: ["playlistId": pid, "actions": actions], idempotent: false)
-        return succeeded(r)
+        let ok = succeeded(r)
+        if !ok { Log.library.error("editPlaylist \(pid): server returned non-success status") }
+        return ok
     }
 
     /// Delete an owned playlist. **Irreversible** — YouTube Music has no trash
@@ -73,8 +79,9 @@ extension YTM {
         let r = try await net.post("playlist/delete", body: ["playlistId": pid], idempotent: false)
         // A successful delete returns a command/status payload; treat an
         // explicit failure status as the only failure signal.
-        if let status = r["status"].string { return status.contains("SUCCEEDED") }
-        return r.exists
+        let ok = r["status"].string.map { $0.contains("SUCCEEDED") } ?? r.exists
+        Log.library.notice("deletePlaylist \(pid): \(ok ? "succeeded" : "FAILED")")
+        return ok
     }
 
     /// Flattened radio pools seeded from the given videoIds (deduped by the
