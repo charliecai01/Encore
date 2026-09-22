@@ -364,6 +364,35 @@ app.
   at `restoreSeekTime ?? currentTime` — it used to pass `0`, restarting the
   song from the top on every mid-song recovery. Both engines.
   **Don't reintroduce a bare `?? 0` there, and don't drop the re-arm.**
+- **"Plays a 0.1ms sound randomly" = the force-pause above still had an
+  audible gap (fixed 2026-09-22).** The `state=1` → force-pause fix immediately
+  above stops the wrong track from *staying* on, but the pause itself is a
+  round trip: the site's `<video>` already started making sound the instant
+  `onStateChange` fired, and only THEN did the message cross the JS bridge to
+  native, which called back into JS with `pause()` — two IPC hops during which
+  real audio was live. Caught live in the macOS log (`log show --predicate
+  'subsystem == "dev.charlie.encore"'`): the web content process reload-
+  recovery loop (previous gotcha) was landing on a paused session every few
+  minutes, and every single occurrence showed `state=1` immediately followed
+  by `state=2` ~50–150ms later — a real, audible blip, "random" because it
+  tracks whenever the content process happens to die, not anything the user
+  does. Fix: the injected controller now carries its own `suppressed` flag
+  (`window.__encore.suppress(bool)`, starts `true` to match native's default),
+  and the `onStateChange` handler calls `pauseVideo()` **synchronously, in the
+  same tick**, before it even sends the `state` event over the bridge — no
+  round trip. Native mirrors `sleepStopActive`/`suppressSiteAutoplay` into the
+  page via `didSet` on both flags (`pushSuppressState()`) so every future call
+  site stays in sync automatically; the old native-side pause-on-`state=1`
+  remains as a backup for the brief window before a freshly loaded page's
+  first `suppress()` call lands. The `state` bridge message now carries
+  `selfPaused` for diagnosis if this recurs — a log line with `selfPaused=true`
+  means the page caught it. Both engines (`PlayerEngine.swift` macOS,
+  `MobilePlayer.swift`/`+Internals.swift`/`+Bridge.swift`/`+Scripts.swift`
+  iOS). **The web content process itself was dying/reloading unusually often
+  in that session (4 times in under an hour on macOS, where there's supposedly
+  no memory-pressure jettisoning) — not fixed here, just no longer audible.**
+  If reload frequency turns out to matter on its own, `checkPageLiveness`/
+  `PageLiveness.deadAfter` (15s) is where to start.
 - **Weak cellular: never reload a BUFFERING stream (fixed 2026-08-05).**
   Charlie's read was right — iOS is fine on wifi and bad on poor cell, and
   the Mac (always wifi) is fine because the macOS engine has **no stall
