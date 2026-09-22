@@ -26,7 +26,8 @@ extension PlayerEngine {
             }
         case "ready":
             playerReady = true
-            Log.player.notice("ready: loadedOnce=\(self.loadedOnce) current=\(self.current?.videoId ?? "nil")")
+            Log.player.notice("ready: loadedOnce=\(self.loadedOnce) current=\(self.current?.videoId ?? "nil") suppress=\(self.sleepStopActive || self.suppressSiteAutoplay)")
+            pushSuppressState()
             applyEqualizer()
             if loadedOnce, let track = current {
                 // Re-engage at where we actually were: a recovery reload mid-song
@@ -58,10 +59,17 @@ extension PlayerEngine {
             }
         case "state":
             let state = body["data"] as? Int ?? -1
+            let selfPaused = body["selfPaused"] as? Bool ?? false
             isBuffering = (state == 3)
-            Log.player.notice("state=\(state) vid=\(body["vid"] as? String ?? "nil") current=\(self.current?.videoId ?? "nil") suppress=\(self.suppressSiteAutoplay)")
+            Log.player.notice("state=\(state) vid=\(body["vid"] as? String ?? "nil") current=\(self.current?.videoId ?? "nil") suppress=\(self.suppressSiteAutoplay) selfPaused=\(selfPaused)")
             switch state {
             case 1:
+                // The page's own onStateChange hook already tried to
+                // self-pause synchronously (selfPaused above) the instant
+                // this fired, before this message even crossed the bridge —
+                // this is the backup in case that raced a page that hadn't
+                // received suppress(true) yet (e.g. the first tick after a
+                // reload).
                 if sleepStopActive || suppressSiteAutoplay {
                     js("window.__encore && __encore.pause()")
                     isPlaying = false

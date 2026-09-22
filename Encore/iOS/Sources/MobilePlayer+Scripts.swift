@@ -86,6 +86,14 @@ extension PlayerEngine {
       // Bumped by every ensure() so an older load's watchdog can't fight a
       // newer one (e.g. the user pressing next while a watchdog is running).
       var encoreGen = 0;
+      // Mirrors native sleepStopActive/suppressSiteAutoplay (pushed via
+      // __encore.suppress()). Starts true (safe default, matching native's
+      // own default) so a freshly (re)loaded page never lets the site's
+      // auto-resume slip out audibly before native's first suppress() call
+      // lands. Checked SYNCHRONOUSLY inside the onStateChange handler below —
+      // no round trip to native — to close the audible-blip window that
+      // caused "plays a 0.1ms sound randomly" (2026-09-22).
+      var suppressed = true;
       function applyEncoreMeta() {
         if (!__encoreMeta || !('mediaSession' in navigator)) return;
         try {
@@ -149,6 +157,13 @@ extension PlayerEngine {
       }
 
       window.__encore = {
+        suppress: function (v) {
+          suppressed = !!v;
+          if (suppressed) {
+            var p = mp();
+            if (p && p.getPlayerState && p.getPlayerState() === 1) { try { p.pauseVideo(); } catch (e) {} }
+          }
+        },
         eq: function (cfg) {
           try {
             eqOn = !!cfg.enabled;
@@ -308,8 +323,17 @@ extension PlayerEngine {
         if (!p || p === hooked || !p.addEventListener) { return; }
         hooked = p;
         p.addEventListener('onStateChange', function (state) {
+          // Self-pause FIRST, synchronously, in the same tick the site's own
+          // play began — before we even tell native about it. This is the
+          // fix for the audible blip: the old flow sent this event over the
+          // bridge and waited for native to call back with pause(), two IPC
+          // round trips during which the site's audio was live.
+          var selfPaused = false;
+          if (state === 1 && suppressed) {
+            try { p.pauseVideo(); selfPaused = true; } catch (e) {}
+          }
           var data = p.getVideoData ? p.getVideoData() : null;
-          send({ event: 'state', data: state, vid: data ? data.video_id : null });
+          send({ event: 'state', data: state, vid: data ? data.video_id : null, selfPaused: selfPaused });
         });
         // Unplayable videos (deleted/region-blocked) fire onError and never
         // reach a playing state — report so the engine can SKIP instead of
@@ -331,11 +355,19 @@ extension PlayerEngine {
         var state = p.getPlayerState();
         if (state !== lastState) {
           lastState = state;
-          send({ event: 'state', data: state, vid: vid });
+          var selfPaused = false;
+          if (state === 1 && suppressed) {
+            try { p.pauseVideo(); selfPaused = true; } catch (e) {}
+          }
+          send({ event: 'state', data: state, vid: vid, selfPaused: selfPaused });
         }
         send({ event: 'time', t: p.getCurrentTime() || 0, d: p.getDuration() || 0, vid: vid });
       }, 250);
 
+      // Attach the onStateChange hook immediately (not just on the first
+      // 250ms interval tick) so there's no extra gap between script
+      // injection and the self-pause guard being live.
+      hookPlayer();
       send({ event: 'ready' });
     })();
     """#

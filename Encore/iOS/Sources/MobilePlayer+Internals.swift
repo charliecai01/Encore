@@ -458,4 +458,13 @@ extension PlayerEngine {
         webView.evaluateJavaScript(script, completionHandler: nil)
     }
 
+    /// Mirrors sleepStopActive/suppressSiteAutoplay into the page so its own
+    /// onStateChange hook can self-pause a site autoplay synchronously,
+    /// without waiting on a round trip through native. Called on every
+    /// change (didSet) and again on `ready`, since a js() call made while the
+    /// page is mid-navigation is silently dropped.
+    func pushSuppressState() {
+        js("window.__encore && __encore.suppress(\(sleepStopActive || suppressSiteAutoplay))")
+    }
+
 }

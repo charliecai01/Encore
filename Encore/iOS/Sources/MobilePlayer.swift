@@ -142,11 +142,21 @@ final class PlayerEngine: NSObject, ObservableObject {
     var radioContinuation: String?
     var toastTask: Task<Void, Never>?
     var sleepTask: Task<Void, Never>?
-    var sleepStopActive = false
+    // Both flags push to the page synchronously on every change (see
+    // pushSuppressState in MobilePlayer+Internals.swift) so the JS-side
+    // onStateChange hook can self-pause a site autoplay IN THE SAME TICK it
+    // starts, instead of waiting on a round trip to native and back — that
+    // round trip is exactly the window where the site's audio is audible
+    // (the "0.1ms random sound" report, 2026-09-22).
+    var sleepStopActive = false {
+        didSet { if oldValue != sleepStopActive { pushSuppressState() } }
+    }
     /// On a cold launch the real music.youtube.com session can auto-start the
     /// account's last track. Block any site-initiated playback until the user
     /// explicitly presses play.
-    var suppressSiteAutoplay = true
+    var suppressSiteAutoplay = true {
+        didSet { if oldValue != suppressSiteAutoplay { pushSuppressState() } }
+    }
     /// The user's playback intent — true while they want music playing. Unlike
     /// the momentary `isPlaying`, this survives interruptions (a phone call, a
     /// loud Instagram Reel), so we resume when each interruption ends — even

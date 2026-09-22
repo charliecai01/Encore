@@ -139,11 +139,22 @@ final class PlayerEngine: NSObject, ObservableObject {
     private var sleepTask: Task<Void, Never>?
     // When the sleep timer fires we must keep playback stopped even though
     // music.youtube.com may try to autoplay the next track on its own.
-    private var sleepStopActive = false
+    // Both flags push to the page synchronously on every change (see
+    // pushSuppressState) so the JS-side onStateChange hook can self-pause a
+    // site autoplay IN THE SAME TICK it starts, instead of waiting for a
+    // round trip to native and back — that round trip is exactly the window
+    // where the site's audio is audible (the "0.1ms random sound" report,
+    // 2026-09-22: log showed state=1 -> state=2 ~50-150ms apart every time
+    // the web content process reload recovery landed on a paused session).
+    private var sleepStopActive = false {
+        didSet { if oldValue != sleepStopActive { pushSuppressState() } }
+    }
     // On a cold launch the music.youtube.com session can auto-start the account's
     // last track on its own (the app starts "playing randomly"). Suppress any
     // site-initiated playback until the user explicitly plays something.
-    private var suppressSiteAutoplay = true
+    private var suppressSiteAutoplay = true {
+        didSet { if oldValue != suppressSiteAutoplay { pushSuppressState() } }
+    }
     private var lastLoadAt = Date.distantPast
     /// The track we're transitioning AWAY from, captured at the start of
     /// load(). Lets the hijack check below tell a genuine site autoplay
@@ -923,6 +934,15 @@ final class PlayerEngine: NSObject, ObservableObject {
         webView.evaluateJavaScript(script, completionHandler: nil)
     }
 
+    /// Mirrors sleepStopActive/suppressSiteAutoplay into the page so its own
+    /// onStateChange hook can self-pause a site autoplay synchronously,
+    /// without waiting on a round trip through native. Called on every
+    /// change (didSet) and again on `ready`, since a js() call made while the
+    /// page is mid-navigation is silently dropped.
+    private func pushSuppressState() {
+        js("window.__encore && __encore.suppress(\(sleepStopActive || suppressSiteAutoplay))")
+    }
+
     // MARK: - Bridge events
 
     fileprivate func handleBridge(_ body: [String: Any]) {
@@ -934,8 +954,9 @@ final class PlayerEngine: NSObject, ObservableObject {
             // the player if playback already started this session — a restored
             // session must stay paused until the user hits play.
             playerReady = true
-            Log.player.notice("ready: loadedOnce=\(self.loadedOnce) current=\(self.current?.videoId ?? "nil")")
+            Log.player.notice("ready: loadedOnce=\(self.loadedOnce) current=\(self.current?.videoId ?? "nil") suppress=\(self.sleepStopActive || self.suppressSiteAutoplay)")
             js("window.__encore && __encore.vol(\(Int(volume * 100)))")
+            pushSuppressState()
             applyEqualizer()
             if loadedOnce, let track = current {
                 // Re-engage at where we actually were: a recovery reload mid-song
@@ -963,11 +984,17 @@ final class PlayerEngine: NSObject, ObservableObject {
             }
         case "state":
             let state = body["data"] as? Int ?? -1
-            Log.player.notice("state=\(state) vid=\(body["vid"] as? String ?? "nil") current=\(self.current?.videoId ?? "nil") suppress=\(self.suppressSiteAutoplay)")
+            let selfPaused = body["selfPaused"] as? Bool ?? false
+            Log.player.notice("state=\(state) vid=\(body["vid"] as? String ?? "nil") current=\(self.current?.videoId ?? "nil") suppress=\(self.suppressSiteAutoplay) selfPaused=\(selfPaused)")
             switch state {
             case 1:
                 // The sleep timer fired, or the site auto-started a track on
-                // launch before the user pressed play — force it back to paused.
+                // launch before the user pressed play — force it back to
+                // paused. The page's own onStateChange hook already tried to
+                // self-pause synchronously (selfPaused above) the instant this
+                // fired, before this message even crossed the bridge — this is
+                // the backup in case that raced a page that hadn't received
+                // suppress(true) yet (e.g. the first tick after a reload).
                 if sleepStopActive || suppressSiteAutoplay {
                     js("window.__encore && __encore.pause()")
                     isPlaying = false
@@ -1241,7 +1268,22 @@ final class PlayerEngine: NSObject, ObservableObject {
       // Bumped by every ensure() so an older load's watchdog can't fight a
       // newer one (e.g. the user pressing next while a watchdog is running).
       var encoreGen = 0;
+      // Mirrors native sleepStopActive/suppressSiteAutoplay (pushed via
+      // __encore.suppress()). Starts true (safe default, matching native's
+      // own default) so a freshly (re)loaded page never lets the site's
+      // auto-resume slip out audibly before native's first suppress() call
+      // lands. Checked SYNCHRONOUSLY inside the onStateChange handler below —
+      // no round trip to native — to close the audible-blip window that
+      // caused "plays a 0.1ms sound randomly" (2026-09-22).
+      var suppressed = true;
       window.__encore = {
+        suppress: function (v) {
+          suppressed = !!v;
+          if (suppressed) {
+            var p = mp();
+            if (p && p.getPlayerState && p.getPlayerState() === 1) { try { p.pauseVideo(); } catch (e) {} }
+          }
+        },
         eq: function (cfg) {
           try {
             eqOn = !!cfg.enabled;
@@ -1354,8 +1396,17 @@ final class PlayerEngine: NSObject, ObservableObject {
         if (!p || p === hooked || !p.addEventListener) { return; }
         hooked = p;
         p.addEventListener('onStateChange', function (state) {
+          // Self-pause FIRST, synchronously, in the same tick the site's own
+          // play began — before we even tell native about it. This is the
+          // fix for the audible blip: the old flow sent this event over the
+          // bridge and waited for native to call back with pause(), two IPC
+          // round trips during which the site's audio was live.
+          var selfPaused = false;
+          if (state === 1 && suppressed) {
+            try { p.pauseVideo(); selfPaused = true; } catch (e) {}
+          }
           var data = p.getVideoData ? p.getVideoData() : null;
-          send({ event: 'state', data: state, vid: data ? data.video_id : null });
+          send({ event: 'state', data: state, vid: data ? data.video_id : null, selfPaused: selfPaused });
         });
         // Unplayable videos (deleted/region-blocked) fire onError and never
         // reach a playing state — report so the engine can SKIP instead of
@@ -1377,11 +1428,19 @@ final class PlayerEngine: NSObject, ObservableObject {
         var state = p.getPlayerState();
         if (state !== lastState) {
           lastState = state;
-          send({ event: 'state', data: state, vid: vid });
+          var selfPaused = false;
+          if (state === 1 && suppressed) {
+            try { p.pauseVideo(); selfPaused = true; } catch (e) {}
+          }
+          send({ event: 'state', data: state, vid: vid, selfPaused: selfPaused });
         }
         send({ event: 'time', t: p.getCurrentTime() || 0, d: p.getDuration() || 0, vid: vid });
       }, 250);
 
+      // Attach the onStateChange hook immediately (not just on the first
+      // 250ms interval tick) so there's no extra gap between script
+      // injection and the self-pause guard being live.
+      hookPlayer();
       send({ event: 'ready' });
     })();
     """#
