@@ -94,14 +94,36 @@ extension PlayerEngine {
       // no round trip to native — to close the audible-blip window that
       // caused "plays a 0.1ms sound randomly" (2026-09-22).
       var suppressed = true;
+      function encoreArtwork(src) {
+        if (!src) return [];
+        // Several sizes: some head units (AVRCP cover art over Bluetooth) want a
+        // small thumbnail, the lock screen wants a big one. Google-hosted art
+        // encodes size in the URL (=wN-hN-...), so derive each variant.
+        function sized(n) {
+          var u = src.replace(/=(w\d+-h\d+|s\d+)[^=]*$/, '=w' + n + '-h' + n + '-l90-rj');
+          return { src: u, sizes: n + 'x' + n, type: 'image/jpeg' };
+        }
+        return src.indexOf('=') < 0 ? [{ src: src, sizes: '544x544', type: 'image/jpeg' }]
+          : [sized(96), sized(192), sized(300), sized(544)];
+      }
       function applyEncoreMeta() {
         if (!__encoreMeta || !('mediaSession' in navigator)) return;
         try {
+          // Idempotent: rewriting identical metadata makes iOS re-notify the
+          // car over AVRCP, which can abort an in-flight cover-art transfer
+          // (Tesla never shows the art). Only write when something changed.
+          var cur = navigator.mediaSession.metadata;
+          var curSrc = cur && cur.artwork && cur.artwork.length ? cur.artwork[cur.artwork.length - 1].src : '';
+          var art = encoreArtwork(__encoreMeta.art);
+          var wantSrc = art.length ? art[art.length - 1].src : '';
+          if (cur && cur.title === (__encoreMeta.title || '') &&
+              cur.artist === (__encoreMeta.artist || '') &&
+              cur.album === (__encoreMeta.album || '') && curSrc === wantSrc) return;
           var m = new MediaMetadata({
             title: __encoreMeta.title || '',
             artist: __encoreMeta.artist || '',
             album: __encoreMeta.album || '',
-            artwork: __encoreMeta.art ? [{ src: __encoreMeta.art, sizes: '544x544', type: 'image/jpeg' }] : []
+            artwork: art
           });
           // Write through the saved prototype setter — the instance property is
           // patched to swallow (site) writes while __encoreOwnsMeta is set.
