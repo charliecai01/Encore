@@ -96,6 +96,7 @@ extension PlayerEngine {
       var suppressed = true;
       function encoreArtwork(src) {
         if (!src) return [];
+        if (src.indexOf('data:') === 0) return [{ src: src, sizes: '544x544', type: 'image/jpeg' }];
         // Several sizes: some head units (AVRCP cover art over Bluetooth) want a
         // small thumbnail, the lock screen wants a big one. Google-hosted art
         // encodes size in the URL (=wN-hN-...), so derive each variant.

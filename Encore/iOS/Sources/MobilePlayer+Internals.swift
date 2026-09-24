@@ -263,11 +263,33 @@ extension PlayerEngine {
     /// lag behind the song we loaded via loadVideoById.
     private func pushMediaSessionMeta() {
         guard playerReady, let track = current else { return }
+        // Get the image first so title + art are published together (see
+        // updateNowPlayingInfo); fall back to the plain URL if the download fails.
+        if track.artworkURL != nil, artworkFinishedId != track.videoId {
+            let id = track.videoId
+            Task {
+                await ensureArtwork(for: track)
+                guard current?.videoId == id else { return }
+                publishMediaSessionMeta(for: track)
+                updateNowPlayingInfo()
+            }
+            return
+        }
+        publishMediaSessionMeta(for: track)
+    }
+
+    private func publishMediaSessionMeta(for track: Track) {
+        let art: String
+        if let cached = artworkDataURI, cached.videoId == track.videoId {
+            art = cached.uri
+        } else {
+            art = track.artworkURL?.absoluteString ?? ""
+        }
         let meta: [String: Any] = [
             "title": track.title,
             "artist": track.artistLine,
             "album": track.album?.name ?? "",
-            "art": track.artworkURL?.absoluteString ?? "",
+            "art": art,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: meta),
               let json = String(data: data, encoding: .utf8) else { return }

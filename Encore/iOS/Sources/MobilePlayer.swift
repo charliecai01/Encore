@@ -207,6 +207,14 @@ final class PlayerEngine: NSObject, ObservableObject {
     /// set by MobilePlayer+NowPlaying.swift. Extensions can't declare stored
     /// properties, so it lives here with the rest of PlayerEngine's state.
     var artworkCache: (videoId: String, artwork: MPMediaItemArtwork)?
+    /// The same downloaded image as a `data:` URI for the page's MediaSession
+    /// (so WebKit needs no network fetch — the art is attached to the metadata
+    /// the instant it's published, which is what Bluetooth head units need).
+    var artworkDataURI: (videoId: String, uri: String)?
+    /// In-flight / finished artwork download for a track. `artworkFinishedId`
+    /// is set when the attempt ends (success OR failure) so callers stop gating.
+    var artworkTask: (videoId: String, task: Task<Void, Never>)?
+    var artworkFinishedId: String?
 
     override private init() {
         let config = WKWebViewConfiguration()

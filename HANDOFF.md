@@ -323,6 +323,15 @@ app.
   Before that, the site's late metadata updates (slow fetches, SPA events
   mid-song) overwrote our artwork → stale art in Notification Center. Native
   `updateNowPlayingInfo` still runs as a fallback but the page wins on iOS.
+- **Bluetooth/car cover art needs title + art published TOGETHER (2026-09-23).**
+  Head units (Tesla) request art when the track changes; if the metadata goes
+  out without art and the image arrives later, they never re-ask — art worked
+  on song 1 and vanished from song 2 on. So `pushMediaSessionMeta` and
+  `updateNowPlayingInfo` both `await ensureArtwork(for:)` first (3s timeout,
+  falls back to no-art), and the page gets the image as a `data:` URI so WebKit
+  does no network fetch. Also `applyEncoreMeta` is idempotent — rewriting
+  identical MediaMetadata (it used to, 10× per track change) re-notifies the
+  car and can abort the art transfer. Not verifiable without the car.
 - **iOS site-autoplay on launch (fixed, don't reintroduce):** iOS sets
   `mediaTypesRequiringUserActionForPlayback = []`, so the real site can
   auto-start the account's last track on a cold launch. A `suppressSiteAutoplay`

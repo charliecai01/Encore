@@ -222,22 +222,43 @@ extension PlayerEngine {
         }
         if let cached = artworkCache, cached.videoId == track.videoId {
             info[MPMediaItemPropertyArtwork] = cached.artwork
-        } else if let url = track.artworkURL {
-            let videoId = track.videoId
-            Task.detached {
-                guard let (data, _) = try? await URLSession.shared.data(from: url),
-                      let image = UIImage(data: data) else { return }
-                let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-                await MainActor.run {
-                    guard PlayerEngine.shared.current?.videoId == videoId else { return }
-                    PlayerEngine.shared.artworkCache = (videoId, artwork)
-                    var nowInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-                    nowInfo[MPMediaItemPropertyArtwork] = artwork
-                    MPNowPlayingInfoCenter.default().nowPlayingInfo = nowInfo
-                }
+        } else if track.artworkURL != nil, artworkFinishedId != track.videoId {
+            // Don't publish the new title without its art: a Bluetooth head
+            // unit asks for cover art when the track changes, gets none, and
+            // never asks again (Tesla showed no art from the 2nd song on).
+            // Publish once the image is in hand — title + art together.
+            let id = track.videoId
+            Task {
+                await ensureArtwork(for: track)
+                if current?.videoId == id { updateNowPlayingInfo() }
             }
+            return
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    /// Download the track's artwork once (joins an in-flight download) and cache
+    /// it both natively and as a data: URI for the page's MediaSession.
+    func ensureArtwork(for track: Track) async {
+        guard track.artworkURL != nil else { return }
+        if let t = artworkTask, t.videoId == track.videoId {
+            await t.task.value
+            return
+        }
+        let task = Task { await downloadArtwork(for: track) }
+        artworkTask = (track.videoId, task)
+        await task.value
+    }
+
+    private func downloadArtwork(for track: Track) async {
+        defer { artworkFinishedId = track.videoId }
+        guard let url = track.artworkURL else { return }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 3
+        guard let (data, _) = try? await URLSession.shared.data(for: req),
+              let image = UIImage(data: data) else { return }
+        artworkCache = (track.videoId, MPMediaItemArtwork(boundsSize: image.size) { _ in image })
+        artworkDataURI = (track.videoId, "data:image/jpeg;base64," + data.base64EncodedString())
     }
 
     func updateNowPlayingElapsed() {
