@@ -179,10 +179,10 @@ cd Encore/iOS
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 xcodegen generate                     # regenerates EncoreiOS.xcodeproj from project.yml (xcodegen at /opt/homebrew/bin)
 xcodebuild -project EncoreiOS.xcodeproj -scheme EncoreiOS \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
   -derivedDataPath .build_ios build
 # install + run in the simulator:
-xcrun simctl boot "iPhone 17 Pro"     # if not booted
+xcrun simctl boot "iPhone 18 Pro"     # if not booted
 APP=$(find .build_ios/Build/Products -name "EncoreiOS.app" -maxdepth 3 | head -1)
 xcrun simctl install booted "$APP"
 xcrun simctl launch booted dev.charlie.encore.ios

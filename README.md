@@ -33,7 +33,7 @@ cd Encore/iOS
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 xcodegen generate        # regenerate after adding/removing source files
 xcodebuild -project EncoreiOS.xcodeproj -scheme EncoreiOS \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath .build_ios build
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro' -derivedDataPath .build_ios build
 ```
 Open `EncoreiOS.xcodeproj` in Xcode and Run to deploy to a device (pick your
 signing team; a free personal Apple ID works — apps then expire after 7 days).

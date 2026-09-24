@@ -30,7 +30,7 @@ cd Encore/iOS
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 xcodegen generate
 xcodebuild -project EncoreiOS.xcodeproj -scheme EncoreiOS \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath .build_ios build
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro' -derivedDataPath .build_ios build
 ```
 Note: the target/scheme is `EncoreiOS`, not `Encore` (the macOS package
 executable target is `Encore` — sharing the name pulls AppKit sources into the
