@@ -55,6 +55,9 @@ extension PlayerEngine {
     }
 
     private func handleInterruption(began: Bool, shouldResume: Bool) {
+        // Another app (Instagram Reels, a call, Siri) took the audio session —
+        // logged so a pause/resume in a capture can be attributed to it.
+        Log.player.notice("audio interruption \(began ? "began" : "ended") shouldResume=\(shouldResume) wantsPlayback=\(self.userWantsPlayback)")
         audioInterrupted = began
         if began {
             // The system has paused our audio; mirror it in our state but DON'T
