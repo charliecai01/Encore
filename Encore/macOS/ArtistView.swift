@@ -13,6 +13,8 @@ struct ArtistView: View {
     @State private var showAllLibrary = false
     @State private var scanningLibrary = false
     @State private var artistSummary: String?
+    /// Release shelves ("Albums", "Singles & EPs") the user has expanded.
+    @State private var expandedReleases: Set<String> = []
 
     var body: some View {
         Group {
@@ -49,7 +51,11 @@ struct ArtistView: View {
                             librarySection
                         }
                         ForEach(visibleShelves(page)) { shelf in
-                            ShelfView(shelf: shelf)
+                            if shelf.isReleaseShelf {
+                                releaseList(shelf)
+                            } else {
+                                ShelfView(shelf: shelf)
+                            }
                         }
                     }
                     .padding(.bottom, 36)
@@ -65,6 +71,40 @@ struct ArtistView: View {
     /// iOS gets the same behavior.
     private func visibleShelves(_ page: ArtistPage) -> [Shelf] {
         ArtistMatch.visibleShelves(page.shelves)
+    }
+
+    /// Albums / Singles & EPs as a vertical list, like the songs (Charlie,
+    /// 2026-10-01) — the full discography is 30+ releases. The first few
+    /// show; "Show all" expands in place. Same as iOS.
+    private func releaseList(_ shelf: Shelf) -> some View {
+        let cards = shelf.items.compactMap { item -> CardItem? in
+            if case .card(let c) = item { return c }
+            return nil
+        }
+        let expanded = expandedReleases.contains(shelf.title)
+        let shown = expanded ? cards : Array(cards.prefix(Shelf.releasePreviewCount))
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(shelf.title)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(Theme.textPrimary)
+                .padding(.horizontal, 24)
+            LazyVStack(spacing: 0) {
+                ForEach(shown) { CardRow(item: $0) }
+            }
+            .padding(.horizontal, 12)
+            if cards.count > Shelf.releasePreviewCount {
+                Button(expanded ? "Show less" : "Show all \(cards.count)") {
+                    withAnimation {
+                        if expanded { expandedReleases.remove(shelf.title) }
+                        else { expandedReleases.insert(shelf.title) }
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+                .padding(.horizontal, 24)
+            }
+        }
     }
 
     private func hero(_ page: ArtistPage) -> some View {

@@ -222,6 +222,15 @@ public struct Shelf: Identifiable, Hashable, Codable {
         self.moreParams = moreParams
     }
 
+    /// An artist's "Albums" / "Singles & EPs" shelf. Both apps list these
+    /// vertically, like the songs, instead of as a sideways carousel.
+    public var isReleaseShelf: Bool {
+        title == "Albums" || title == "Singles & EPs"
+    }
+
+    /// Rows a release shelf shows before "Show all" expands it.
+    public static let releasePreviewCount = 8
+
     /// The full-discography browse behind an artist's release carousel, which
     /// itself only carries the first ~10 releases.
     public var discographyEndpoint: (browseId: String, params: String)? {

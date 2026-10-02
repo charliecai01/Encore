@@ -6,11 +6,14 @@ import EncoreCore
 struct ArtistScreen: View {
     let browseId: String
     @EnvironmentObject var player: PlayerEngine
+    @EnvironmentObject var nav: Nav
     @State private var page: ArtistPage?
     @State private var libraryTracks: [Track] = []
     @State private var libraryExpanded = false
     @State private var artistSummary: String?
     @State private var loading = true
+    /// Release shelves ("Albums", "Singles & EPs") the user has expanded.
+    @State private var expandedReleases: Set<String> = []
 
     var body: some View {
         ScrollView {
@@ -63,7 +66,13 @@ struct ArtistScreen: View {
                             }
                         }
                     }
-                    ForEach(ArtistMatch.visibleShelves(page.shelves)) { ShelfRow(shelf: $0) }
+                    ForEach(ArtistMatch.visibleShelves(page.shelves)) { shelf in
+                        if shelf.isReleaseShelf {
+                            releaseList(shelf)
+                        } else {
+                            ShelfRow(shelf: shelf)
+                        }
+                    }
                 } else if loading {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
                 }
@@ -73,6 +82,62 @@ struct ArtistScreen: View {
         .background(Theme.bg).ignoresSafeArea(edges: .top)
         .refreshable { await load() }
         .task { await load() }
+    }
+
+    /// Albums / Singles & EPs as a vertical list, like the songs (Charlie,
+    /// 2026-10-01) — the full discography is 30+ releases, too many to flick
+    /// through sideways. The first few show; "Show all" expands in place.
+    private func releaseList(_ shelf: Shelf) -> some View {
+        let cards = shelf.items.compactMap { item -> CardItem? in
+            if case .card(let c) = item { return c }
+            return nil
+        }
+        let expanded = expandedReleases.contains(shelf.title)
+        let shown = expanded ? cards : Array(cards.prefix(Shelf.releasePreviewCount))
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(shelf.title).font(.system(size: 19, weight: .bold))
+                .foregroundStyle(Theme.textPrimary)
+                .padding(.horizontal, 16)
+            VStack(spacing: 0) {
+                ForEach(shown) { card in
+                    Button { nav.open(card) } label: {
+                        HStack(spacing: 12) {
+                            ArtworkView(url: card.thumbnailURL, corner: 5).frame(width: 52, height: 52)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(card.title).font(.system(size: 16, weight: .medium))
+                                    .foregroundStyle(Theme.textPrimary).lineLimit(1)
+                                if !card.subtitle.isEmpty {
+                                    Text(card.subtitle).font(.system(size: 13))
+                                        .foregroundStyle(Theme.textSecondary).lineLimit(1)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Theme.textTertiary)
+                        }
+                        .padding(.vertical, 5)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+            if cards.count > Shelf.releasePreviewCount {
+                Button {
+                    withAnimation {
+                        if expanded { expandedReleases.remove(shelf.title) }
+                        else { expandedReleases.insert(shelf.title) }
+                    }
+                } label: {
+                    Text(expanded ? "Show less" : "Show all \(cards.count)")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 2)
+            }
+        }
     }
 
     private func load() async {

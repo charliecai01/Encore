@@ -52,7 +52,7 @@ extension P {
     /// 2026-08-20). Subtitles are "2026" for albums, "Single • 2024" for
     /// singles/EPs, so pull the first 4-digit run rather than assuming format.
     public static func sortedByReleaseYear(_ shelf: Shelf) -> Shelf {
-        guard shelf.title == "Albums" || shelf.title == "Singles & EPs" else { return shelf }
+        guard shelf.isReleaseShelf else { return shelf }
         func releaseYear(_ item: ShelfItem) -> Int {
             guard case .card(let c) = item,
                   let match = c.subtitle.range(of: #"\d{4}"#, options: .regularExpression)

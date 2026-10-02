@@ -18,15 +18,16 @@ struct SearchScreen: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 18) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        chip("All", filter == nil) { filter = nil; Task { await run() } }
-                        ForEach(YTM.SearchFilter.allCases, id: \.self) { f in
-                            chip(f.title, filter == f) { filter = f; Task { await run() } }
-                        }
+                // All six pills share one row, no sideways scrolling (Charlie,
+                // 2026-10-01): each takes an equal slice and the label shrinks
+                // a touch if "Playlists" wouldn't otherwise fit.
+                HStack(spacing: 6) {
+                    chip("All", filter == nil) { filter = nil; Task { await run() } }
+                    ForEach(YTM.SearchFilter.allCases, id: \.self) { f in
+                        chip(f.title, filter == f) { filter = f; Task { await run() } }
                     }
-                    .padding(.horizontal, 16)
                 }
+                .padding(.horizontal, 16)
 
                 if loading { ProgressView().frame(maxWidth: .infinity).padding(.top, 40) }
                 ForEach(results.shelves) { shelf in
@@ -83,9 +84,11 @@ struct SearchScreen: View {
         Button(action: action) {
             Text(title).font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(selected ? .black : Theme.textPrimary)
-                .lineLimit(1).fixedSize()
-                .padding(.horizontal, 13).padding(.vertical, 6)
+                .lineLimit(1).minimumScaleFactor(0.75)
+                .padding(.horizontal, 4).padding(.vertical, 6)
+                .frame(maxWidth: .infinity)
                 .background(Capsule().fill(selected ? Color.white : Theme.card))
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -93,8 +96,14 @@ struct SearchScreen: View {
     private func run() async {
         let q = query.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return }
+        let f = filter
         loading = true
-        results = (try? await YTM.shared.search(q, filter: filter)) ?? SearchResults()
+        let fresh = (try? await YTM.shared.search(q, filter: f)) ?? SearchResults()
+        // A pill tapped while an earlier search is in flight starts its own;
+        // if that earlier one lands last it must not overwrite the newer
+        // results (the "Artists" pill showing the All tab's songs).
+        guard f == filter, q == query.trimmingCharacters(in: .whitespaces) else { return }
+        results = fresh
         loading = false
     }
 }
