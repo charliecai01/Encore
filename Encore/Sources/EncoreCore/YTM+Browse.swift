@@ -45,7 +45,28 @@ extension YTM {
 
     public func artist(browseId: String) async throws -> ArtistPage {
         let r = try await net.post("browse", body: ["browseId": browseId])
-        return P.artistPage(from: r)
+        var page = P.artistPage(from: r)
+        // The release carousels stop at ~10 (Taylor Swift has 30+ albums);
+        // swap in the full discography grid behind each one's "More" link.
+        // Best-effort: a failed fetch keeps the carousel's own items.
+        let full = await withTaskGroup(of: (Int, [ShelfItem]?).self) { group in
+            for (i, shelf) in page.shelves.enumerated() {
+                guard let more = shelf.discographyEndpoint else { continue }
+                group.addTask {
+                    let items = try? await self.browsePage(browseId: more.browseId, params: more.params)
+                        .shelves.first?.items
+                    return (i, items)
+                }
+            }
+            var out: [Int: [ShelfItem]] = [:]
+            for await (i, items) in group { if let items { out[i] = items } }
+            return out
+        }
+        for (i, items) in full where items.count > page.shelves[i].items.count {
+            page.shelves[i].items = items
+            page.shelves[i] = P.sortedByReleaseYear(page.shelves[i])
+        }
+        return page
     }
 
     /// Generic browse page (e.g. library-artist MPLA pages): title + shelves.

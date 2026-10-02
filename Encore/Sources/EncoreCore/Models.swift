@@ -208,12 +208,25 @@ public struct Shelf: Identifiable, Hashable, Codable {
     /// browseId of the shelf's "more" link (e.g. an artist's full "Top songs"
     /// playlist), used to show a "Show all" button. nil when there's no more.
     public var moreBrowseId: String?
+    /// `params` that go with `moreBrowseId` — only set for an artist's
+    /// "Albums" / "Singles & EPs" carousels, whose "More" opens the full
+    /// discography grid (an MPAD… browse that needs these params).
+    public var moreParams: String?
 
-    public init(title: String, items: [ShelfItem], moreBrowseId: String? = nil) {
+    public init(title: String, items: [ShelfItem], moreBrowseId: String? = nil,
+                moreParams: String? = nil) {
         self.id = UUID().uuidString
         self.title = title
         self.items = items
         self.moreBrowseId = moreBrowseId
+        self.moreParams = moreParams
+    }
+
+    /// The full-discography browse behind an artist's release carousel, which
+    /// itself only carries the first ~10 releases.
+    public var discographyEndpoint: (browseId: String, params: String)? {
+        guard let id = moreBrowseId, id.hasPrefix("MPAD"), let params = moreParams else { return nil }
+        return (id, params)
     }
 
     public var isTrackShelf: Bool {

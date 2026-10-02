@@ -48,9 +48,20 @@ extension P {
         for (key, r) in collectRenderers(root) {
             var title = ""
             var moreBrowseId: String?
+            var moreParams: String?
             switch key {
             case "musicCarouselShelfRenderer":
                 title = r["header"].findFirst("title")?.runsText ?? ""
+                // An artist's "Albums" / "Singles & EPs" carousel only holds
+                // ~10 releases; its "More" link is the full discography grid.
+                // Only discography links are kept — other carousels' "More"
+                // targets aren't used and shouldn't light up "Show all".
+                if let more = r["header"].findFirst("moreContentButton")?.findFirst("browseEndpoint")
+                    ?? r["header"].findFirst("title")?.runs.first?["navigationEndpoint"]["browseEndpoint"],
+                   let id = more["browseId"].string, id.hasPrefix("MPAD") {
+                    moreBrowseId = id
+                    moreParams = more["params"].string
+                }
             case "musicShelfRenderer":
                 title = r["title"].runsText ?? ""
                 // The "more" link (e.g. an artist's full Top songs list) is the
@@ -64,7 +75,8 @@ extension P {
             }
             let items = shelfItems(fromContents: r["contents"].array ?? r["items"].array ?? [])
             if !items.isEmpty {
-                out.append(Shelf(title: title, items: items, moreBrowseId: moreBrowseId))
+                out.append(Shelf(title: title, items: items, moreBrowseId: moreBrowseId,
+                                 moreParams: moreParams))
             }
         }
         return out

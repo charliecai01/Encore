@@ -181,24 +181,55 @@ struct CollectionScreen: View {
         }
         .background(Theme.bg)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if selecting {
-                selectionBar
-            } else {
-                // Reserve space for the floating MiniPlayer overlay (MobileRoot),
-                // which sits outside this NavigationStack's safe area and would
-                // otherwise cover the last row(s) of a long track list.
-                Color.clear.frame(height: player.current != nil ? 118 : 58)
-            }
+            // Reserve space for the floating MiniPlayer overlay (MobileRoot),
+            // which sits outside this NavigationStack's safe area and would
+            // otherwise cover the last row(s) of a long track list.
+            Color.clear.frame(height: player.current != nil ? 118 : 58)
         }
         // Albums show the full title in the scroll content now, above the
         // subtitle line, so the nav bar stays blank instead of showing a
         // truncated copy. Playlists get no in-body title, so they keep it
         // in the nav bar as before.
-        .navigationTitle(showsTitleInBody ? "" : (page?.title ?? ""))
+        // While picking songs the title slot shows the running count instead.
+        .navigationTitle(selecting ? (selection.isEmpty ? "Select Songs" : "\(selection.count) selected")
+                                   : (showsTitleInBody ? "" : (page?.title ?? "")))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let page {
                 if selecting {
+                    // Selection actions sit in the nav bar as circle buttons
+                    // left of Done (Charlie, 2026-10-01) — previously a
+                    // floating bar above the mini player. Declared before
+                    // Done so Done stays rightmost.
+                    // Removing is only meaningful on a playlist you own;
+                    // YouTube rejects it elsewhere (the toast says so if it does).
+                    if isPlaylist {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button(role: .destructive) { removeSelected() } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.red)
+                                    .frame(width: 30, height: 30)
+                                    .background(.ultraThinMaterial, in: Circle())
+                                    .overlay(Circle().strokeBorder(Theme.stroke))
+                            }
+                            .disabled(selection.isEmpty || workingOnSelection)
+                            .opacity(selection.isEmpty || workingOnSelection ? 0.4 : 1)
+                            .accessibilityLabel("Remove selected songs")
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showAddSelection = true } label: {
+                            Image(systemName: "text.badge.plus")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 32, height: 32)
+                                .background(Theme.accent, in: Circle())
+                        }
+                        .disabled(selection.isEmpty || workingOnSelection)
+                        .opacity(selection.isEmpty || workingOnSelection ? 0.4 : 1)
+                        .accessibilityLabel("Add selected songs to playlist")
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Done") { endSelection() }
                     }
@@ -296,39 +327,6 @@ struct CollectionScreen: View {
             // Don't persist for playlists — they should reopen sorted by artist.
             if !isPlaylist { UserDefaults.standard.set(newSort.rawValue, forKey: sortStorageKey) }
         }
-    }
-
-    /// Actions for the picked songs. Mirrors the Play/Shuffle bar's position
-    /// so the buttons stay under the thumb.
-    private var selectionBar: some View {
-        VStack(spacing: 8) {
-            Text(selection.isEmpty ? "Select songs" : "\(selection.count) selected")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Theme.textSecondary)
-            HStack(spacing: 10) {
-                Button { showAddSelection = true } label: {
-                    Label("Add", systemImage: "text.badge.plus").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent).tint(Theme.accent)
-                .disabled(selection.isEmpty || workingOnSelection)
-
-                // Removing is only meaningful on a playlist you own; YouTube
-                // rejects it elsewhere (the toast says so if it does).
-                if isPlaylist {
-                    Button(role: .destructive) { removeSelected() } label: {
-                        Label("Remove", systemImage: "trash").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(selection.isEmpty || workingOnSelection)
-                }
-            }
-            .controlSize(.large)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .padding(.horizontal, 12)
-        .padding(.bottom, player.current != nil ? 118 : 58)
     }
 
     private func toggle(_ track: Track) {

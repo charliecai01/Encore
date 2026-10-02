@@ -39,6 +39,11 @@ struct SearchScreen: View {
                                 .padding(.horizontal, 16)
                             }
                         }
+                    } else if filter != nil {
+                        // A single-kind filter (Albums, Artists, …) is the whole
+                        // page, so it reads as a vertical grid like Library
+                        // rather than one sideways carousel.
+                        cardGrid(shelf)
                     } else {
                         ShelfRow(shelf: shelf)
                     }
@@ -57,6 +62,21 @@ struct SearchScreen: View {
             started = true
             if !initialQuery.isEmpty { query = initialQuery; filter = initialFilter; await run() }
         }
+    }
+
+    private func cardGrid(_ shelf: Shelf) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !shelf.title.isEmpty {
+                Text(shelf.title).font(.system(size: 19, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 14)], spacing: 16) {
+                ForEach(Array(shelf.items.enumerated()), id: \.offset) { _, item in
+                    if case .card(let card) = item { CardCircleOrSquare(item: card) }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
     }
 
     private func chip(_ title: String, _ selected: Bool, _ action: @escaping () -> Void) -> some View {

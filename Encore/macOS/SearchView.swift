@@ -44,7 +44,13 @@ struct SearchView: View {
                                 .padding(.horizontal, 24)
                         }
                         ForEach(results.shelves) { shelf in
-                            ShelfView(shelf: shelf)
+                            if filter != nil && !shelf.isTrackShelf {
+                                // A single-kind filter (Albums, Artists, …) is the
+                                // whole page — a grid, not one sideways carousel.
+                                cardGrid(shelf)
+                            } else {
+                                ShelfView(shelf: shelf)
+                            }
                         }
                         if results.top == nil && results.shelves.isEmpty {
                             Text("No results for “\(query)”")
@@ -66,6 +72,22 @@ struct SearchView: View {
         .task(id: filter) {
             await load()
         }
+    }
+
+    private func cardGrid(_ shelf: Shelf) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if !shelf.title.isEmpty {
+                Text(shelf.title).font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 170, maximum: 210), spacing: 8)],
+                      alignment: .leading, spacing: 10) {
+                ForEach(Array(shelf.items.enumerated()), id: \.offset) { _, item in
+                    if case .card(let card) = item { CardView(item: card, flexible: true) }
+                }
+            }
+        }
+        .padding(.horizontal, 24)
     }
 
     private func load() async {

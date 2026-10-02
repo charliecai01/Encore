@@ -36,6 +36,16 @@ final class LiveConnectionTests: XCTestCase {
         }
     }
 
+    /// The artist "Albums" carousel stops at ~10; `artist()` must swap in the
+    /// full discography (Taylor Swift had 32 albums on 2026-10-01).
+    func testLiveArtistAlbumsAreComplete() async throws {
+        try await live {
+            let page = try await YTM.shared.artist(browseId: "UCPC0L1d253x-KuMNwa05TpA")
+            let albums = page.shelves.first { $0.title == "Albums" }
+            XCTAssertGreaterThan(albums?.items.count ?? 0, 20, "artist Albums shelf still truncated")
+        }
+    }
+
     func testLiveAlbumPage() async throws {
         try await live {
             let results = try await YTM.shared.search("random access memories", filter: .albums)
