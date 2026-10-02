@@ -317,6 +317,38 @@ struct CardCircleOrSquare: View {
     }
 }
 
+/// A card (album, artist, playlist) as a full-width list row, sized to sit
+/// alongside TrackRowView: used for an artist's releases and for filtered
+/// search results. Artists get round artwork.
+struct CardListRow: View {
+    @EnvironmentObject var nav: Nav
+    let item: CardItem
+
+    var body: some View {
+        Button { nav.open(item) } label: {
+            HStack(spacing: 12) {
+                ArtworkView(url: item.thumbnailURL, corner: item.kind == .artist ? 26 : 5)
+                    .frame(width: 52, height: 52)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.title).font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(Theme.textPrimary).lineLimit(1)
+                    if !item.subtitle.isEmpty {
+                        Text(item.subtitle).font(.system(size: 13))
+                            .foregroundStyle(Theme.textSecondary).lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct ShelfRow: View {
     /// Rows shown for a vertical song shelf before it's truncated (YouTube
     /// returns 50). Charlie's call — enough to actually browse, still short of

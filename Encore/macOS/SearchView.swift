@@ -45,9 +45,10 @@ struct SearchView: View {
                         }
                         ForEach(results.shelves) { shelf in
                             if filter != nil && !shelf.isTrackShelf {
-                                // A single-kind filter (Albums, Artists, …) is the
-                                // whole page — a grid, not one sideways carousel.
-                                cardGrid(shelf)
+                                // A single-kind filter (Albums, Artists, Playlists)
+                                // is the whole page — vertical rows, not one
+                                // sideways carousel. Same as iOS.
+                                cardList(shelf)
                             } else {
                                 ShelfView(shelf: shelf)
                             }
@@ -74,20 +75,20 @@ struct SearchView: View {
         }
     }
 
-    private func cardGrid(_ shelf: Shelf) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private func cardList(_ shelf: Shelf) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
             if !shelf.title.isEmpty {
                 Text(shelf.title).font(.system(size: 20, weight: .bold))
                     .foregroundStyle(Theme.textPrimary)
+                    .padding(.horizontal, 24)
             }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 170, maximum: 210), spacing: 8)],
-                      alignment: .leading, spacing: 10) {
+            LazyVStack(spacing: 0) {
                 ForEach(Array(shelf.items.enumerated()), id: \.offset) { _, item in
-                    if case .card(let card) = item { CardView(item: card, flexible: true) }
+                    if case .card(let card) = item { CardRow(item: card) }
                 }
             }
+            .padding(.horizontal, 12)
         }
-        .padding(.horizontal, 24)
     }
 
     private func load() async {

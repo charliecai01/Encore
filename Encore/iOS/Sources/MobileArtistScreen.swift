@@ -6,7 +6,6 @@ import EncoreCore
 struct ArtistScreen: View {
     let browseId: String
     @EnvironmentObject var player: PlayerEngine
-    @EnvironmentObject var nav: Nav
     @State private var page: ArtistPage?
     @State private var libraryTracks: [Track] = []
     @State private var libraryExpanded = false
@@ -99,28 +98,7 @@ struct ArtistScreen: View {
                 .foregroundStyle(Theme.textPrimary)
                 .padding(.horizontal, 16)
             VStack(spacing: 0) {
-                ForEach(shown) { card in
-                    Button { nav.open(card) } label: {
-                        HStack(spacing: 12) {
-                            ArtworkView(url: card.thumbnailURL, corner: 5).frame(width: 52, height: 52)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(card.title).font(.system(size: 16, weight: .medium))
-                                    .foregroundStyle(Theme.textPrimary).lineLimit(1)
-                                if !card.subtitle.isEmpty {
-                                    Text(card.subtitle).font(.system(size: 13))
-                                        .foregroundStyle(Theme.textSecondary).lineLimit(1)
-                                }
-                            }
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Theme.textTertiary)
-                        }
-                        .padding(.vertical, 5)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
+                ForEach(shown) { CardListRow(item: $0) }
             }
             .padding(.horizontal, 16)
             if cards.count > Shelf.releasePreviewCount {

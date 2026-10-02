@@ -41,10 +41,10 @@ struct SearchScreen: View {
                             }
                         }
                     } else if filter != nil {
-                        // A single-kind filter (Albums, Artists, …) is the whole
-                        // page, so it reads as a vertical grid like Library
-                        // rather than one sideways carousel.
-                        cardGrid(shelf)
+                        // A single-kind filter (Albums, Artists, Playlists) is
+                        // the whole page, so it reads as vertical rows like
+                        // the songs rather than one sideways carousel.
+                        cardList(shelf)
                     } else {
                         ShelfRow(shelf: shelf)
                     }
@@ -65,15 +65,15 @@ struct SearchScreen: View {
         }
     }
 
-    private func cardGrid(_ shelf: Shelf) -> some View {
+    private func cardList(_ shelf: Shelf) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if !shelf.title.isEmpty {
                 Text(shelf.title).font(.system(size: 19, weight: .bold))
                     .foregroundStyle(Theme.textPrimary)
             }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 14)], spacing: 16) {
+            LazyVStack(spacing: 0) {
                 ForEach(Array(shelf.items.enumerated()), id: \.offset) { _, item in
-                    if case .card(let card) = item { CardCircleOrSquare(item: card) }
+                    if case .card(let card) = item { CardListRow(item: card) }
                 }
             }
         }
