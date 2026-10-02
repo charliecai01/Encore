@@ -402,6 +402,39 @@ app.
   no memory-pressure jettisoning) — not fixed here, just no longer audible.**
   If reload frequency turns out to matter on its own, `checkPageLiveness`/
   `PageLiveness.deadAfter` (15s) is where to start.
+- **The random sound came back = silence was treated as death (fixed
+  2026-10-02).** The reload frequency flagged just above DID matter. Live log
+  of one overnight PAUSED session: 40+ "no bridge messages for 15s — page is
+  dead" reloads (sometimes every 30s), while the same web content process
+  stayed alive all 8 hours (no `TERMINATED` event) — several landed to the
+  second on a `DarkWake` in `pmset -g log`. The page's 250ms JS interval
+  doesn't run while the Mac sleeps/dark-wakes or while WebKit throttles a
+  hidden, silent page; the native 5s timer fires first on wake and sees a
+  stale `lastBridgeAt`. Each false reload then hit `ready`, which called
+  `ensure()` → `loadVideoById` — which STARTS the track — and relied on the
+  self-pause to stop it (`state=1 selfPaused=true` → `state=2` ~40ms later).
+  That 40ms, every reload, was the sound. Meanwhile the content process sat
+  at 1.2 GB footprint / 2.6 GB RSS (WebKit Malloc = the site's JS heap).
+  Fix, both engines: (1) `PageLiveness` now returns `.probeSilentPage` on
+  silence; the engine runs `evaluateJavaScript(PageLiveness.probeScript)`
+  (works even when timers are throttled) and reloads only if it errors,
+  returns 0, or doesn't answer within `probeTimeout` — log lines "answered
+  the liveness probe … not reloading" vs "failed the liveness probe".
+  (2) `ready` while suppressed (paused/sleep stop) no longer engages at all —
+  it sets `engageOnNextPlay` + `forceReloadOnEngage`, and `togglePlay` does the
+  engage instead of a bare `play()`. (3) `EncoreCore.AutoplayGuard`, a
+  document-START script, pauses any media element in the capture phase of
+  `play`/`playing` while suppressed (`__encore.suppress()` mirrors into
+  `window.__encoreGuard`), so a reloaded page's auto-resume is stopped before
+  the player reports state 1. Pause-only on purpose — muting would leak into
+  the site's persisted volume. (4) macOS only: `PageMemory` samples the
+  content process footprint each minute (`_webProcessIdentifier` SPI +
+  `proc_pid_rusage`, logged every 10 min as "web page footprint N MB") and
+  recycles the page when > 1.5 GB AND paused ≥ 2 min AND the video panel is
+  closed — silent thanks to (2)+(3). iOS doesn't need it (the OS jettisons,
+  and the sandbox can't read another process's footprint).
+  **Don't make `ready` engage while suppressed again, and don't reload on
+  silence without the probe.**
 - **Weak cellular: never reload a BUFFERING stream (fixed 2026-08-05).**
   Charlie's read was right — iOS is fine on wifi and bad on poor cell, and
   the Mac (always wifi) is fine because the macOS engine has **no stall

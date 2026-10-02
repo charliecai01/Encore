@@ -30,9 +30,20 @@ extension PlayerEngine {
             pushSuppressState()
             applyEqualizer()
             if loadedOnce, let track = current {
-                // Re-engage at where we actually were: a recovery reload mid-song
-                // used to hand back startAt 0 and restart the track.
-                startPlayback(track, startAt: restoreSeekTime ?? currentTime)
+                if sleepStopActive || suppressSiteAutoplay {
+                    // Rebuilt while PAUSED: don't touch the player. Engaging is a
+                    // loadVideoById, which starts audio — it used to rely on the
+                    // self-pause to stop it, and that ~40ms of sound was the
+                    // "random sound" report. Engage on the next play instead,
+                    // with a clean load so the site's auto-resumed context
+                    // doesn't stand in for ours.
+                    engageOnNextPlay = true
+                    forceReloadOnEngage = true
+                } else {
+                    // Re-engage at where we actually were: a recovery reload mid-song
+                    // used to hand back startAt 0 and restart the track.
+                    startPlayback(track, startAt: restoreSeekTime ?? currentTime)
+                }
             }
         case "engage":
             // Diagnostic: what the web player already had loaded (the site's

@@ -32,10 +32,41 @@ final class PageLivenessTests: XCTestCase {
 
     // MARK: - The original dead-page case
 
-    func testSilentReadyPageIsReloaded() {
+    /// Silence alone only probes — a sleeping/throttled page is silent too.
+    func testSilentReadyPageIsProbedNotReloaded() {
         XCTAssertEqual(
             PageLiveness.action(playerReady: true, sinceLastBridge: 20, sinceLastReload: 999),
+            .probeSilentPage)
+    }
+
+    func testUnansweredProbeReloads() {
+        XCTAssertEqual(
+            PageLiveness.action(playerReady: true, sinceLastBridge: 40, sinceLastReload: 999,
+                                probeInFlightFor: PageLiveness.probeTimeout + 1),
             .reloadDeadPage)
+    }
+
+    /// While a probe is outstanding (but not yet overdue) don't stack another
+    /// one or jump to a reload.
+    func testPendingProbeIsLeftAlone() {
+        XCTAssertEqual(
+            PageLiveness.action(playerReady: true, sinceLastBridge: 20, sinceLastReload: 999,
+                                probeInFlightFor: 2),
+            .none)
+    }
+
+    // MARK: - The 2026-10-02 regression: silence after sleep is not death
+
+    /// Logged live: the Mac dark-wakes, the native 5s timer fires first, and
+    /// the last bridge message is from before sleep — minutes or hours old.
+    /// That used to reload a healthy paused page (and blip its audio). Any
+    /// silence length must route through a probe first.
+    func testLongSilenceAfterSleepStillProbesFirst() {
+        for silence in [16.0, 600.0, 8 * 3600.0] {
+            XCTAssertEqual(
+                PageLiveness.action(playerReady: true, sinceLastBridge: silence, sinceLastReload: 999),
+                .probeSilentPage, "reloaded without probing after \(silence)s of silence")
+        }
     }
 
     func testChattyPageIsLeftAlone() {

@@ -116,6 +116,12 @@ final class PlayerEngine: NSObject, ObservableObject {
     /// be retried instead of wedging playback until the app is restarted.
     var lastReloadAt = Date.distantPast
     var livenessTimer: Timer?
+    /// When the outstanding liveness probe was sent (nil = none in flight).
+    var livenessProbeStartedAt: Date?
+    /// Set when the page was rebuilt while paused and `ready` deliberately did
+    /// NOT re-engage the track (that engage is a loadVideoById, which starts
+    /// audio). The next play does the engage instead of a bare play().
+    var engageOnNextPlay = false
     /// Unplayable-track handling: skip once per load on a player error, and
     /// give up pulling the site back after a few failed re-engages.
     var unplayableSkipped = false
@@ -230,6 +236,13 @@ final class PlayerEngine: NSObject, ObservableObject {
             WKUserScript(source: Self.mediaSessionSuppressScript,
                          injectionTime: .atDocumentStart,
                          forMainFrameOnly: false)
+        )
+        // Pauses any site-initiated playback while suppressed, before any
+        // site script runs (see EncoreCore.AutoplayGuard).
+        config.userContentController.addUserScript(
+            WKUserScript(source: AutoplayGuard.script,
+                         injectionTime: .atDocumentStart,
+                         forMainFrameOnly: true)
         )
         config.userContentController.addUserScript(
             WKUserScript(source: Self.controllerScript,
@@ -512,6 +525,13 @@ final class PlayerEngine: NSObject, ObservableObject {
             userWantsPlayback = true
             stopKeepAlive()
             try? AVAudioSession.sharedInstance().setActive(true)
+            if engageOnNextPlay {
+                // The page was rebuilt while paused and holds nothing of ours yet.
+                let at = restoreSeekTime ?? currentTime
+                Log.player.notice("resume after paused rebuild: engaging \(track.videoId) at \(Int(at))s")
+                startPlayback(track, startAt: at)
+                return
+            }
             js("window.__encore && __encore.play()")
         }
     }

@@ -120,6 +120,17 @@ final class PlayerEngine: NSObject, ObservableObject {
     /// be retried instead of wedging playback until the app is restarted.
     private var lastReloadAt = Date.distantPast
     private var livenessTimer: Timer?
+    /// When the outstanding liveness probe was sent (nil = none in flight).
+    private var livenessProbeStartedAt: Date?
+    /// Last liveness tick that saw playback running — the idle clock for
+    /// PageMemory recycling.
+    private var lastPlayingAt = Date()
+    private var lastMemoryCheckAt = Date()
+    private var lastFootprintLogAt = Date.distantPast
+    /// Set when the page was rebuilt while paused and `ready` deliberately did
+    /// NOT re-engage the track (that engage is a loadVideoById, which starts
+    /// audio). The next play does the engage instead of a bare play().
+    private var engageOnNextPlay = false
     /// Unplayable-track handling: skip once per load on a player error, and
     /// give up pulling the site back after a few failed re-engages.
     private var unplayableSkipped = false
@@ -177,6 +188,11 @@ final class PlayerEngine: NSObject, ObservableObject {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
         config.mediaTypesRequiringUserActionForPlayback = []
+        config.userContentController.addUserScript(
+            WKUserScript(source: AutoplayGuard.script,
+                         injectionTime: .atDocumentStart,
+                         forMainFrameOnly: true)
+        )
         config.userContentController.addUserScript(
             WKUserScript(source: Self.controllerScript,
                          injectionTime: .atDocumentEnd,
@@ -474,6 +490,13 @@ final class PlayerEngine: NSObject, ObservableObject {
             load(track, startAt: restoreSeekTime ?? 0)
             return
         }
+        if !isPlaying && engageOnNextPlay {
+            // The page was rebuilt while paused and holds nothing of ours yet.
+            let at = restoreSeekTime ?? currentTime
+            Log.player.notice("resume after paused rebuild: engaging \(track.videoId) at \(Int(at))s")
+            ensureJS(track.videoId, startAt: at)
+            return
+        }
         js(isPlaying ? "window.__encore && __encore.pause()" : "window.__encore && __encore.play()")
     }
 
@@ -620,13 +643,29 @@ final class PlayerEngine: NSObject, ObservableObject {
     }
 
     private func checkPageLiveness() {
+        if isPlaying { lastPlayingAt = Date() }
+        checkPageMemory()
         switch PageLiveness.action(playerReady: playerReady,
                                    sinceLastBridge: Date().timeIntervalSince(lastBridgeAt),
-                                   sinceLastReload: Date().timeIntervalSince(lastReloadAt)) {
+                                   sinceLastReload: Date().timeIntervalSince(lastReloadAt),
+                                   probeInFlightFor: livenessProbeStartedAt.map { Date().timeIntervalSince($0) }) {
         case .none:
             return
+        case .probeSilentPage:
+            // Silence alone isn't death: the Mac sleeping/dark-waking or WebKit
+            // throttling a hidden, silent page stops the page's timers too.
+            // Reloading on silence was the 2026-10-02 "random sound" — dozens
+            // of needless reloads a night, each one blipping the track. Ask
+            // the page directly; evaluateJavaScript runs even when throttled.
+            let silent = Int(Date().timeIntervalSince(lastBridgeAt))
+            livenessProbeStartedAt = Date()
+            webView.evaluateJavaScript(PageLiveness.probeScript) { [weak self] result, error in
+                MainActor.assumeIsolated {
+                    self?.livenessProbeAnswered(alive: (result as? Int) == 1, silentFor: silent, error: error)
+                }
+            }
         case .reloadDeadPage:
-            Log.player.error("no bridge messages for \(Int(PageLiveness.deadAfter))s — page is dead; reloading site")
+            Log.player.error("page silent and liveness probe unanswered for \(Int(PageLiveness.probeTimeout))s — page is dead; reloading site")
             reloadSite()
         case .retryFailedReload:
             // Without this the engine stays un-ready forever: load()'s engage is
@@ -637,10 +676,56 @@ final class PlayerEngine: NSObject, ObservableObject {
         }
     }
 
+    private func livenessProbeAnswered(alive: Bool, silentFor: Int, error: Error?) {
+        guard livenessProbeStartedAt != nil else { return } // superseded by a reload
+        livenessProbeStartedAt = nil
+        if alive {
+            Log.player.notice("page silent \(silentFor)s but answered the liveness probe (asleep/throttled) — not reloading")
+            lastBridgeAt = Date()
+        } else {
+            Log.player.error("page silent \(silentFor)s and failed the liveness probe (\(error?.localizedDescription ?? "controller missing")) — reloading site")
+            reloadSite()
+        }
+    }
+
+    /// Recycle the page when it has bloated and nobody would notice a reload
+    /// (see PageMemory). Sampled once a minute off the liveness tick.
+    private func checkPageMemory() {
+        guard Date().timeIntervalSince(lastMemoryCheckAt) >= PageMemory.checkEvery else { return }
+        lastMemoryCheckAt = Date()
+        guard playerReady, let footprint = webContentFootprint() else { return }
+        if Date().timeIntervalSince(lastFootprintLogAt) >= 600 {
+            lastFootprintLogAt = Date()
+            Log.player.notice("web page footprint \(footprint >> 20) MB")
+        }
+        guard PageMemory.shouldRecycle(footprint: footprint, isPlaying: isPlaying,
+                                       pausedFor: Date().timeIntervalSince(lastPlayingAt),
+                                       pageVisible: videoMode) else { return }
+        Log.player.notice("web page footprint \(footprint >> 20) MB while idle — recycling it")
+        reloadSite()
+    }
+
+    /// Physical footprint of the web view's content process, or nil if it
+    /// can't be read. `_webProcessIdentifier` is WKWebView SPI, so look before
+    /// touching it — KVC on a missing key throws an ObjC exception.
+    private func webContentFootprint() -> UInt64? {
+        guard webView.responds(to: NSSelectorFromString("_webProcessIdentifier")),
+              let pid = (webView.value(forKey: "_webProcessIdentifier") as? NSNumber)?.int32Value,
+              pid > 0 else { return nil }
+        var info = rusage_info_v4()
+        let rc = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
+                proc_pid_rusage(pid, RUSAGE_INFO_V4, $0)
+            }
+        }
+        return rc == 0 ? info.ri_phys_footprint : nil
+    }
+
     /// Reload the hidden site after the session changes (sign-in/out) or to
     /// recover a dead web content process.
     func reloadSite() {
         playerReady = false
+        livenessProbeStartedAt = nil
         lastBridgeAt = Date()   // grace period while the reload runs
         lastReloadAt = Date()   // so a reload that never becomes ready is retried
         // A rebuilt page auto-resumes the ACCOUNT's last track, and `ready`
@@ -707,6 +792,7 @@ final class PlayerEngine: NSObject, ObservableObject {
         // auto-resumed radio. Later engages (stalls, re-syncs) resume in place.
         let force = forceReloadOnEngage
         forceReloadOnEngage = false
+        engageOnNextPlay = false
         let f = force ? "true" : "false"
         if startAt > 0 {
             js("window.__encore && __encore.ensure('\(videoId)', \(startAt), \(f))")
@@ -959,9 +1045,20 @@ final class PlayerEngine: NSObject, ObservableObject {
             pushSuppressState()
             applyEqualizer()
             if loadedOnce, let track = current {
-                // Re-engage at where we actually were: a recovery reload mid-song
-                // used to hand back startAt 0 and restart the track.
-                ensureJS(track.videoId, startAt: restoreSeekTime ?? currentTime)
+                if sleepStopActive || suppressSiteAutoplay {
+                    // Rebuilt while PAUSED: don't touch the player. ensure() is a
+                    // loadVideoById, which starts audio — it used to rely on the
+                    // self-pause to stop it, and that ~40ms of sound was the
+                    // "random sound" report. Engage on the next play instead,
+                    // with a clean load so the site's auto-resumed context
+                    // doesn't stand in for ours.
+                    engageOnNextPlay = true
+                    forceReloadOnEngage = true
+                } else {
+                    // Re-engage at where we actually were: a recovery reload mid-song
+                    // used to hand back startAt 0 and restart the track.
+                    ensureJS(track.videoId, startAt: restoreSeekTime ?? currentTime)
+                }
             }
         case "engage":
             // Diagnostic: what the web player already had loaded (the site's
@@ -1279,6 +1376,7 @@ final class PlayerEngine: NSObject, ObservableObject {
       window.__encore = {
         suppress: function (v) {
           suppressed = !!v;
+          if (window.__encoreGuard) { window.__encoreGuard.suppressed = suppressed; }
           if (suppressed) {
             var p = mp();
             if (p && p.getPlayerState && p.getPlayerState() === 1) { try { p.pauseVideo(); } catch (e) {} }

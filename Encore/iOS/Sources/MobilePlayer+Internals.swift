@@ -24,17 +24,42 @@ extension PlayerEngine {
     func checkPageLiveness() {
         switch PageLiveness.action(playerReady: playerReady,
                                    sinceLastBridge: Date().timeIntervalSince(lastBridgeAt),
-                                   sinceLastReload: Date().timeIntervalSince(lastReloadAt)) {
+                                   sinceLastReload: Date().timeIntervalSince(lastReloadAt),
+                                   probeInFlightFor: livenessProbeStartedAt.map { Date().timeIntervalSince($0) }) {
         case .none:
             return
+        case .probeSilentPage:
+            // Silence alone isn't death — a throttled or suspended page stops
+            // its timers too, and reloading a healthy paused page blipped its
+            // audio (2026-10-02). Ask the page directly; a jettisoned process
+            // answers with an error, which reloads below.
+            let silent = Int(Date().timeIntervalSince(lastBridgeAt))
+            livenessProbeStartedAt = Date()
+            webView.evaluateJavaScript(PageLiveness.probeScript) { [weak self] result, error in
+                MainActor.assumeIsolated {
+                    self?.livenessProbeAnswered(alive: (result as? Int) == 1, silentFor: silent, error: error)
+                }
+            }
         case .reloadDeadPage:
-            Log.player.error("no bridge messages for \(Int(PageLiveness.deadAfter))s — page is dead; reloading site")
+            Log.player.error("page silent and liveness probe unanswered for \(Int(PageLiveness.probeTimeout))s — page is dead; reloading site")
             reloadSite()
         case .retryFailedReload:
             // Without this the engine stays un-ready forever: load()'s engage is
             // gated on playerReady, so every track falls back to the slow
             // mismatch recovery and only an app restart fixes it.
             Log.player.error("reload never became ready after \(Int(Date().timeIntervalSince(lastReloadAt)))s — reloading site again")
+            reloadSite()
+        }
+    }
+
+    private func livenessProbeAnswered(alive: Bool, silentFor: Int, error: Error?) {
+        guard livenessProbeStartedAt != nil else { return } // superseded by a reload
+        livenessProbeStartedAt = nil
+        if alive {
+            Log.player.notice("page silent \(silentFor)s but answered the liveness probe (suspended/throttled) — not reloading")
+            lastBridgeAt = Date()
+        } else {
+            Log.player.error("page silent \(silentFor)s and failed the liveness probe (\(error?.localizedDescription ?? "controller missing")) — reloading site")
             reloadSite()
         }
     }
@@ -101,6 +126,7 @@ extension PlayerEngine {
     /// current track, still paused.
     func reloadSite() {
         playerReady = false
+        livenessProbeStartedAt = nil
         lastBridgeAt = Date()   // grace period while the reload runs
         lastReloadAt = Date()   // so a reload that never becomes ready is retried
         // A rebuilt page auto-resumes the ACCOUNT's last track, and `ready`
@@ -221,6 +247,7 @@ extension PlayerEngine {
     /// (the video is never shown on iOS anyway) and uses less data. Falls back to
     /// the video itself when there's no counterpart.
     func startPlayback(_ track: Track, startAt: Double) {
+        engageOnNextPlay = false
         let canonicalId = track.videoId
         // Songs and episodes play directly.
         guard track.isVideo, !track.isEpisode else {

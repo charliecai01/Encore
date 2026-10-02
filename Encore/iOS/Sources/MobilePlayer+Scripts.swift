@@ -182,6 +182,7 @@ extension PlayerEngine {
       window.__encore = {
         suppress: function (v) {
           suppressed = !!v;
+          if (window.__encoreGuard) { window.__encoreGuard.suppressed = suppressed; }
           if (suppressed) {
             var p = mp();
             if (p && p.getPlayerState && p.getPlayerState() === 1) { try { p.pauseVideo(); } catch (e) {} }
