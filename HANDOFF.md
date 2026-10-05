@@ -17,7 +17,7 @@ picking up the work without the original chat history.
 ## 1. Repo layout
 
 ```
-/Users/charlie/Documents/9.YTMusic/            ← git root (remote: charliecai01/Encore, branch main)
+/Users/charlie/Code/2.YTMusic/                 ← git root (remote: charliecai01/Encore, branch main)
 ├── HANDOFF.md                                 ← this file
 ├── README.md
 ├── BUGS.md                                    ← known bugs + feature-flag states (podcasts OFF, Most Played ON/per-device)
@@ -736,7 +736,7 @@ No queued features remain.
 ## 10. Persistent memory
 
 There is an agent memory dir for this project at
-`/Users/charlie/.claude/projects/-Users-charlie-Documents-9-YTMusic/memory/`
+`/Users/charlie/.claude/projects/-Users-charlie-Code-2-YTMusic/memory/`
 with `MEMORY.md` index + notes (git workflow, project, known risks, iOS device
 deploy). Keep it updated; it loads each session.
 
