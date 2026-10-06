@@ -28,6 +28,7 @@ picking up the work without the original chat history.
     ├── scripts/
     │   ├── build_app.sh                       ← builds macOS Encore.app AND installs to /Applications
     │   ├── deploy_ios.sh                      ← one-command iOS device build+install (ENCORE_DEVICE_ID/ENCORE_TEAM_ID overridable)
+    │   ├── ios_autodeploy.sh                  ← launchd agent wrapper: re-runs deploy_ios.sh every 3 days so free signing never lapses
     │   ├── make_icon.swift                    ← macOS .icns generator
     │   └── make_ios_icon.swift                ← iOS app-icon PNG generator (full-bleed, opaque)
     ├── assets/                                ← macOS AppIcon.icns + icon_1024.png
@@ -690,6 +691,18 @@ xcodebuild -project EncoreiOS.xcodeproj -scheme EncoreiOS \
 xcrun devicectl device install app --device 5A20AF61-E66A-5BE7-AA6C-5C7AFAB438A7 \
   .build_device/Build/Products/Debug-iphoneos/EncoreiOS.app
 ```
+
+**Auto-redeploy every 3 days** (Charlie's call, 2026-10-06): a LaunchAgent
+(`dev.charlie.encore.ios-autodeploy`, installed via
+`Encore/scripts/ios_autodeploy.sh install`) wakes hourly and runs
+`deploy_ios.sh` once the last *successful* deploy is ≥72h old; a failure
+(phone locked / off-Wi-Fi — xcodebuild says "needs to be unlocked to enable
+development services") just retries next hour. `status` / `now` / `uninstall`
+subcommands; log at `~/Library/Logs/encore-ios-autodeploy.log`. Gotcha it
+handles: a free profile lasts 7 days from *creation* and Xcode reuses the
+cached one until it expires, so plain reinstalls don't extend anything — the
+script deletes the cached `dev.charlie.encore.ios` profile first to force a
+fresh one. It builds whatever is in the working tree, uncommitted edits included.
 
 **Dev auto-sign-in cookie (SECURITY):** `iOS/Sources/DevCredentials.swift`
 holds a YouTube `cookie:` header that `AuthManager.bootstrap` imports on launch
