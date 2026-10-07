@@ -155,10 +155,13 @@ struct TrackRow: View {
     /// Bumped by the parent when native artist names resolve. The row's own
     /// data doesn't change, so without it SwiftUI reuses the rendered row.
     var nameVersion = 0
-    /// Multi-select mode: show a checkbox; the parent turns a tap into a
-    /// selection toggle rather than playback.
+    /// Multi-select mode: show a checkbox, and a click selects instead of
+    /// playing — including on the current track, which would otherwise
+    /// pause. ⌘-click toggles and ⇧-click extends a range, and either one
+    /// starts selecting from outside the mode too (needs `onSelect`).
     var isSelecting = false
     var isSelected = false
+    var onSelect: ((TrackSelection.Click) -> Void)? = nil
     /// Set by playlist pages: enables "Remove from this Playlist".
     var onRemoveFromPlaylist: (() -> Void)? = nil
     let onPlay: () -> Void
@@ -182,14 +185,14 @@ struct TrackRow: View {
                 if showsArtwork {
                     ArtworkView(url: track.thumbnailURL, corner: 5)
                         .frame(width: 40, height: 40)
-                        .opacity(hovering ? 0.4 : 1)
+                        .opacity(hovering && !isSelecting ? 0.4 : 1)
                 } else if let index {
                     Text("\(index + 1)")
                         .font(.system(size: 13, weight: .medium).monospacedDigit())
                         .foregroundStyle(isCurrent ? Theme.fallbackAccent : Theme.textSecondary)
-                        .opacity(hovering ? 0 : 1)
+                        .opacity(hovering && !isSelecting ? 0 : 1)
                 }
-                if hovering {
+                if hovering && !isSelecting {
                     Image(systemName: isCurrent && player.isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.white)
@@ -282,11 +285,20 @@ struct TrackRow: View {
         // swallow the tap: playing it only ever yields error 150 and a skip.
         .opacity(track.isUnavailable ? 0.4 : 1)
         .help(track.isUnavailable ? "Unavailable on YouTube Music" : "")
-        .onTapGesture(count: 2) { if !track.isUnavailable { onPlay() } }
+        // Off while selecting so a click registers immediately rather than
+        // waiting out the double-click interval.
+        .gesture(TapGesture(count: 2).onEnded { if !track.isUnavailable { onPlay() } },
+                 isEnabled: !isSelecting)
         .onTapGesture {
             // Pull keyboard focus out of any text field so Space reliably
             // toggles playback after interacting with lists.
             NSApp.keyWindow?.makeFirstResponder(nil)
+            if let onSelect {
+                // Unavailable rows stay selectable so they can be removed.
+                let mods = NSEvent.modifierFlags
+                if mods.contains(.shift) { onSelect(.range); return }
+                if isSelecting || mods.contains(.command) { onSelect(.toggle); return }
+            }
             guard !track.isUnavailable else { return }
             if isCurrent { player.togglePlay() } else { onPlay() }
         }

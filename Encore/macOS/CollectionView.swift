@@ -31,6 +31,8 @@ struct CollectionView: View {
     /// another. Holds videoIds.
     @State private var selecting = false
     @State private var selection: Set<String> = []
+    /// Last plain/⌘-clicked row (videoId); ⇧-click ranges extend from it.
+    @State private var selectionAnchor: String?
     @State private var workingOnSelection = false
     @State private var sort: CollectionSort = .order
     @State private var filterText = ""
@@ -334,12 +336,9 @@ struct CollectionView: View {
                          nameVersion: nameVersion,
                          isSelecting: selecting,
                          isSelected: selection.contains(track.videoId),
+                         onSelect: { click in select(click, at: i, in: shown) },
                          onRemoveFromPlaylist: isPlaylist ? { removeTrack(track) } : nil) {
-                    if selecting {
-                        toggleSelection(track)
-                    } else {
-                        player.playCollection(shown, startAt: i, playlistId: playlistContextId)
-                    }
+                    player.playCollection(shown, startAt: i, playlistId: playlistContextId)
                 }
             }
         }
@@ -353,11 +352,11 @@ struct CollectionView: View {
     @ViewBuilder private var editControl: some View {
         if selecting {
             PillButton(title: "Done", icon: "checkmark") {
-                selecting = false; selection = []
+                selecting = false; selection = []; selectionAnchor = nil
             }
         } else {
             Menu {
-                Button("Select Songs") { selecting = true; selection = [] }
+                Button("Select Songs") { selecting = true; selection = []; selectionAnchor = nil }
                 if isPlaylist {
                     Button("Edit Details…") { showEdit = true }
                 }
@@ -410,12 +409,16 @@ struct CollectionView: View {
         return visibleTracks(page).filter { selection.contains($0.videoId) }
     }
 
-    private func toggleSelection(_ track: Track) {
-        if selection.contains(track.videoId) {
-            selection.remove(track.videoId)
-        } else {
-            selection.insert(track.videoId)
+    /// A ⌘/⇧-click outside Select mode enters it, starting from that row.
+    private func select(_ click: TrackSelection.Click, at index: Int, in shown: [Track]) {
+        if !selecting {
+            selecting = true
+            selection = []
+            selectionAnchor = nil
         }
+        (selection, selectionAnchor) = TrackSelection.apply(
+            click, at: index, in: shown.map(\.videoId),
+            selection: selection, anchor: selectionAnchor)
     }
 
     private func addSelected(to playlist: CardItem) {
