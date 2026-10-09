@@ -679,16 +679,16 @@ team is fine) → connect iPhone → Run. First run needs Settings → General �
 VPN & Device Management → trust. Free-account apps expire after 7 days.
 
 **CLI device build+install** (no Xcode GUI) works if his Apple ID is in Xcode
-accounts — team `9272YGK74X`, device id `5A20AF61-E66A-5BE7-AA6C-5C7AFAB438A7`.
+accounts — team `9272YGK74X`, device id `00008160-000179D436A0000A`.
 Preferred: `Encore/scripts/deploy_ios.sh` (wraps the commands below, retries
 the transient developer-disk-image mount failure; override via
 `ENCORE_DEVICE_ID`/`ENCORE_TEAM_ID`). Manually:
 ```bash
 cd Encore/iOS && export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 xcodebuild -project EncoreiOS.xcodeproj -scheme EncoreiOS \
-  -destination 'platform=iOS,id=5A20AF61-E66A-5BE7-AA6C-5C7AFAB438A7' \
+  -destination 'platform=iOS,id=00008160-000179D436A0000A' \
   -derivedDataPath .build_device -allowProvisioningUpdates DEVELOPMENT_TEAM=9272YGK74X build
-xcrun devicectl device install app --device 5A20AF61-E66A-5BE7-AA6C-5C7AFAB438A7 \
+xcrun devicectl device install app --device 00008160-000179D436A0000A \
   .build_device/Build/Products/Debug-iphoneos/EncoreiOS.app
 ```
 

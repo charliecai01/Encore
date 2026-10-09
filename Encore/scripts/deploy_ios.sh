@@ -12,7 +12,7 @@ export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 
 # Defaults match Charlie's setup; override via env if the device or team changes.
 # Find the device id with: xcrun devicectl list devices
-DEVICE_ID="${ENCORE_DEVICE_ID:-5A20AF61-E66A-5BE7-AA6C-5C7AFAB438A7}"
+DEVICE_ID="${ENCORE_DEVICE_ID:-00008160-000179D436A0000A}"
 TEAM_ID="${ENCORE_TEAM_ID:-9272YGK74X}"
 
 build() {
