@@ -11,8 +11,8 @@
 # The agent wakes hourly (and on load / after sleep) but only deploys once the
 # last *successful* deploy is ≥3 days old. Deploying needs the phone unlocked
 # and on the same Wi-Fi, so a failed attempt just retries next hour until it
-# lands — leaving 4 days of slack before the 7-day signing expiry. Failure
-# notifications are rate-limited to one per 12h.
+# lands — leaving 4 days of slack before the 7-day signing expiry. It runs
+# silently (no macOS notifications either way); check `status` or the log.
 #
 # Free provisioning profiles last 7 days from *creation*, and Xcode reuses the
 # cached one until it expires — reinstalling with it doesn't extend anything.
@@ -27,17 +27,11 @@ LOG="$HOME/Library/Logs/encore-ios-autodeploy.log"
 STATE_DIR="$HOME/Library/Application Support/dev.charlie.encore"
 STAMP="$STATE_DIR/ios-autodeploy-last-success"
 LOCK="$STATE_DIR/ios-autodeploy.lock"
-FAIL_NOTIFIED="$STATE_DIR/ios-autodeploy-last-fail-notice"
 BUNDLE_ID="dev.charlie.encore.ios"
 MIN_AGE_SECS=$((3 * 24 * 3600))
 INTERVAL_SECS=3600
-FAIL_NOTICE_SECS=$((12 * 3600))
 
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-
-notify() {
-    /usr/bin/osascript -e "display notification \"$2\" with title \"Encore iOS\" subtitle \"$1\"" >/dev/null 2>&1 || true
-}
 
 # Remove cached provisioning profiles for the Encore bundle id so the next
 # build fetches a fresh one (Xcode 16+ stores them under UserData; older
@@ -73,15 +67,8 @@ deploy() {
     if "$SCRIPT_DIR/deploy_ios.sh"; then
         date +%s > "$STAMP"
         echo "=== $(date) — success"
-        notify "Reinstalled" "Signing renewed for another 7 days."
     else
         echo "=== $(date) — FAILED (will retry in ~1h)"
-        local last_notice=0
-        [ -f "$FAIL_NOTIFIED" ] && last_notice=$(cat "$FAIL_NOTIFIED")
-        if [ $(( $(date +%s) - last_notice )) -ge "$FAIL_NOTICE_SECS" ]; then
-            date +%s > "$FAIL_NOTIFIED"
-            notify "Reinstall pending" "Unlock your iPhone (same Wi-Fi as the Mac); retrying hourly."
-        fi
         return 1
     fi
 }

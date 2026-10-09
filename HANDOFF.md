@@ -697,7 +697,8 @@ xcrun devicectl device install app --device 00008160-000179D436A0000A \
 `Encore/scripts/ios_autodeploy.sh install`) wakes hourly and runs
 `deploy_ios.sh` once the last *successful* deploy is ≥72h old; a failure
 (phone locked / off-Wi-Fi — xcodebuild says "needs to be unlocked to enable
-development services") just retries next hour. `status` / `now` / `uninstall`
+development services") just retries next hour. It runs silently — no macOS
+notifications on success or failure (Charlie's call). `status` / `now` / `uninstall`
 subcommands; log at `~/Library/Logs/encore-ios-autodeploy.log`. Gotcha it
 handles: a free profile lasts 7 days from *creation* and Xcode reuses the
 cached one until it expires, so plain reinstalls don't extend anything — the
