@@ -110,20 +110,36 @@ extension PlayerEngine {
       function applyEncoreMeta() {
         if (!__encoreMeta || !('mediaSession' in navigator)) return;
         try {
-          // Idempotent: rewriting identical metadata makes iOS re-notify the
-          // car over AVRCP, which can abort an in-flight cover-art transfer
-          // (Tesla never shows the art). Only write when something changed.
+          var title = __encoreMeta.title || '', artist = __encoreMeta.artist || '',
+              album = __encoreMeta.album || '';
           var cur = navigator.mediaSession.metadata;
           var curSrc = cur && cur.artwork && cur.artwork.length ? cur.artwork[cur.artwork.length - 1].src : '';
           var art = encoreArtwork(__encoreMeta.art);
           var wantSrc = art.length ? art[art.length - 1].src : '';
-          if (cur && cur.title === (__encoreMeta.title || '') &&
-              cur.artist === (__encoreMeta.artist || '') &&
-              cur.album === (__encoreMeta.album || '') && curSrc === wantSrc) return;
+          // Idempotent: rewriting identical metadata makes iOS re-notify the
+          // car over AVRCP, which can abort an in-flight cover-art transfer
+          // (Tesla never shows the art). Only write when something changed.
+          if (cur && cur.title === title && cur.artist === artist &&
+              cur.album === album && curSrc === wantSrc) return;
+          if (cur && curSrc === wantSrc) {
+            // Art is already loaded on this object: change the text IN PLACE.
+            // WebKit keeps the decoded image and publishes title + art in one
+            // Now Playing update (same-turn writes coalesce).
+            cur.title = title; cur.artist = artist; cur.album = album;
+            return;
+          }
+          // New art. A fresh MediaMetadata makes WebKit publish its text
+          // immediately and the artwork only once the image has loaded (even
+          // a data: URI loads async) — a car head unit asks for art when the
+          // TITLE changes, gets none, and never re-asks (Tesla: art on song 1
+          // only, because that one is set before playback starts). So swap
+          // the art in under the CURRENT text first; the next reassert tick
+          // (500ms) sees the art in place and flips the text via the branch
+          // above, so the title change carries the art with it.
           var m = new MediaMetadata({
-            title: __encoreMeta.title || '',
-            artist: __encoreMeta.artist || '',
-            album: __encoreMeta.album || '',
+            title: cur ? cur.title : title,
+            artist: cur ? cur.artist : artist,
+            album: cur ? cur.album : album,
             artwork: art
           });
           // Write through the saved prototype setter — the instance property is

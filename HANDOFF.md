@@ -333,6 +333,14 @@ app.
   does no network fetch. Also `applyEncoreMeta` is idempotent — rewriting
   identical MediaMetadata (it used to, 10× per track change) re-notifies the
   car and can abort the art transfer. Not verifiable without the car.
+  **Follow-up (2026-10-09): that wasn't enough** — a NEW `MediaMetadata`
+  makes WebKit publish the text at once and the artwork only after its async
+  image load (a `data:` URI too), so mid-playback track changes still sent
+  title-without-art. `applyEncoreMeta` now swaps in two steps: new art under
+  the OLD text first, then (next 500ms reassert tick) mutates
+  `title/artist/album` IN PLACE on the same object, which keeps the loaded
+  image so the title change carries the art. Don't go back to assigning a
+  fresh `MediaMetadata` with new text + new art in one go.
 - **iOS site-autoplay on launch (fixed, don't reintroduce):** iOS sets
   `mediaTypesRequiringUserActionForPlayback = []`, so the real site can
   auto-start the account's last track on a cold launch. A `suppressSiteAutoplay`
