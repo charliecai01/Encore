@@ -341,6 +341,11 @@ app.
   `title/artist/album` IN PLACE on the same object, which keeps the loaded
   image so the title change carries the art. Don't go back to assigning a
   fresh `MediaMetadata` with new text + new art in one go.
+  **That didn't work either → Tesla shows the Encore icon (2026-10-09).** When
+  the output is plain Bluetooth A2DP (not AirPods/Beats, not CarPlay
+  `.carAudio`), `usesCarIcon` swaps every track's art for the constant
+  `CarArt` asset (both the page MediaSession and native Now Playing); a route
+  change re-publishes. Charlie's Porsche uses CarPlay, which shows real covers.
 - **iOS site-autoplay on launch (fixed, don't reintroduce):** iOS sets
   `mediaTypesRequiringUserActionForPlayback = []`, so the real site can
   auto-start the account's last track on a cold launch. A `suppressSiteAutoplay`
