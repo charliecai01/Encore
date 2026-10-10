@@ -39,16 +39,6 @@ extension PlayerEngine {
                 self?.resumeIfIntended()
             }
         }
-        // Connecting to / leaving the car swaps the Now Playing art between the
-        // track cover and the Encore icon (see usesCarIcon).
-        NotificationCenter.default.addObserver(
-            forName: AVAudioSession.routeChangeNotification, object: nil, queue: nil
-        ) { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.pushMediaSessionMeta()
-                self?.updateNowPlayingInfo()
-            }
-        }
         // Timestamp backgrounding/locking so the state-2 handler can tell a
         // lock-induced episode pause from a user pause even if the pause
         // event races the applicationState transition.
@@ -233,9 +223,7 @@ extension PlayerEngine {
         if let album = track.album?.name {
             info[MPMediaItemPropertyAlbumTitle] = album
         }
-        if usesCarIcon, let icon = Self.carIcon {
-            info[MPMediaItemPropertyArtwork] = icon.artwork
-        } else if let cached = artworkCache, cached.videoId == track.videoId {
+        if let cached = artworkCache, cached.videoId == track.videoId {
             info[MPMediaItemPropertyArtwork] = cached.artwork
         } else if track.artworkURL != nil, artworkFinishedId != track.videoId {
             // Don't publish the new title without its art: a Bluetooth head
@@ -251,29 +239,6 @@ extension PlayerEngine {
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
-
-    // MARK: - Car (Bluetooth) artwork
-
-    /// Over plain Bluetooth audio (the Tesla) Now Playing shows the Encore icon
-    /// instead of each track's cover. The car only asks for art when the title
-    /// changes and WebKit attaches a NEW cover a beat after the title, so the
-    /// real art never made it past song 1 (two fix attempts, 2026-09/10). A
-    /// constant image is already loaded on the MediaMetadata when the title
-    /// changes in place, so it reaches the car every time. Matched by the
-    /// Tesla's Bluetooth name ("SIMPLY Y") so every other device — CarPlay in
-    /// the Porsche, headphones, speakers — keeps the real track art.
-    var usesCarIcon: Bool {
-        AVAudioSession.sharedInstance().currentRoute.outputs.contains {
-            $0.portName.localizedCaseInsensitiveContains("SIMPLY Y")
-        }
-    }
-
-    static let carIcon: (artwork: MPMediaItemArtwork, uri: String)? = {
-        guard let image = UIImage(named: "CarArt"),
-              let data = image.jpegData(compressionQuality: 0.9) else { return nil }
-        return (MPMediaItemArtwork(boundsSize: image.size) { _ in image },
-                "data:image/jpeg;base64," + data.base64EncodedString())
-    }()
 
     /// Download the track's artwork once (joins an in-flight download) and cache
     /// it both natively and as a data: URI for the page's MediaSession.

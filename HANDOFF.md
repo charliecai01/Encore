@@ -333,19 +333,9 @@ app.
   does no network fetch. Also `applyEncoreMeta` is idempotent — rewriting
   identical MediaMetadata (it used to, 10× per track change) re-notifies the
   car and can abort the art transfer. Not verifiable without the car.
-  **Follow-up (2026-10-09): that wasn't enough** — a NEW `MediaMetadata`
-  makes WebKit publish the text at once and the artwork only after its async
-  image load (a `data:` URI too), so mid-playback track changes still sent
-  title-without-art. `applyEncoreMeta` now swaps in two steps: new art under
-  the OLD text first, then (next 500ms reassert tick) mutates
-  `title/artist/album` IN PLACE on the same object, which keeps the loaded
-  image so the title change carries the art. Don't go back to assigning a
-  fresh `MediaMetadata` with new text + new art in one go.
-  **That didn't work either → Tesla shows the Encore icon (2026-10-09).** When
-  the output device's name contains "SIMPLY Y" (the Tesla's Bluetooth name),
-  `usesCarIcon` swaps every track's art for the constant
-  `CarArt` asset (both the page MediaSession and native Now Playing); a route
-  change re-publishes. Charlie's Porsche uses CarPlay, which shows real covers.
+  **Still broken on the Tesla.** Tried and reverted 2026-10-09 (no effect):
+  swapping new art in under the old title then changing the text in place,
+  and a constant Encore-icon cover over the Tesla's Bluetooth route.
 - **iOS site-autoplay on launch (fixed, don't reintroduce):** iOS sets
   `mediaTypesRequiringUserActionForPlayback = []`, so the real site can
   auto-start the account's last track on a cold launch. A `suppressSiteAutoplay`

@@ -288,11 +288,11 @@ extension PlayerEngine {
     /// Drive the lock-screen / Control Center metadata through the page's
     /// MediaSession with OUR current track, so the displayed artwork/title can't
     /// lag behind the song we loaded via loadVideoById.
-    func pushMediaSessionMeta() {
+    private func pushMediaSessionMeta() {
         guard playerReady, let track = current else { return }
         // Get the image first so title + art are published together (see
         // updateNowPlayingInfo); fall back to the plain URL if the download fails.
-        if !usesCarIcon, track.artworkURL != nil, artworkFinishedId != track.videoId {
+        if track.artworkURL != nil, artworkFinishedId != track.videoId {
             let id = track.videoId
             Task {
                 await ensureArtwork(for: track)
@@ -307,9 +307,7 @@ extension PlayerEngine {
 
     private func publishMediaSessionMeta(for track: Track) {
         let art: String
-        if usesCarIcon, let icon = Self.carIcon {
-            art = icon.uri
-        } else if let cached = artworkDataURI, cached.videoId == track.videoId {
+        if let cached = artworkDataURI, cached.videoId == track.videoId {
             art = cached.uri
         } else {
             art = track.artworkURL?.absoluteString ?? ""
