@@ -259,13 +259,12 @@ extension PlayerEngine {
     /// changes and WebKit attaches a NEW cover a beat after the title, so the
     /// real art never made it past song 1 (two fix attempts, 2026-09/10). A
     /// constant image is already loaded on the MediaMetadata when the title
-    /// changes in place, so it reaches the car every time. CarPlay (`.carAudio`,
-    /// the Porsche) shows real covers fine, and AirPods/Beats are headphones,
-    /// so both keep the track art.
+    /// changes in place, so it reaches the car every time. Matched by the
+    /// Tesla's Bluetooth name ("SIMPLY Y") so every other device — CarPlay in
+    /// the Porsche, headphones, speakers — keeps the real track art.
     var usesCarIcon: Bool {
-        AVAudioSession.sharedInstance().currentRoute.outputs.contains { out in
-            out.portType == .bluetoothA2DP &&
-                !["AirPods", "Beats"].contains { out.portName.localizedCaseInsensitiveContains($0) }
+        AVAudioSession.sharedInstance().currentRoute.outputs.contains {
+            $0.portName.localizedCaseInsensitiveContains("SIMPLY Y")
         }
     }
 
