@@ -39,9 +39,20 @@ struct SearchView: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 26) {
+                        // The top hit is just the first row — no separate
+                        // banner card (Charlie, 2026-10-09).
                         if let top = results.top {
-                            TopResultCard(item: top)
-                                .padding(.horizontal, 24)
+                            Group {
+                                switch top {
+                                case .track(let track):
+                                    TrackRow(track: track, showsAlbum: false) {
+                                        player.playRadio(from: track)
+                                    }
+                                case .card(let card):
+                                    CardRow(item: card)
+                                }
+                            }
+                            .padding(.horizontal, 12)
                         }
                         ForEach(results.shelves) { shelf in
                             if filter != nil && !shelf.isTrackShelf {
@@ -123,84 +134,6 @@ struct FilterChip: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-    }
-}
-
-struct TopResultCard: View {
-    @EnvironmentObject var player: PlayerEngine
-    @EnvironmentObject var nav: Nav
-
-    let item: ShelfItem
-
-    @State private var hovering = false
-
-    var body: some View {
-        Button {
-            activate()
-        } label: {
-            HStack(spacing: 16) {
-                switch item {
-                case .track(let track):
-                    ArtworkView(url: Artwork.upscale(track.thumbnailURL, to: 336), corner: 10)
-                        .frame(width: 92, height: 92)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Top result")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Theme.textTertiary)
-                            .kerning(0.6)
-                        Text(NativeNames.displayTitle(for: track))
-                            .font(.system(size: 21, weight: .bold))
-                            .foregroundStyle(Theme.textPrimary)
-                            .lineLimit(1)
-                        Text(track.artistLine)
-                            .font(.system(size: 13))
-                            .foregroundStyle(Theme.textSecondary)
-                            .lineLimit(1)
-                    }
-                case .card(let card):
-                    ArtworkView(url: Artwork.upscale(card.thumbnailURL, to: 336),
-                                corner: card.kind == .artist ? 46 : 10)
-                        .frame(width: 92, height: 92)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Top result")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Theme.textTertiary)
-                            .kerning(0.6)
-                        Text(card.title)
-                            .font(.system(size: 21, weight: .bold))
-                            .foregroundStyle(Theme.textPrimary)
-                            .lineLimit(1)
-                        Text(card.subtitle)
-                            .font(.system(size: 13))
-                            .foregroundStyle(Theme.textSecondary)
-                            .lineLimit(1)
-                    }
-                }
-                Spacer()
-                if hovering {
-                    PlayBadge(size: 48) { activate() }
-                        .padding(.trailing, 8)
-                }
-            }
-            .padding(16)
-            .background(hovering ? Theme.cardHover : Theme.card,
-                        in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.stroke))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { h in
-            withAnimation(.easeOut(duration: 0.15)) { hovering = h }
-        }
-    }
-
-    private func activate() {
-        switch item {
-        case .track(let track):
-            player.playRadio(from: track)
-        case .card(let card):
-            nav.open(card)
-        }
     }
 }
 

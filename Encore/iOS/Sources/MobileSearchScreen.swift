@@ -30,12 +30,35 @@ struct SearchScreen: View {
                 .padding(.horizontal, 16)
 
                 if loading { ProgressView().frame(maxWidth: .infinity).padding(.top, 40) }
+                // The top hit is just the first row — no separate banner
+                // (Charlie, 2026-10-09).
+                if !loading, let top = results.top {
+                    Group {
+                        switch top {
+                        case .track(let track):
+                            TrackRowView(track: track, onRemoveFromPlaylist: nil) {
+                                player.playRadio(from: track)
+                            }
+                        case .card(let card):
+                            CardListRow(item: card)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
                 ForEach(results.shelves) { shelf in
                     if shelf.isTrackShelf {
                         VStack(spacing: 0) {
-                            ForEach(Array(shelf.tracks.enumerated()), id: \.offset) { i, t in
-                                TrackRowView(track: t, onRemoveFromPlaylist: nil) {
-                                    player.playCollection(shelf.tracks, startAt: i)
+                            let tracks = shelf.tracks
+                            ForEach(Array(shelf.items.enumerated()), id: \.offset) { _, item in
+                                Group {
+                                    switch item {
+                                    case .track(let t):
+                                        TrackRowView(track: t, onRemoveFromPlaylist: nil) {
+                                            player.playCollection(tracks, startAt: tracks.firstIndex(of: t) ?? 0)
+                                        }
+                                    case .card(let card):
+                                        CardListRow(item: card)
+                                    }
                                 }
                                 .padding(.horizontal, 16)
                             }
