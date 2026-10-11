@@ -306,18 +306,14 @@ extension PlayerEngine {
     }
 
     private func publishMediaSessionMeta(for track: Track) {
-        // The art src must differ per TRACK, not just per cover: WebKit's Now
-        // Playing track id is hash(artwork src), so two songs off one album
-        // would look like one track to the car and it wouldn't fetch the art.
-        // The data: URI carries the id as a MIME parameter (see downloadArtwork);
-        // a URL gets it as a fragment.
+        // Keep the src per COVER, not per track: making it unique per track
+        // (2026-10-11) left two same-album songs with a new Now Playing id but
+        // the old artwork id, and lock-screen art went missing. See HANDOFF §5.
         let art: String
         if let cached = artworkDataURI, cached.videoId == track.videoId {
             art = cached.uri
-        } else if let url = track.artworkURL {
-            art = url.absoluteString + "#" + track.videoId
         } else {
-            art = ""
+            art = track.artworkURL?.absoluteString ?? ""
         }
         let meta: [String: Any] = [
             "title": track.title,

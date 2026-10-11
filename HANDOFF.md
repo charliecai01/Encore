@@ -316,14 +316,27 @@ app.
   CORS/tainting → SILENCE**: YouTube uses MSE/blob (same-origin) so it should
   be fine (the Electron youtube-music EQ works the same way), but this MUST be
   confirmed by ear on device — if enabling EQ silences audio, that's the cause.
-- **iOS lock-screen metadata is the PAGE's MediaSession, not our
-  MPNowPlayingInfoCenter** — the WKWebView owns Now Playing on iOS.
-  `__encore.setMeta` pushes our track's title/artist/art into the page, and
-  the documentStart script PATCHES the `mediaSession.metadata` setter so site
-  writes are swallowed while `window.__encoreOwnsMeta` is set (2026-07-03).
-  Before that, the site's late metadata updates (slow fetches, SPA events
-  mid-song) overwrote our artwork → stale art in Notification Center. Native
-  `updateNowPlayingInfo` still runs as a fallback but the page wins on iOS.
+- **iOS has TWO Now Playing publishers, and on iOS 27 the system shows the
+  NATIVE one.** Our `MPNowPlayingInfoCenter` (app process) and the page's
+  MediaSession (WebKit's GPU process) each publish to MediaRemote as separate
+  clients. In the iOS 27 simulator, mediaremoted makes our native client the
+  app's active player at launch and keeps it there; WebKit's client is never
+  shown (2026-10-11). The 2026-07-03 note below said the page won, which
+  may have been true on iOS 26. Not yet confirmed on device, so keep both
+  publishers correct. `__encore.setMeta` pushes our track's title/artist/art
+  into the page, and the documentStart script PATCHES the
+  `mediaSession.metadata` setter so site writes are swallowed while
+  `window.__encoreOwnsMeta` is set (2026-07-03). Before that, the site's late
+  metadata updates (slow fetches, SPA events mid-song) overwrote our artwork
+  → stale art in Notification Center.
+  **How to see what the system gets:** run the app in the simulator and
+  `xcrun simctl spawn booted log stream --style compact --predicate
+  'process == "mediaremoted" AND composedMessage CONTAINS "nowPlayingItem"'`.
+  Each "setting nowPlayingItem to" entry names the client (`dev.charlie.encore.ios`
+  = native, `com.apple.WebKit.GPU/…` = page) with the item `identifier`,
+  `artworkAvailable` and `artworkIdentifier`. The `[MRNowPlayingController]
+  … NotifyUpdate` entries' `playerPath` shows which client the system is
+  displaying. Device logs need root (`sudo log collect --device-udid …`).
 - **Bluetooth/car cover art needs title + art published TOGETHER (2026-09-23).**
   Head units (Tesla) request art when the track changes; if the metadata goes
   out without art and the image arrives later, they never re-ask — art worked
@@ -351,14 +364,26 @@ app.
   WebKit's artwork loader then hits the memory cache and gets the image
   synchronously (`CachedResource::didAddClient` → `notifyFinished`), so the
   first update carries title + art + new id together. The page logs
-  `meta: '<title>' art=loaded|failed|timeout after Nms` per track. Because the
-  id is `hash(src)`, the src is also made unique PER TRACK
-  (`data:image/jpeg;track=<videoId>;base64,…`, or `#<videoId>` on a URL), so
-  two songs off one album don't share an id. Same-id-on-every-track is why the
-  constant icon failed.
-  **Don't** assign a `MediaMetadata` whose art isn't preloaded, and don't add
-  more artwork sizes: WebKit loads only one, and the `<img>` must have loaded
-  that exact URL. Still needs a drive to confirm.
+  `meta: '<title>' art=loaded|failed|timeout after Nms` per track. That
+  shipped and the Tesla still showed no art, because (above) the system shows
+  the NATIVE publisher, not the page. The same commit also made the src
+  unique per track (`;track=<videoId>` in the data: URI) so same-album songs
+  wouldn't share an id. That broke lock-screen art: mediaremoted keeps the
+  previous `artworkIdentifier` when the image bytes are identical, so the item
+  id changed but the artwork id didn't. Reverted the same day: the src is per
+  cover again.
+  **Native fix (2026-10-11):** `MPNowPlayingInfoCenter` gives every
+  `nowPlayingInfo` assignment a NEW random item id unless
+  `MPNowPlayingInfoPropertyExternalContentIdentifier` is set.
+  `updateNowPlayingInfo` writes ~3 times per song (track change, then each
+  play/buffering state change), so the car saw several "track changes" per
+  song, each with a fresh id. That's a likely reason the cover-art fetch never
+  lands after song 1. It now sets that property to the videoId: one stable id
+  per track, changing only when the track does (verified in the simulator).
+  Needs a drive to confirm.
+  **Don't** assign a `MediaMetadata` whose art isn't preloaded, don't add more
+  artwork sizes (WebKit loads only one, and the `<img>` must have loaded that
+  exact URL), and don't make the page's art src unique per track.
 - **iOS site-autoplay on launch (fixed, don't reintroduce):** iOS sets
   `mediaTypesRequiringUserActionForPlayback = []`, so the real site can
   auto-start the account's last track on a cold launch. A `suppressSiteAutoplay`

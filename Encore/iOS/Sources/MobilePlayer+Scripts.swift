@@ -105,8 +105,7 @@ extension PlayerEngine {
       // FIRST update carries title + art + new id together — the way native
       // apps publish. So preload the art here and switch the metadata only
       // once it has loaded (or failed / timed out: then publish anyway).
-      // Native makes each track's src unique (publishMediaSessionMeta), and
-      // it's the ONLY artwork entry: WebKit loads just one, and it must be
+      // It's the ONLY artwork entry: WebKit loads just one, and it must be
       // the exact URL preloaded here.
       var artImg = null, artSrc = null, artReady = false, artTimer = null, artStart = 0;
       function preloadArt(src) {

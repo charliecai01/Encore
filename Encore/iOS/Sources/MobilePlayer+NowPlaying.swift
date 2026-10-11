@@ -219,6 +219,11 @@ extension PlayerEngine {
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
+            // A stable id per track. Without it MediaRemote makes every write
+            // (play, pause, buffering: ~3 per song) a NEW item, so a Bluetooth
+            // head unit sees several track changes per song. This publisher is
+            // the one the system shows (see HANDOFF §5).
+            MPNowPlayingInfoPropertyExternalContentIdentifier: track.videoId,
         ]
         if let album = track.album?.name {
             info[MPMediaItemPropertyAlbumTitle] = album
@@ -261,8 +266,7 @@ extension PlayerEngine {
         guard let (data, _) = try? await URLSession.shared.data(for: req),
               let image = UIImage(data: data) else { return }
         artworkCache = (track.videoId, MPMediaItemArtwork(boundsSize: image.size) { _ in image })
-        // `track=` keeps the src unique per track (see publishMediaSessionMeta).
-        artworkDataURI = (track.videoId, "data:image/jpeg;track=\(track.videoId);base64," + data.base64EncodedString())
+        artworkDataURI = (track.videoId, "data:image/jpeg;base64," + data.base64EncodedString())
     }
 
     func updateNowPlayingElapsed() {
