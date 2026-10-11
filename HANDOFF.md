@@ -336,6 +336,29 @@ app.
   **Still broken on the Tesla.** Tried and reverted 2026-10-09 (no effect):
   swapping new art in under the old title then changing the text in place,
   and a constant Encore-icon cover over the Tesla's Bluetooth route.
+  **Root cause from WebKit's source (2026-10-11):** `MediaSession::
+  updateNowPlayingInfo` attaches artwork only once `MediaMetadata`'s image
+  loader has finished, and `MediaSessionManagerCocoa::setNowPlayingInfo` sets
+  the MediaRemote track id to `hash(artwork src)` (the element's id while the
+  image is still loading). Assigning a new `MediaMetadata` resets the image and
+  starts an ASYNC load, even for a `data:` URI. So every mid-playback track
+  change published "new title, no art, element id" first and "art, new id" a
+  moment later, and the car never acted on the second update. Song 1 worked
+  because its metadata is set before playback starts, so WebKit isn't
+  publishing yet. The constant-icon attempt failed because the id never changed.
+  **Fix:** `preloadArt` in the controller loads the art into an `<img>` first,
+  and `applyEncoreMeta` holds the switch until that load ends (3s timeout).
+  WebKit's artwork loader then hits the memory cache and gets the image
+  synchronously (`CachedResource::didAddClient` → `notifyFinished`), so the
+  first update carries title + art + new id together. The page logs
+  `meta: '<title>' art=loaded|failed|timeout after Nms` per track. Because the
+  id is `hash(src)`, the src is also made unique PER TRACK
+  (`data:image/jpeg;track=<videoId>;base64,…`, or `#<videoId>` on a URL), so
+  two songs off one album don't share an id. Same-id-on-every-track is why the
+  constant icon failed.
+  **Don't** assign a `MediaMetadata` whose art isn't preloaded, and don't add
+  more artwork sizes: WebKit loads only one, and the `<img>` must have loaded
+  that exact URL. Still needs a drive to confirm.
 - **iOS site-autoplay on launch (fixed, don't reintroduce):** iOS sets
   `mediaTypesRequiringUserActionForPlayback = []`, so the real site can
   auto-start the account's last track on a cold launch. A `suppressSiteAutoplay`

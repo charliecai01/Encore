@@ -261,7 +261,8 @@ extension PlayerEngine {
         guard let (data, _) = try? await URLSession.shared.data(for: req),
               let image = UIImage(data: data) else { return }
         artworkCache = (track.videoId, MPMediaItemArtwork(boundsSize: image.size) { _ in image })
-        artworkDataURI = (track.videoId, "data:image/jpeg;base64," + data.base64EncodedString())
+        // `track=` keeps the src unique per track (see publishMediaSessionMeta).
+        artworkDataURI = (track.videoId, "data:image/jpeg;track=\(track.videoId);base64," + data.base64EncodedString())
     }
 
     func updateNowPlayingElapsed() {

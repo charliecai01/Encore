@@ -57,6 +57,10 @@ extension PlayerEngine {
         case "hijack":
             // The site's own autoplay overrode our load; the page re-asserted.
             Log.player.notice("hijack: site loaded \(body["cur"] as? String ?? "nil") over \(body["id"] as? String ?? "nil") — re-asserting")
+        case "meta":
+            // The page preloaded the track's art and published its Now Playing
+            // metadata. "loaded" means title + art reached the car as one update.
+            Log.player.notice("meta: '\(body["title"] as? String ?? "")' art=\(body["art"] as? String ?? "?") after \(body["ms"] as? Int ?? -1)ms")
         case "error":
             // The loaded video is unplayable (deleted/region-blocked) — skip it
             // instead of reload-looping while the site's queue bleeds through.
