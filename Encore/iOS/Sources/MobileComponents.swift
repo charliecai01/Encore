@@ -464,6 +464,8 @@ struct AccountButton: View {
     @AppStorage(CarDebug.nativeStateKey) private var carNativeState = false
     @AppStorage(CarDebug.nativeAudioKey) private var carNativeAudio = false
     @AppStorage(CarDebug.mixLoopKey) private var carMixLoop = false
+    @AppStorage(CarDebug.pageArtSizeKey) private var carPageArtSize = 0
+    @AppStorage(CarDebug.pageIconKey) private var carPageIcon = false
     var body: some View {
         Menu {
             if auth.isSignedIn {
@@ -481,6 +483,13 @@ struct AccountButton: View {
                 Toggle("Native playback state", isOn: $carNativeState)
                 Toggle("Native silent audio (can stop the music!)", isOn: $carNativeAudio)
                 Toggle("Silent audio mixes with others", isOn: $carMixLoop)
+                Toggle("Page cover: Encore icon", isOn: $carPageIcon)
+                Picker("Page cover size", selection: $carPageArtSize) {
+                    Text("Full (544)").tag(0)
+                    Text("200 px").tag(200)
+                    Text("120 px").tag(120)
+                    Text("64 px").tag(64)
+                }
                 Picker("Cover size cap", selection: $carArtCap) {
                     Text("No cap").tag(0)
                     Text("300 px").tag(300)

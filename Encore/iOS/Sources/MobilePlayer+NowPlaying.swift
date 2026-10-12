@@ -356,7 +356,16 @@ extension PlayerEngine {
                 CarArt.render(image, requested: requested)
             })
         }
-        artworkDataURI = (track.videoId, "data:image/jpeg;base64," + data.base64EncodedString())
+        // Page cover size experiment: the page's cover reaches the car as a RAW
+        // TIFF of whatever pixel size we give WebKit (544px = 1,187,190 bytes,
+        // which the Tesla ignores), so a smaller JPEG here means a smaller TIFF.
+        var pageJPEG = data
+        let side = CarDebug.pageArtSize
+        if side > 0, let scaled = CarArt.scaled(image, toSide: CGFloat(side)),
+           let jpeg = scaled.jpegData(compressionQuality: 0.85) {
+            pageJPEG = jpeg
+        }
+        artworkDataURI = (track.videoId, "data:image/jpeg;base64," + pageJPEG.base64EncodedString())
     }
 
     func updateNowPlayingElapsed() {
@@ -385,6 +394,10 @@ enum CarDebug {
     static let nativeStateKey = "car.nativeState"
     static let nativeAudioKey = "car.nativeAudio"
     static let mixLoopKey = "car.mixLoop"
+    /// Pixel edge of the cover given to the PAGE (0 = original size).
+    static let pageArtSizeKey = "car.pageArtSize"
+    /// Give the page the Encore icon instead of each track's cover.
+    static let pageIconKey = "car.pageIcon"
 
     /// Native MPNowPlayingInfoCenter stays empty, so the page's MediaSession
     /// (WebKit) is the only Now Playing source the car can see. (Blanking the
@@ -401,6 +414,8 @@ enum CarDebug {
     static var nativeState: Bool { UserDefaults.standard.bool(forKey: nativeStateKey) }
     /// Keep the app process's silent audio loop running during playback too.
     static var nativeAudio: Bool { UserDefaults.standard.bool(forKey: nativeAudioKey) }
+    static var pageArtSize: Int { UserDefaults.standard.integer(forKey: pageArtSizeKey) }
+    static var pageIcon: Bool { UserDefaults.standard.bool(forKey: pageIconKey) }
     /// Experimental: the silent loop's session mixes with others so it can't
     /// interrupt (or be interrupted by) the page's audio.
     static var mixLoop: Bool { UserDefaults.standard.bool(forKey: mixLoopKey) }
@@ -414,6 +429,8 @@ enum CarDebug {
                   nativeState ? "native-state" : nil,
                   nativeAudio ? "native-audio" : nil,
                   mixLoop ? "mix-loop" : nil,
+                  pageArtSize > 0 ? "page\(pageArtSize)" : nil,
+                  pageIcon ? "page-icon" : nil,
                   richIdentity ? "rich-id" : nil,
                   publishDelay ? "delay" : nil].compactMap { $0 }
         return on.isEmpty ? "off" : on.joined(separator: "+")
@@ -433,6 +450,30 @@ enum CarDebug {
 /// 1,187,190-byte cover over AVRCP/BIP (2026-10-12 drive: the Tesla requested
 /// it and the phone answered SUCCESS, but the car showed nothing).
 enum CarArt {
+    /// `image` resized so its longest edge is `side` px (never upscaled), at
+    /// scale 1 so the pixel size is exactly what WebKit will see.
+    static func scaled(_ image: UIImage, toSide side: CGFloat) -> UIImage? {
+        let longest = max(image.size.width, image.size.height)
+        guard longest > 0 else { return nil }
+        let k = min(1, side / longest)
+        let target = CGSize(width: max(1, (image.size.width * k).rounded()),
+                            height: max(1, (image.size.height * k).rounded()))
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: target, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: target))
+        }
+    }
+
+    /// The Encore icon as a `data:` URI at `side` px, for the page's cover.
+    static func iconDataURI(side: Int) -> String? {
+        guard let icon = UIImage(named: "CarArt"),
+              let small = scaled(icon, toSide: CGFloat(side > 0 ? side : 544)),
+              let jpeg = small.jpegData(compressionQuality: 0.85) else { return nil }
+        return "data:image/jpeg;base64," + jpeg.base64EncodedString()
+    }
+
     static func render(_ source: UIImage, requested: CGSize) -> UIImage {
         let sourceSide = max(source.size.width, source.size.height)
         var side = max(requested.width, requested.height)

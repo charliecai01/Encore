@@ -463,6 +463,14 @@ app.
   the NATIVE client elected while the page keeps playing. Ideas not yet
   tried: `car.mixLoop` (silent loop with `.mixWithOthers`), or making the
   WebKit client ineligible without muting it.
+  **Untried until 2026-10-12 evening: a SMALL page cover.** The page's cover
+  is a raw TIFF at the pixel size we hand WebKit, so the 2026-10-09 "Encore
+  icon" attempt (a 500x500 `car_art.jpg`) was ~1MB raw too and would have
+  failed for the same reason, not (only) because "the id never changed". Car
+  debug now has "Page cover size" (200/120/64 px, applies to real covers) and
+  "Page cover: Encore icon" (constant icon at that size). No silent audio, so
+  the music is untouched. Read the result from `car_capture.sh`'s thumbnail
+  byte table: a 120px raw TIFF is ~58KB, 64px ~16KB.
 - **Brief pause when pulling Notification Center / Control Center (2026-10-12,
   reported; fix unverified).** Pulling either makes the scene INACTIVE (not
   backgrounded), and the page's player paused for roughly the length of the

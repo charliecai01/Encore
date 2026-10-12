@@ -310,7 +310,9 @@ extension PlayerEngine {
         // (2026-10-11) left two same-album songs with a new Now Playing id but
         // the old artwork id, and lock-screen art went missing. See HANDOFF §5.
         let art: String
-        if let cached = artworkDataURI, cached.videoId == track.videoId {
+        if CarDebug.pageIcon, let icon = CarArt.iconDataURI(side: CarDebug.pageArtSize) {
+            art = icon
+        } else if let cached = artworkDataURI, cached.videoId == track.videoId {
             art = cached.uri
         } else {
             art = track.artworkURL?.absoluteString ?? ""
