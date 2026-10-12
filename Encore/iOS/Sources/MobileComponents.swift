@@ -456,16 +456,6 @@ var accountButton: some ToolbarContent {
 
 struct AccountButton: View {
     @EnvironmentObject var auth: AuthManager
-    @AppStorage(CarDebug.pageOnlyKey) private var carPageOnly = false
-    @AppStorage(CarDebug.richIdentityKey) private var carRichIdentity = false
-    @AppStorage(CarDebug.publishDelayKey) private var carPublishDelay = false
-    @AppStorage(CarDebug.artCapKey) private var carArtCap = 0
-    @AppStorage(CarDebug.legacyArtKey) private var carLegacyArt = false
-    @AppStorage(CarDebug.nativeStateKey) private var carNativeState = false
-    @AppStorage(CarDebug.nativeAudioKey) private var carNativeAudio = false
-    @AppStorage(CarDebug.mixLoopKey) private var carMixLoop = false
-    @AppStorage(CarDebug.pageArtSizeKey) private var carPageArtSize = 0
-    @AppStorage(CarDebug.pageIconKey) private var carPageIcon = false
     var body: some View {
         Menu {
             if auth.isSignedIn {
@@ -473,29 +463,6 @@ struct AccountButton: View {
                 Button("Sign Out", role: .destructive) { Task { await auth.signOut() } }
             } else {
                 Button("Sign in with Google") { auth.showLogin = true }
-            }
-            // Bluetooth-car cover-art experiments; flip, then change track.
-            Menu("Car debug") {
-                Toggle("Page-only Now Playing (native off)", isOn: $carPageOnly)
-                Toggle("Rich track identity", isOn: $carRichIdentity)
-                Toggle("Delay publish 0.7s", isOn: $carPublishDelay)
-                Toggle("Legacy artwork init", isOn: $carLegacyArt)
-                Toggle("Native playback state", isOn: $carNativeState)
-                Toggle("Native silent audio (can stop the music!)", isOn: $carNativeAudio)
-                Toggle("Silent audio mixes with others", isOn: $carMixLoop)
-                Toggle("Page cover: Encore icon", isOn: $carPageIcon)
-                Picker("Page cover size", selection: $carPageArtSize) {
-                    Text("Full (544)").tag(0)
-                    Text("200 px").tag(200)
-                    Text("120 px").tag(120)
-                    Text("64 px").tag(64)
-                }
-                Picker("Cover size cap", selection: $carArtCap) {
-                    Text("No cap").tag(0)
-                    Text("300 px").tag(300)
-                    Text("200 px").tag(200)
-                    Text("120 px").tag(120)
-                }
             }
         } label: {
             Image(systemName: auth.isSignedIn ? "person.crop.circle.fill" : "person.crop.circle")

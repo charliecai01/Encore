@@ -94,64 +94,37 @@ extension PlayerEngine {
       // no round trip to native — to close the audible-blip window that
       // caused "plays a 0.1ms sound randomly" (2026-09-22).
       var suppressed = true;
-      // Car cover art (Bluetooth AVRCP — the Tesla). WebKit publishes Now
-      // Playing with the track id = hash(artwork src), and attaches the image
-      // only once its loader finishes. A new MediaMetadata therefore went out
-      // as "new title, no art" and the art followed in a SECOND update, which
-      // the car never picks up (art on song 1 only: it's set before playback
-      // starts, so the image is long loaded by then). If the image is already
-      // in this document's memory cache, WebKit's artwork loader gets it
-      // synchronously (CachedResource::didAddClient → notifyFinished), so the
-      // FIRST update carries title + art + new id together — the way native
-      // apps publish. So preload the art here and switch the metadata only
-      // once it has loaded (or failed / timed out: then publish anyway).
-      // It's the ONLY artwork entry: WebKit loads just one, and it must be
-      // the exact URL preloaded here.
-      var artImg = null, artSrc = null, artReady = false, artTimer = null, artStart = 0;
-      function preloadArt(src) {
-        artSrc = src;
-        artReady = !src;
-        artImg = null;
-        if (artTimer) { clearTimeout(artTimer); artTimer = null; }
-        if (!src) return;
-        var img = new Image();
-        artImg = img; // held so the decoded image stays live in the memory cache
-        artStart = Date.now();
-        function done(how) {
-          if (artImg !== img || artReady) return;
-          artReady = true;
-          if (artTimer) { clearTimeout(artTimer); artTimer = null; }
-          send({ event: 'meta', art: how, ms: Date.now() - artStart,
-                 title: __encoreMeta ? __encoreMeta.title : '' });
-          applyEncoreMeta();
+      function encoreArtwork(src) {
+        if (!src) return [];
+        if (src.indexOf('data:') === 0) return [{ src: src, sizes: '544x544', type: 'image/jpeg' }];
+        // Several sizes: some head units (AVRCP cover art over Bluetooth) want a
+        // small thumbnail, the lock screen wants a big one. Google-hosted art
+        // encodes size in the URL (=wN-hN-...), so derive each variant.
+        function sized(n) {
+          var u = src.replace(/=(w\d+-h\d+|s\d+)[^=]*$/, '=w' + n + '-h' + n + '-l90-rj');
+          return { src: u, sizes: n + 'x' + n, type: 'image/jpeg' };
         }
-        img.onload = function () { done('loaded'); };
-        img.onerror = function () { done('failed'); };
-        artTimer = setTimeout(function () { done('timeout'); }, 3000);
-        img.src = src;
+        return src.indexOf('=') < 0 ? [{ src: src, sizes: '544x544', type: 'image/jpeg' }]
+          : [sized(96), sized(192), sized(300), sized(544)];
       }
       function applyEncoreMeta() {
         if (!__encoreMeta || !('mediaSession' in navigator)) return;
-        var src = __encoreMeta.art || '';
-        if (src !== artSrc) preloadArt(src);
-        // Until the art is in the cache the previous track's title + art stay
-        // up, so the car never sees the new title without its cover.
-        if (!artReady) return;
         try {
-          var title = __encoreMeta.title || '', artist = __encoreMeta.artist || '',
-              album = __encoreMeta.album || '';
           // Idempotent: rewriting identical metadata makes iOS re-notify the
-          // car over AVRCP, which can abort an in-flight cover-art transfer.
-          // Only write when something changed. The <img>'s src is resolved
-          // the same way WebKit resolves the MediaImage src.
+          // car over AVRCP, which can abort an in-flight cover-art transfer
+          // (Tesla never shows the art). Only write when something changed.
           var cur = navigator.mediaSession.metadata;
-          var curSrc = cur && cur.artwork && cur.artwork.length ? cur.artwork[0].src : '';
-          var wantSrc = artImg ? artImg.src : '';
-          if (cur && cur.title === title && cur.artist === artist &&
-              cur.album === album && curSrc === wantSrc) return;
+          var curSrc = cur && cur.artwork && cur.artwork.length ? cur.artwork[cur.artwork.length - 1].src : '';
+          var art = encoreArtwork(__encoreMeta.art);
+          var wantSrc = art.length ? art[art.length - 1].src : '';
+          if (cur && cur.title === (__encoreMeta.title || '') &&
+              cur.artist === (__encoreMeta.artist || '') &&
+              cur.album === (__encoreMeta.album || '') && curSrc === wantSrc) return;
           var m = new MediaMetadata({
-            title: title, artist: artist, album: album,
-            artwork: src ? [{ src: src, sizes: '544x544', type: 'image/jpeg' }] : []
+            title: __encoreMeta.title || '',
+            artist: __encoreMeta.artist || '',
+            album: __encoreMeta.album || '',
+            artwork: art
           });
           // Write through the saved prototype setter — the instance property is
           // patched to swallow (site) writes while __encoreOwnsMeta is set.

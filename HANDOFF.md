@@ -471,6 +471,26 @@ app.
   "Page cover: Encore icon" (constant icon at that size). No silent audio, so
   the music is untouched. Read the result from `car_capture.sh`'s thumbnail
   byte table: a 120px raw TIFF is ~58KB, 64px ~16KB.
+  **FINAL STATE (2026-10-12): everything above was REVERTED, the Tesla still
+  shows no cover.** After the drive Charlie gave up and asked for the original
+  build with no debug code: the app sources are byte-identical to `2c2f7c0`
+  ("Revert today's Tesla cover-art attempts"). Removed: the Car debug menu,
+  the `nowplaying:`/`artwork:` log lines, the native-state / silent-audio /
+  mixable-loop / page-cover-size / icon experiments, the `CarArt` imageset and
+  the inactive-pause nudge for songs. Kept: this write-up and
+  `Encore/scripts/car_capture.sh` (its Bluetooth, thumbnail-size and elected-
+  client sections still work; the `nowplaying:`/`meta:` sections are empty now
+  because those log lines are gone). Net findings, don't redo them:
+  (1) on the device the page's WebKit client is the elected Now Playing client
+  and the car is served ITS artwork; (2) WebKit sends artwork as a raw TIFF
+  (544px = 1,187,190 bytes) that the Tesla's `GetLinkedThumbnail` never uses,
+  while the official YouTube Music's native JPEG (13-29KB) works; (3) making
+  the native client win by playing silent audio from the app process only
+  worked by PAUSING the page's audio; (4) small page covers (120/64px, Encore
+  icon) were built and tested without success, and the mixable silent loop
+  was built but never confirmed to keep the music playing. Remaining ideas, all
+  unproven: a native player architecture (not feasible with the site-driven
+  web player), or an Apple/WebKit change that sends JPEG artwork.
 - **Brief pause when pulling Notification Center / Control Center (2026-10-12,
   reported; fix unverified).** Pulling either makes the scene INACTIVE (not
   backgrounded), and the page's player paused for roughly the length of the

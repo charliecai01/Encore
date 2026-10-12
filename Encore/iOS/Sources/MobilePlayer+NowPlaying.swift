@@ -19,11 +19,7 @@ extension PlayerEngine {
                   let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
             let shouldResume = (info[AVAudioSessionInterruptionOptionKey] as? UInt)
                 .map { AVAudioSession.InterruptionOptions(rawValue: $0).contains(.shouldResume) } ?? false
-            // Why (default / appWasSuspended / builtInMicMuted / routeDisconnected),
-            // so a stray "began" can be attributed.
-            let reason = (info[AVAudioSessionInterruptionReasonKey] as? UInt) ?? 99
             DispatchQueue.main.async {
-                Log.player.notice("audio interruption reason=\(reason) state=\(UIApplication.shared.applicationState.rawValue)")
                 self?.handleInterruption(began: type == .began, shouldResume: shouldResume)
             }
         }
@@ -34,7 +30,6 @@ extension PlayerEngine {
             forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil
         ) { [weak self] _ in
             DispatchQueue.main.async {
-                Log.player.notice("app active playing=\(self?.isPlaying == true) wants=\(self?.userWantsPlayback == true)")
                 self?.audioInterrupted = false
                 self?.backgroundResumeNudges = 0
                 // Timers don't fire while suspended, so the bridge legitimately
@@ -50,10 +45,7 @@ extension PlayerEngine {
         NotificationCenter.default.addObserver(
             forName: UIApplication.willResignActiveNotification, object: nil, queue: nil
         ) { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.lastResignAt = Date()
-                Log.player.notice("app inactive (resign active) playing=\(self?.isPlaying == true)")
-            }
+            DispatchQueue.main.async { self?.lastResignAt = Date() }
         }
     }
 
@@ -136,9 +128,6 @@ extension PlayerEngine {
             keepAlivePlayer?.prepareToPlay()
         }
         guard let player = keepAlivePlayer, !player.isPlaying else { return }
-        if CarDebug.mixLoop {
-            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
-        }
         try? AVAudioSession.sharedInstance().setActive(true)
         player.play()
     }
@@ -220,19 +209,9 @@ extension PlayerEngine {
     func updateNowPlayingInfo() {
         guard let track = current else {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-            nowPlayingPublishedId = nil
-            nowPlayingHold = nil
             return
         }
         configureRemoteCommands(forEpisode: track.isEpisode)
-        if CarDebug.pageOnly {
-            // Car-debug: native publishes nothing, so WebKit's MediaSession
-            // (title + preloaded art in one update) is the only Now Playing.
-            if MPNowPlayingInfoCenter.default().nowPlayingInfo != nil {
-                MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-            }
-            return
-        }
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: track.title,
             MPMediaItemPropertyArtist: track.artistLine,
@@ -240,22 +219,9 @@ extension PlayerEngine {
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
-            // A stable id per track. Without it MediaRemote makes every write
-            // (play, pause, buffering: ~3 per song) a NEW item, so a Bluetooth
-            // head unit sees several track changes per song. This publisher is
-            // the one the system shows (see HANDOFF §5).
-            MPNowPlayingInfoPropertyExternalContentIdentifier: track.videoId,
         ]
         if let album = track.album?.name {
             info[MPMediaItemPropertyAlbumTitle] = album
-        }
-        if CarDebug.richIdentity {
-            // Extra track-identity signals some AVRCP stacks key on.
-            info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = index
-            info[MPNowPlayingInfoPropertyPlaybackQueueCount] = max(queue.count, index + 1)
-            info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
-            info[MPNowPlayingInfoPropertyIsLiveStream] = false
-            info[MPMediaItemPropertyPersistentID] = NSNumber(value: CarDebug.stableId(track.videoId))
         }
         if let cached = artworkCache, cached.videoId == track.videoId {
             info[MPMediaItemPropertyArtwork] = cached.artwork
@@ -271,42 +237,6 @@ extension PlayerEngine {
             }
             return
         }
-        if CarDebug.publishDelay, nowPlayingPublishedId != track.videoId {
-            // Hold the new track's first publish back ~0.7s (art is already in
-            // hand), in case the car samples metadata too early on a change.
-            let hold = nowPlayingHold
-            if hold?.videoId != track.videoId {
-                nowPlayingHold = (track.videoId, Date().addingTimeInterval(0.65))
-                let id = track.videoId
-                Log.player.notice("nowplaying: holding \(id) 700ms")
-                Task {
-                    try? await Task.sleep(nanoseconds: 700_000_000)
-                    if current?.videoId == id { updateNowPlayingInfo() }
-                }
-                return
-            }
-            if let until = hold?.until, Date() < until { return }
-        }
-        nowPlayingPublishedId = track.videoId
-        if CarDebug.nativeState {
-            // Declare playback state on the native client too. On the device
-            // only WebKit's client ever reported "Playing" to mediaremoted, so
-            // it was always the elected Now Playing client (and the car got its
-            // raw TIFF cover). See HANDOFF §5, "Tesla".
-            MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
-        }
-        // The car art fix: while the app process is itself producing (silent)
-        // audio, mediaremoted elects the NATIVE Now Playing client — whose
-        // JPEG cover the Tesla can take — instead of WebKit's raw-TIFF one.
-        // Gated on `isPlaying`, NOT `audioInterrupted`: a real call/Siri
-        // interruption pauses the page (handleInterruption), so isPlaying is
-        // false then; but iOS also posts a spurious "interruption began"
-        // (reason 0, app active) at every track start that never gets an
-        // "ended", so `audioInterrupted` sticks true and blocked the loop in
-        // the first shipped version of this fix (2026-10-12).
-        if CarDebug.nativeAudio, isPlaying, !sleepStopActive { startKeepAlive() }
-        // One line per write: what the system (and so the car) is being given.
-        Log.player.notice("nowplaying: id=\(track.videoId) '\(track.title)' art=\(info[MPMediaItemPropertyArtwork] != nil ? "yes" : "no") rate=\(isPlaying ? 1 : 0) qi=\(index) car=\(CarDebug.summary)")
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
@@ -330,167 +260,14 @@ extension PlayerEngine {
         req.timeoutInterval = 3
         guard let (data, _) = try? await URLSession.shared.data(for: req),
               let image = UIImage(data: data) else { return }
-        // Hand back the size the system asks for (never upscaled), not always
-        // the full 544px image: Bluetooth cover art went out as an
-        // uncompressed 544x544 RGBA image (1,187,190 bytes) and the Tesla
-        // never showed it. See CarArt.
-        // `boundsSize` is what the system asks for AND the size it forwards to
-        // a Bluetooth car (2026-10-12: asking for 544 gave a 1,187,190-byte
-        // 544x544x4 cover whatever image we returned; shrinking only the
-        // returned image changed nothing). The cap therefore lowers boundsSize.
-        var bounds = image.size
-        let cap = CarDebug.artCap
-        if cap > 0 {
-            let scale = min(1, CGFloat(cap) / max(image.size.width, image.size.height))
-            bounds = CGSize(width: (image.size.width * scale).rounded(),
-                            height: (image.size.height * scale).rounded())
-        }
-        if CarDebug.legacyArt {
-            // Experiment: the older image-based init. Official YouTube Music's
-            // covers reach the Tesla as 13-29KB JPEGs, ours as a raw 1.19MB
-            // bitmap, so try handing MediaRemote the image directly.
-            let direct = CarArt.render(image, requested: bounds)
-            artworkCache = (track.videoId, MPMediaItemArtwork(image: direct))
-        } else {
-            artworkCache = (track.videoId, MPMediaItemArtwork(boundsSize: bounds) { requested in
-                CarArt.render(image, requested: requested)
-            })
-        }
-        // Page cover size experiment: the page's cover reaches the car as a RAW
-        // TIFF of whatever pixel size we give WebKit (544px = 1,187,190 bytes,
-        // which the Tesla ignores), so a smaller JPEG here means a smaller TIFF.
-        var pageJPEG = data
-        let side = CarDebug.pageArtSize
-        if side > 0, let scaled = CarArt.scaled(image, toSide: CGFloat(side)),
-           let jpeg = scaled.jpegData(compressionQuality: 0.85) {
-            pageJPEG = jpeg
-        }
-        artworkDataURI = (track.videoId, "data:image/jpeg;base64," + pageJPEG.base64EncodedString())
+        artworkCache = (track.videoId, MPMediaItemArtwork(boundsSize: image.size) { _ in image })
+        artworkDataURI = (track.videoId, "data:image/jpeg;base64," + data.base64EncodedString())
     }
 
     func updateNowPlayingElapsed() {
-        if CarDebug.pageOnly { return }
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
-}
-
-/// Hidden switches for the in-car Bluetooth/Tesla cover-art experiments
-/// (Account menu → Car debug). All default OFF = shipping behaviour. Each takes
-/// effect on the next track change. See HANDOFF §5 (Bluetooth/car cover art).
-enum CarDebug {
-    static let pageOnlyKey = "carDebug.pageOnly"
-    static let richIdentityKey = "carDebug.richIdentity"
-    static let publishDelayKey = "carDebug.publishDelay"
-    /// Max artwork edge in px handed to the system; 0 = no cap.
-    static let artCapKey = "carDebug.artCap"
-    static let legacyArtKey = "carDebug.legacyArt"
-    // OFF by default. The "native silent audio" loop got the native client
-    // elected only because it PAUSED the page's audio (two non-mixable
-    // sessions fight; the later one interrupts the earlier), so the cover
-    // showed while the music was silent. See HANDOFF §5, "Tesla".
-    static let nativeStateKey = "car.nativeState"
-    static let nativeAudioKey = "car.nativeAudio"
-    static let mixLoopKey = "car.mixLoop"
-    /// Pixel edge of the cover given to the PAGE (0 = original size).
-    static let pageArtSizeKey = "car.pageArtSize"
-    /// Give the page the Encore icon instead of each track's cover.
-    static let pageIconKey = "car.pageIcon"
-
-    /// Native MPNowPlayingInfoCenter stays empty, so the page's MediaSession
-    /// (WebKit) is the only Now Playing source the car can see. (Blanking the
-    /// page's metadata instead does NOT work: WebKit still publishes an item
-    /// built from the document title.)
-    static var pageOnly: Bool { UserDefaults.standard.bool(forKey: pageOnlyKey) }
-    /// Adds queue index/count, persistent id etc. to the native info.
-    static var richIdentity: Bool { UserDefaults.standard.bool(forKey: richIdentityKey) }
-    /// Holds each new track's native publish back ~700ms.
-    static var publishDelay: Bool { UserDefaults.standard.bool(forKey: publishDelayKey) }
-
-    static var artCap: Int { UserDefaults.standard.integer(forKey: artCapKey) }
-    /// Native client declares MPNowPlayingInfoCenter.playbackState.
-    static var nativeState: Bool { UserDefaults.standard.bool(forKey: nativeStateKey) }
-    /// Keep the app process's silent audio loop running during playback too.
-    static var nativeAudio: Bool { UserDefaults.standard.bool(forKey: nativeAudioKey) }
-    static var pageArtSize: Int { UserDefaults.standard.integer(forKey: pageArtSizeKey) }
-    static var pageIcon: Bool { UserDefaults.standard.bool(forKey: pageIconKey) }
-    /// Experimental: the silent loop's session mixes with others so it can't
-    /// interrupt (or be interrupted by) the page's audio.
-    static var mixLoop: Bool { UserDefaults.standard.bool(forKey: mixLoopKey) }
-    /// Build the native artwork with `MPMediaItemArtwork(image:)`.
-    static var legacyArt: Bool { UserDefaults.standard.bool(forKey: legacyArtKey) }
-
-    static var summary: String {
-        let on = [pageOnly ? "page-only" : nil,
-                  artCap > 0 ? "cap\(artCap)" : nil,
-                  legacyArt ? "legacy-art" : nil,
-                  nativeState ? "native-state" : nil,
-                  nativeAudio ? "native-audio" : nil,
-                  mixLoop ? "mix-loop" : nil,
-                  pageArtSize > 0 ? "page\(pageArtSize)" : nil,
-                  pageIcon ? "page-icon" : nil,
-                  richIdentity ? "rich-id" : nil,
-                  publishDelay ? "delay" : nil].compactMap { $0 }
-        return on.isEmpty ? "off" : on.joined(separator: "+")
-    }
-
-    /// Deterministic 64-bit id (FNV-1a) — Swift's Hasher is randomized per launch.
-    static func stableId(_ s: String) -> UInt64 {
-        var h: UInt64 = 0xcbf29ce484222325
-        for b in s.utf8 { h = (h ^ UInt64(b)) &* 0x100000001b3 }
-        return h
-    }
-}
-
-/// Native Now Playing artwork, rendered at the size the system asks for.
-/// MediaRemote forwards it to a Bluetooth car as an UNCOMPRESSED image at the
-/// size we return, so always returning the full 544px download meant a
-/// 1,187,190-byte cover over AVRCP/BIP (2026-10-12 drive: the Tesla requested
-/// it and the phone answered SUCCESS, but the car showed nothing).
-enum CarArt {
-    /// `image` resized so its longest edge is `side` px (never upscaled), at
-    /// scale 1 so the pixel size is exactly what WebKit will see.
-    static func scaled(_ image: UIImage, toSide side: CGFloat) -> UIImage? {
-        let longest = max(image.size.width, image.size.height)
-        guard longest > 0 else { return nil }
-        let k = min(1, side / longest)
-        let target = CGSize(width: max(1, (image.size.width * k).rounded()),
-                            height: max(1, (image.size.height * k).rounded()))
-        let format = UIGraphicsImageRendererFormat.default()
-        format.scale = 1
-        format.opaque = true
-        return UIGraphicsImageRenderer(size: target, format: format).image { _ in
-            image.draw(in: CGRect(origin: .zero, size: target))
-        }
-    }
-
-    /// The Encore icon as a `data:` URI at `side` px, for the page's cover.
-    static func iconDataURI(side: Int) -> String? {
-        guard let icon = UIImage(named: "CarArt"),
-              let small = scaled(icon, toSide: CGFloat(side > 0 ? side : 544)),
-              let jpeg = small.jpegData(compressionQuality: 0.85) else { return nil }
-        return "data:image/jpeg;base64," + jpeg.base64EncodedString()
-    }
-
-    static func render(_ source: UIImage, requested: CGSize) -> UIImage {
-        let sourceSide = max(source.size.width, source.size.height)
-        var side = max(requested.width, requested.height)
-        if side <= 0 { side = sourceSide }
-        let cap = CarDebug.artCap
-        if cap > 0 { side = min(side, CGFloat(cap)) }
-        side = min(side, sourceSide)
-        Log.player.notice("artwork: requested \(Int(requested.width))x\(Int(requested.height)) -> \(Int(side))px (source \(Int(sourceSide)))")
-        if side >= sourceSide { return source }
-        let scale = side / sourceSide
-        let target = CGSize(width: (source.size.width * scale).rounded(),
-                            height: (source.size.height * scale).rounded())
-        let format = UIGraphicsImageRendererFormat.default()
-        format.scale = 1
-        format.opaque = true
-        return UIGraphicsImageRenderer(size: target, format: format).image { _ in
-            source.draw(in: CGRect(origin: .zero, size: target))
-        }
-    }
 }

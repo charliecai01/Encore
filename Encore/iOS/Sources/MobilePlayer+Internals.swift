@@ -306,13 +306,8 @@ extension PlayerEngine {
     }
 
     private func publishMediaSessionMeta(for track: Track) {
-        // Keep the src per COVER, not per track: making it unique per track
-        // (2026-10-11) left two same-album songs with a new Now Playing id but
-        // the old artwork id, and lock-screen art went missing. See HANDOFF §5.
         let art: String
-        if CarDebug.pageIcon, let icon = CarArt.iconDataURI(side: CarDebug.pageArtSize) {
-            art = icon
-        } else if let cached = artworkDataURI, cached.videoId == track.videoId {
+        if let cached = artworkDataURI, cached.videoId == track.videoId {
             art = cached.uri
         } else {
             art = track.artworkURL?.absoluteString ?? ""

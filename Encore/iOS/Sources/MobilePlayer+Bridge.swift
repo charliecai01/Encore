@@ -57,10 +57,6 @@ extension PlayerEngine {
         case "hijack":
             // The site's own autoplay overrode our load; the page re-asserted.
             Log.player.notice("hijack: site loaded \(body["cur"] as? String ?? "nil") over \(body["id"] as? String ?? "nil") — re-asserting")
-        case "meta":
-            // The page preloaded the track's art and published its Now Playing
-            // metadata. "loaded" means title + art reached the car as one update.
-            Log.player.notice("meta: '\(body["title"] as? String ?? "")' art=\(body["art"] as? String ?? "?") after \(body["ms"] as? Int ?? -1)ms")
         case "error":
             // The loaded video is unplayable (deleted/region-blocked) — skip it
             // instead of reload-looping while the site's queue bleeds through.
@@ -118,7 +114,7 @@ extension PlayerEngine {
                     break
                 }
                 isPlaying = true
-                if !CarDebug.nativeAudio { stopKeepAlive() } // real audio is playing now
+                stopKeepAlive() // real audio is playing now
                 backgroundResumeNudges = 0 // lock-pause recovery succeeded/reset
                 lastProgressAt = Date() // (re)started — reset the stall watchdog
                 // Playback speed applies to podcast episodes only. Songs always
@@ -152,26 +148,6 @@ extension PlayerEngine {
                         guard let self, self.userWantsPlayback, !self.audioInterrupted,
                               self.current?.isEpisode == true, !self.isPlaying else { return }
                         try? AVAudioSession.sharedInstance().setActive(true)
-                        self.js("window.__encore && __encore.play()")
-                    }
-                }
-                // A song the page paused while the app is merely INACTIVE
-                // (pulling Notification Center / Control Center, the app
-                // switcher gesture, an alert) — nobody asked for it, and the
-                // pause used to last until the app became active again, so a
-                // quick pull and release cut the music for ~0.3s. Kick it
-                // straight back. Explicit pauses clear `userWantsPlayback`
-                // first (togglePlay), calls/Siri set `audioInterrupted`.
-                if let track = current, !track.isEpisode,
-                   userWantsPlayback, !sleepStopActive, !audioInterrupted, !suppressSiteAutoplay,
-                   UIApplication.shared.applicationState == .inactive,
-                   backgroundResumeNudges < 6 {
-                    backgroundResumeNudges += 1
-                    Log.player.notice("song paused while app inactive — nudge #\(self.backgroundResumeNudges)")
-                    let id = track.videoId
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                        guard let self, self.userWantsPlayback, !self.audioInterrupted,
-                              self.current?.videoId == id, !self.isPlaying else { return }
                         self.js("window.__encore && __encore.play()")
                     }
                 }
