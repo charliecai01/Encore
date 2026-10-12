@@ -447,6 +447,20 @@ app.
   debug: "Native playback state" (set `MPNowPlayingInfoCenter.playbackState`)
   and "Native silent audio always" (app-process audio during playback), judged
   by the election lines `car_capture.sh` now prints.
+  **FIX CONFIRMED IN THE CAR (2026-10-12, 5 consecutive track changes):**
+  with "native playback state" + "native silent audio" on, the Tesla showed
+  every cover and bluetoothd's `GetLinkedThumbnail` responses were 46,190 /
+  17,499 / 28,500 bytes (JPEG-sized, like the official app) instead of the
+  constant 1,187,190. Native playback state alone did NOT work (still
+  1,187,190); the app process producing audio is the key. The election lines
+  flip to WebKit for a moment at each track start and settle on
+  `dev.charlie.encore.ios`. Both are now ON BY DEFAULT (`CarDebug.nativeState`
+  / `nativeAudio`; keys `car.nativeState` / `car.nativeAudio`; Car debug menu
+  can switch them off for A/B). `updateNowPlayingInfo` starts the silent
+  keep-alive loop while playing (not during an interruption or after the sleep
+  timer) and the bridge no longer stops it on `state 1`. Watch for: battery,
+  calls/Siri (interruption path stops the loop), and `audio interruption`
+  lines in the log.
 - **Brief pause when pulling Notification Center / Control Center (2026-10-12,
   reported; fix unverified).** Pulling either makes the scene INACTIVE (not
   backgrounded), and the page's player paused for roughly the length of the

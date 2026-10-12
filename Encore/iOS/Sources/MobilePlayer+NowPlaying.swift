@@ -292,7 +292,11 @@ extension PlayerEngine {
             // raw TIFF cover). See HANDOFF §5, "Tesla".
             MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
         }
-        if CarDebug.nativeAudio { startKeepAlive() }
+        // The car art fix: while the app process is itself producing (silent)
+        // audio, mediaremoted elects the NATIVE Now Playing client — whose
+        // JPEG cover the Tesla can take — instead of WebKit's raw-TIFF one.
+        // Not during a call/Siri interruption or after the sleep timer.
+        if CarDebug.nativeAudio, isPlaying, !audioInterrupted, !sleepStopActive { startKeepAlive() }
         // One line per write: what the system (and so the car) is being given.
         Log.player.notice("nowplaying: id=\(track.videoId) '\(track.title)' art=\(info[MPMediaItemPropertyArtwork] != nil ? "yes" : "no") rate=\(isPlaying ? 1 : 0) qi=\(index) car=\(CarDebug.summary)")
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
@@ -366,8 +370,11 @@ enum CarDebug {
     /// Max artwork edge in px handed to the system; 0 = no cap.
     static let artCapKey = "carDebug.artCap"
     static let legacyArtKey = "carDebug.legacyArt"
-    static let nativeStateKey = "carDebug.nativeState"
-    static let nativeAudioKey = "carDebug.nativeAudio"
+    // Both ON by default (the fix); the switches stay for A/B in the car.
+    // Keys renamed from carDebug.native* so earlier experiments' stored
+    // values don't override the new defaults.
+    static let nativeStateKey = "car.nativeState"
+    static let nativeAudioKey = "car.nativeAudio"
 
     /// Native MPNowPlayingInfoCenter stays empty, so the page's MediaSession
     /// (WebKit) is the only Now Playing source the car can see. (Blanking the
@@ -381,9 +388,9 @@ enum CarDebug {
 
     static var artCap: Int { UserDefaults.standard.integer(forKey: artCapKey) }
     /// Native client declares MPNowPlayingInfoCenter.playbackState.
-    static var nativeState: Bool { UserDefaults.standard.bool(forKey: nativeStateKey) }
+    static var nativeState: Bool { UserDefaults.standard.object(forKey: nativeStateKey) as? Bool ?? true }
     /// Keep the app process's silent audio loop running during playback too.
-    static var nativeAudio: Bool { UserDefaults.standard.bool(forKey: nativeAudioKey) }
+    static var nativeAudio: Bool { UserDefaults.standard.object(forKey: nativeAudioKey) as? Bool ?? true }
     /// Build the native artwork with `MPMediaItemArtwork(image:)`.
     static var legacyArt: Bool { UserDefaults.standard.bool(forKey: legacyArtKey) }
 
@@ -391,11 +398,11 @@ enum CarDebug {
         let on = [pageOnly ? "page-only" : nil,
                   artCap > 0 ? "cap\(artCap)" : nil,
                   legacyArt ? "legacy-art" : nil,
-                  nativeState ? "native-state" : nil,
-                  nativeAudio ? "native-audio" : nil,
+                  nativeState ? nil : "no-native-state",
+                  nativeAudio ? nil : "no-native-audio",
                   richIdentity ? "rich-id" : nil,
                   publishDelay ? "delay" : nil].compactMap { $0 }
-        return on.isEmpty ? "off" : on.joined(separator: "+")
+        return on.isEmpty ? "fix" : "fix+" + on.joined(separator: "+")
     }
 
     /// Deterministic 64-bit id (FNV-1a) — Swift's Hasher is randomized per launch.
