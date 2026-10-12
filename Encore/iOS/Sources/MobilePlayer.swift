@@ -221,6 +221,10 @@ final class PlayerEngine: NSObject, ObservableObject {
     /// is set when the attempt ends (success OR failure) so callers stop gating.
     var artworkTask: (videoId: String, task: Task<Void, Never>)?
     var artworkFinishedId: String?
+    /// Car-debug "publish delay": the track whose native Now Playing has gone
+    /// out, and the one currently being held back (see CarDebug).
+    var nowPlayingPublishedId: String?
+    var nowPlayingHold: (videoId: String, until: Date)?
 
     override private init() {
         let config = WKWebViewConfiguration()

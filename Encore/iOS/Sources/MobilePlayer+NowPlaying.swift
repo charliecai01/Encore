@@ -209,9 +209,19 @@ extension PlayerEngine {
     func updateNowPlayingInfo() {
         guard let track = current else {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            nowPlayingPublishedId = nil
+            nowPlayingHold = nil
             return
         }
         configureRemoteCommands(forEpisode: track.isEpisode)
+        if CarDebug.pageOnly {
+            // Car-debug: native publishes nothing, so WebKit's MediaSession
+            // (title + preloaded art in one update) is the only Now Playing.
+            if MPNowPlayingInfoCenter.default().nowPlayingInfo != nil {
+                MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            }
+            return
+        }
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: track.title,
             MPMediaItemPropertyArtist: track.artistLine,
@@ -228,6 +238,14 @@ extension PlayerEngine {
         if let album = track.album?.name {
             info[MPMediaItemPropertyAlbumTitle] = album
         }
+        if CarDebug.richIdentity {
+            // Extra track-identity signals some AVRCP stacks key on.
+            info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = index
+            info[MPNowPlayingInfoPropertyPlaybackQueueCount] = max(queue.count, index + 1)
+            info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
+            info[MPNowPlayingInfoPropertyIsLiveStream] = false
+            info[MPMediaItemPropertyPersistentID] = NSNumber(value: CarDebug.stableId(track.videoId))
+        }
         if let cached = artworkCache, cached.videoId == track.videoId {
             info[MPMediaItemPropertyArtwork] = cached.artwork
         } else if track.artworkURL != nil, artworkFinishedId != track.videoId {
@@ -242,6 +260,25 @@ extension PlayerEngine {
             }
             return
         }
+        if CarDebug.publishDelay, nowPlayingPublishedId != track.videoId {
+            // Hold the new track's first publish back ~0.7s (art is already in
+            // hand), in case the car samples metadata too early on a change.
+            let hold = nowPlayingHold
+            if hold?.videoId != track.videoId {
+                nowPlayingHold = (track.videoId, Date().addingTimeInterval(0.65))
+                let id = track.videoId
+                Log.player.notice("nowplaying: holding \(id) 700ms")
+                Task {
+                    try? await Task.sleep(nanoseconds: 700_000_000)
+                    if current?.videoId == id { updateNowPlayingInfo() }
+                }
+                return
+            }
+            if let until = hold?.until, Date() < until { return }
+        }
+        nowPlayingPublishedId = track.videoId
+        // One line per write: what the system (and so the car) is being given.
+        Log.player.notice("nowplaying: id=\(track.videoId) '\(track.title)' art=\(info[MPMediaItemPropertyArtwork] != nil ? "yes" : "no") rate=\(isPlaying ? 1 : 0) qi=\(index) car=\(CarDebug.summary)")
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
@@ -270,9 +307,43 @@ extension PlayerEngine {
     }
 
     func updateNowPlayingElapsed() {
+        if CarDebug.pageOnly { return }
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
+}
+
+/// Hidden switches for the in-car Bluetooth/Tesla cover-art experiments
+/// (Account menu → Car debug). All default OFF = shipping behaviour. Each takes
+/// effect on the next track change. See HANDOFF §5 (Bluetooth/car cover art).
+enum CarDebug {
+    static let pageOnlyKey = "carDebug.pageOnly"
+    static let richIdentityKey = "carDebug.richIdentity"
+    static let publishDelayKey = "carDebug.publishDelay"
+
+    /// Native MPNowPlayingInfoCenter stays empty, so the page's MediaSession
+    /// (WebKit) is the only Now Playing source the car can see. (Blanking the
+    /// page's metadata instead does NOT work: WebKit still publishes an item
+    /// built from the document title.)
+    static var pageOnly: Bool { UserDefaults.standard.bool(forKey: pageOnlyKey) }
+    /// Adds queue index/count, persistent id etc. to the native info.
+    static var richIdentity: Bool { UserDefaults.standard.bool(forKey: richIdentityKey) }
+    /// Holds each new track's native publish back ~700ms.
+    static var publishDelay: Bool { UserDefaults.standard.bool(forKey: publishDelayKey) }
+
+    static var summary: String {
+        let on = [pageOnly ? "page-only" : nil,
+                  richIdentity ? "rich-id" : nil,
+                  publishDelay ? "delay" : nil].compactMap { $0 }
+        return on.isEmpty ? "off" : on.joined(separator: "+")
+    }
+
+    /// Deterministic 64-bit id (FNV-1a) — Swift's Hasher is randomized per launch.
+    static func stableId(_ s: String) -> UInt64 {
+        var h: UInt64 = 0xcbf29ce484222325
+        for b in s.utf8 { h = (h ^ UInt64(b)) &* 0x100000001b3 }
+        return h
+    }
 }

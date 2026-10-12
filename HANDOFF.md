@@ -384,6 +384,19 @@ app.
   **Don't** assign a `MediaMetadata` whose art isn't preloaded, don't add more
   artwork sizes (WebKit loads only one, and the `<img>` must have loaded that
   exact URL), and don't make the page's art src unique per track.
+  **In-car test kit (2026-10-12):** Account menu → "Car debug" holds three
+  switches, all OFF by default, each effective from the next track change:
+  *Page-only Now Playing* (native `nowPlayingInfo` stays nil, so WebKit is the
+  only publisher; same-cover tracks then share an item id by design),
+  *Rich track identity* (queue index/count, persistent id, default rate) and
+  *Delay publish 0.7s*. Blanking the page's `MediaMetadata` does NOT give a
+  single publisher: WebKit still publishes an item built from the document
+  title, which is why the page-only switch silences native instead. Every
+  native write logs `nowplaying: id=… art=yes|no rate=… qi=… car=<switches>`.
+  After a drive run `Encore/scripts/car_capture.sh [minutes]` (needs sudo, phone
+  on USB): it saves mediaremoted, Encore and bluetoothd lines to
+  `~/Desktop/encore-car-<time>/`. Simulator note: `updateNowPlayingInfo` writes
+  ~6-8 times in the ~150ms after a track change (same id, rate flipping 1→0→1).
 - **iOS site-autoplay on launch (fixed, don't reintroduce):** iOS sets
   `mediaTypesRequiringUserActionForPlayback = []`, so the real site can
   auto-start the account's last track on a cold launch. A `suppressSiteAutoplay`

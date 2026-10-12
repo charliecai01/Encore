@@ -456,6 +456,9 @@ var accountButton: some ToolbarContent {
 
 struct AccountButton: View {
     @EnvironmentObject var auth: AuthManager
+    @AppStorage(CarDebug.pageOnlyKey) private var carPageOnly = false
+    @AppStorage(CarDebug.richIdentityKey) private var carRichIdentity = false
+    @AppStorage(CarDebug.publishDelayKey) private var carPublishDelay = false
     var body: some View {
         Menu {
             if auth.isSignedIn {
@@ -463,6 +466,12 @@ struct AccountButton: View {
                 Button("Sign Out", role: .destructive) { Task { await auth.signOut() } }
             } else {
                 Button("Sign in with Google") { auth.showLogin = true }
+            }
+            // Bluetooth-car cover-art experiments; flip, then change track.
+            Menu("Car debug") {
+                Toggle("Page-only Now Playing (native off)", isOn: $carPageOnly)
+                Toggle("Rich track identity", isOn: $carRichIdentity)
+                Toggle("Delay publish 0.7s", isOn: $carPublishDelay)
             }
         } label: {
             Image(systemName: auth.isSignedIn ? "person.crop.circle.fill" : "person.crop.circle")
