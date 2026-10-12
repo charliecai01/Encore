@@ -325,9 +325,17 @@ extension PlayerEngine {
             bounds = CGSize(width: (image.size.width * scale).rounded(),
                             height: (image.size.height * scale).rounded())
         }
-        artworkCache = (track.videoId, MPMediaItemArtwork(boundsSize: bounds) { requested in
-            CarArt.render(image, requested: requested)
-        })
+        if CarDebug.legacyArt {
+            // Experiment: the older image-based init. Official YouTube Music's
+            // covers reach the Tesla as 13-29KB JPEGs, ours as a raw 1.19MB
+            // bitmap, so try handing MediaRemote the image directly.
+            let direct = CarArt.render(image, requested: bounds)
+            artworkCache = (track.videoId, MPMediaItemArtwork(image: direct))
+        } else {
+            artworkCache = (track.videoId, MPMediaItemArtwork(boundsSize: bounds) { requested in
+                CarArt.render(image, requested: requested)
+            })
+        }
         artworkDataURI = (track.videoId, "data:image/jpeg;base64," + data.base64EncodedString())
     }
 
@@ -349,6 +357,7 @@ enum CarDebug {
     static let publishDelayKey = "carDebug.publishDelay"
     /// Max artwork edge in px handed to the system; 0 = no cap.
     static let artCapKey = "carDebug.artCap"
+    static let legacyArtKey = "carDebug.legacyArt"
 
     /// Native MPNowPlayingInfoCenter stays empty, so the page's MediaSession
     /// (WebKit) is the only Now Playing source the car can see. (Blanking the
@@ -361,10 +370,13 @@ enum CarDebug {
     static var publishDelay: Bool { UserDefaults.standard.bool(forKey: publishDelayKey) }
 
     static var artCap: Int { UserDefaults.standard.integer(forKey: artCapKey) }
+    /// Build the native artwork with `MPMediaItemArtwork(image:)`.
+    static var legacyArt: Bool { UserDefaults.standard.bool(forKey: legacyArtKey) }
 
     static var summary: String {
         let on = [pageOnly ? "page-only" : nil,
                   artCap > 0 ? "cap\(artCap)" : nil,
+                  legacyArt ? "legacy-art" : nil,
                   richIdentity ? "rich-id" : nil,
                   publishDelay ? "delay" : nil].compactMap { $0 }
         return on.isEmpty ? "off" : on.joined(separator: "+")

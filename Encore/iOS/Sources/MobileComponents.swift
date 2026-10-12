@@ -460,6 +460,7 @@ struct AccountButton: View {
     @AppStorage(CarDebug.richIdentityKey) private var carRichIdentity = false
     @AppStorage(CarDebug.publishDelayKey) private var carPublishDelay = false
     @AppStorage(CarDebug.artCapKey) private var carArtCap = 0
+    @AppStorage(CarDebug.legacyArtKey) private var carLegacyArt = false
     var body: some View {
         Menu {
             if auth.isSignedIn {
@@ -473,6 +474,7 @@ struct AccountButton: View {
                 Toggle("Page-only Now Playing (native off)", isOn: $carPageOnly)
                 Toggle("Rich track identity", isOn: $carRichIdentity)
                 Toggle("Delay publish 0.7s", isOn: $carPublishDelay)
+                Toggle("Legacy artwork init", isOn: $carLegacyArt)
                 Picker("Cover size cap", selection: $carArtCap) {
                     Text("No cap").tag(0)
                     Text("300 px").tag(300)

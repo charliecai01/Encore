@@ -421,6 +421,15 @@ app.
   (`GetLinkedThumbnail` response length). Also: before iOS 27 art reportedly
   worked once, so an iOS 27 beta change in how the cover is packaged is
   possible.
+  **Reference (official YouTube Music, same Tesla/phone/iOS 27):** its
+  `GetLinkedThumbnail` responses were 19,011 / 28,902 / 13,200 bytes, i.e.
+  small JPEGs that vary with the image, and the cover shows. Ours was a
+  constant 1,187,190 (raw 544x544 RGBA) for every song. So the system CAN
+  deliver cover art here; what Encore's `MPMediaItemArtwork` becomes on the
+  wire is the problem. Open question: whether `boundsSize` (cap), the legacy
+  `MPMediaItemArtwork(image:)` init (Car debug "Legacy artwork init"), or the
+  page-only publisher changes the format/size. `car_capture.sh` prints the
+  per-song thumbnail byte sizes.
 - **Brief pause when pulling Notification Center / Control Center (2026-10-12,
   reported; fix unverified).** Pulling either makes the scene INACTIVE (not
   backgrounded), and the page's player paused for roughly the length of the
