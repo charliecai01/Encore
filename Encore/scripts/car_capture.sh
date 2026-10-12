@@ -33,6 +33,7 @@ show() { # predicate, outfile
 
 show 'process == "mediaremoted" AND composedMessage CONTAINS "nowPlayingItem"' "$OUT/nowplaying.txt"
 show 'subsystem == "dev.charlie.encore"' "$OUT/encore.txt"
+show 'process == "mediaremoted" AND (composedMessage CONTAINS "ActiveNowPlayingClient changed" OR composedMessage CONTAINS "setting playback state")' "$OUT/election.txt"
 show '(process == "bluetoothd" OR process == "MediaRemoteUI") AND (composedMessage CONTAINS[c] "avrcp" OR composedMessage CONTAINS[c] "cover art" OR composedMessage CONTAINS[c] "coverart" OR composedMessage CONTAINS[c] "artwork" OR composedMessage CONTAINS[c] "GetElementAttr" OR composedMessage CONTAINS[c] "element attr" OR composedMessage CONTAINS[c] "Thumbnail" OR composedMessage CONTAINS "OBEX") AND NOT composedMessage CONTAINS "CBDevice" AND NOT composedMessage CONTAINS "CBDiscovery" AND NOT composedMessage CONTAINS "GetControllerInfo" AND NOT composedMessage CONTAINS "AuLQ"' "$OUT/bluetooth.txt"
 
 echo
@@ -47,3 +48,6 @@ grep -h "meta:" "$OUT/encore.txt" | tail -20 || true
 echo
 echo "── Bluetooth: cover images the phone sent the car (bytes) ──"
 grep -h "GetLinkedThumbnail' response" "$OUT/bluetooth.txt" | sed -E 's/^[0-9-]+ ([0-9:.]+).*length - ([0-9]+).*to device ([0-9A-F:]+).*/\1  \2 bytes  \3/' | grep -v 68:F2:1F | tail -30 || true
+echo
+echo "── Which Now Playing client the system elected (WebKit = page, dev.charlie.encore.ios = native) ──"
+grep -h "ActiveNowPlayingClient changed" "$OUT/election.txt" | sed -E 's/^[0-9-]+ ([0-9:.]+).* to +(.*)$/\1  -> \2/' | sed -E 's/􀐥|􀎬|􀽍|􁊸|【|】//g' | tail -15 || true

@@ -430,6 +430,23 @@ app.
   `MPMediaItemArtwork(image:)` init (Car debug "Legacy artwork init"), or the
   page-only publisher changes the format/size. `car_capture.sh` prints the
   per-song thumbnail byte sizes.
+  **ROOT CAUSE FOUND (same drive): on the DEVICE the WebKit client is the
+  elected Now Playing client, not the native one (the simulator misled us).**
+  mediaremoted's `ActiveNowPlayingClient changed … to
+  com.apple.WebKit.GPU/dev.charlie.encore.ios` fires every time playback
+  starts, and only the WebKit client ever logs `setting playback state … to
+  <Playing>`; the native client never declares a state. `com.apple.BTAvrcp`
+  receives the active client's content, so the Tesla is served WebKit's
+  artwork, which WebKit sends as an uncompressed TIFF (`tiffRepresentation()`
+  in `MediaSessionManagerCocoa::setNowPlayingInfo`) = 544x544x4 + header =
+  1,187,190 bytes, constant whatever the native bounds/cap/legacy-init (all
+  proven to change nothing). The official app's native JPEG covers (13-29KB)
+  work. So the whole native-artwork path was never what the car saw. Also from
+  WebKit source: `allowsNowPlayingControlsVisibility = !page->isVisibleAndActive()`
+  and a muted element is not Now Playing eligible. Experiments queued in Car
+  debug: "Native playback state" (set `MPNowPlayingInfoCenter.playbackState`)
+  and "Native silent audio always" (app-process audio during playback), judged
+  by the election lines `car_capture.sh` now prints.
 - **Brief pause when pulling Notification Center / Control Center (2026-10-12,
   reported; fix unverified).** Pulling either makes the scene INACTIVE (not
   backgrounded), and the page's player paused for roughly the length of the

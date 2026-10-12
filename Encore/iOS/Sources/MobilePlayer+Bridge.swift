@@ -118,7 +118,7 @@ extension PlayerEngine {
                     break
                 }
                 isPlaying = true
-                stopKeepAlive() // real audio is playing now
+                if !CarDebug.nativeAudio { stopKeepAlive() } // real audio is playing now
                 backgroundResumeNudges = 0 // lock-pause recovery succeeded/reset
                 lastProgressAt = Date() // (re)started — reset the stall watchdog
                 // Playback speed applies to podcast episodes only. Songs always

@@ -285,6 +285,14 @@ extension PlayerEngine {
             if let until = hold?.until, Date() < until { return }
         }
         nowPlayingPublishedId = track.videoId
+        if CarDebug.nativeState {
+            // Declare playback state on the native client too. On the device
+            // only WebKit's client ever reported "Playing" to mediaremoted, so
+            // it was always the elected Now Playing client (and the car got its
+            // raw TIFF cover). See HANDOFF §5, "Tesla".
+            MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
+        }
+        if CarDebug.nativeAudio { startKeepAlive() }
         // One line per write: what the system (and so the car) is being given.
         Log.player.notice("nowplaying: id=\(track.videoId) '\(track.title)' art=\(info[MPMediaItemPropertyArtwork] != nil ? "yes" : "no") rate=\(isPlaying ? 1 : 0) qi=\(index) car=\(CarDebug.summary)")
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
@@ -358,6 +366,8 @@ enum CarDebug {
     /// Max artwork edge in px handed to the system; 0 = no cap.
     static let artCapKey = "carDebug.artCap"
     static let legacyArtKey = "carDebug.legacyArt"
+    static let nativeStateKey = "carDebug.nativeState"
+    static let nativeAudioKey = "carDebug.nativeAudio"
 
     /// Native MPNowPlayingInfoCenter stays empty, so the page's MediaSession
     /// (WebKit) is the only Now Playing source the car can see. (Blanking the
@@ -370,6 +380,10 @@ enum CarDebug {
     static var publishDelay: Bool { UserDefaults.standard.bool(forKey: publishDelayKey) }
 
     static var artCap: Int { UserDefaults.standard.integer(forKey: artCapKey) }
+    /// Native client declares MPNowPlayingInfoCenter.playbackState.
+    static var nativeState: Bool { UserDefaults.standard.bool(forKey: nativeStateKey) }
+    /// Keep the app process's silent audio loop running during playback too.
+    static var nativeAudio: Bool { UserDefaults.standard.bool(forKey: nativeAudioKey) }
     /// Build the native artwork with `MPMediaItemArtwork(image:)`.
     static var legacyArt: Bool { UserDefaults.standard.bool(forKey: legacyArtKey) }
 
@@ -377,6 +391,8 @@ enum CarDebug {
         let on = [pageOnly ? "page-only" : nil,
                   artCap > 0 ? "cap\(artCap)" : nil,
                   legacyArt ? "legacy-art" : nil,
+                  nativeState ? "native-state" : nil,
+                  nativeAudio ? "native-audio" : nil,
                   richIdentity ? "rich-id" : nil,
                   publishDelay ? "delay" : nil].compactMap { $0 }
         return on.isEmpty ? "off" : on.joined(separator: "+")
