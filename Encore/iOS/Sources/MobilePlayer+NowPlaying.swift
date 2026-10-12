@@ -306,7 +306,18 @@ extension PlayerEngine {
         // the full 544px image: Bluetooth cover art went out as an
         // uncompressed 544x544 RGBA image (1,187,190 bytes) and the Tesla
         // never showed it. See CarArt.
-        artworkCache = (track.videoId, MPMediaItemArtwork(boundsSize: image.size) { requested in
+        // `boundsSize` is what the system asks for AND the size it forwards to
+        // a Bluetooth car (2026-10-12: asking for 544 gave a 1,187,190-byte
+        // 544x544x4 cover whatever image we returned; shrinking only the
+        // returned image changed nothing). The cap therefore lowers boundsSize.
+        var bounds = image.size
+        let cap = CarDebug.artCap
+        if cap > 0 {
+            let scale = min(1, CGFloat(cap) / max(image.size.width, image.size.height))
+            bounds = CGSize(width: (image.size.width * scale).rounded(),
+                            height: (image.size.height * scale).rounded())
+        }
+        artworkCache = (track.videoId, MPMediaItemArtwork(boundsSize: bounds) { requested in
             CarArt.render(image, requested: requested)
         })
         artworkDataURI = (track.videoId, "data:image/jpeg;base64," + data.base64EncodedString())

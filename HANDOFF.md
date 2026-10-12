@@ -412,6 +412,15 @@ app.
   has a "Cover size cap" (300/200/120px) to force smaller. Read bluetoothd with
   `log show --archive … --predicate 'process == "bluetoothd" AND
   (composedMessage CONTAINS "Thumbnail" OR composedMessage CONTAINS "OBEX")'`.
+  **Second drive (same day):** returning a smaller IMAGE from the
+  `MPMediaItemArtwork` handler changed nothing: with cap 120/200/300 the
+  system still requested 544x544 (our `boundsSize`) and bluetoothd still sent
+  `length - 1187190`. The lever is `boundsSize`, so the cap now lowers that.
+  The official YouTube Music app shows art on the same Tesla and iOS 27, so
+  what it hands the system differs from ours; capture it as the reference
+  (`GetLinkedThumbnail` response length). Also: before iOS 27 art reportedly
+  worked once, so an iOS 27 beta change in how the cover is packaged is
+  possible.
 - **iOS site-autoplay on launch (fixed, don't reintroduce):** iOS sets
   `mediaTypesRequiringUserActionForPlayback = []`, so the real site can
   auto-start the account's last track on a cold launch. A `suppressSiteAutoplay`
