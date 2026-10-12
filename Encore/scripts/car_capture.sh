@@ -10,7 +10,8 @@
 #                   artworkAvailable, artworkIdentifier (what the system holds)
 #   encore.txt      Encore's own log (player category): "nowplaying:", "meta:",
 #                   toggles in effect (car=...), hijack/stall/error lines
-#   bluetooth.txt   bluetoothd/audio-accessory lines mentioning AVRCP / cover art
+#   bluetooth.txt   bluetoothd / MediaRemoteUI lines mentioning AVRCP / cover art
+#                   (device-discovery noise filtered out; empty without a car)
 #   device.logarchive   the full archive, for anything missed
 set -euo pipefail
 
@@ -32,7 +33,7 @@ show() { # predicate, outfile
 
 show 'process == "mediaremoted" AND composedMessage CONTAINS "nowPlayingItem"' "$OUT/nowplaying.txt"
 show 'subsystem == "dev.charlie.encore"' "$OUT/encore.txt"
-show '(process == "bluetoothd" OR process == "audioaccessoryd" OR process == "mediaremoted") AND (composedMessage CONTAINS[c] "avrcp" OR composedMessage CONTAINS[c] "cover" OR composedMessage CONTAINS[c] "artwork" OR composedMessage CONTAINS[c] "BIP")' "$OUT/bluetooth.txt"
+show '(process == "bluetoothd" OR process == "MediaRemoteUI") AND (composedMessage CONTAINS[c] "avrcp" OR composedMessage CONTAINS[c] "cover art" OR composedMessage CONTAINS[c] "coverart" OR composedMessage CONTAINS[c] "artwork" OR composedMessage CONTAINS[c] "GetElementAttr" OR composedMessage CONTAINS[c] "element attr") AND NOT composedMessage CONTAINS "CBDevice" AND NOT composedMessage CONTAINS "CBDiscovery" AND NOT composedMessage CONTAINS "GetControllerInfo" AND NOT composedMessage CONTAINS "AuLQ"' "$OUT/bluetooth.txt"
 
 echo
 echo "Saved to $OUT"
