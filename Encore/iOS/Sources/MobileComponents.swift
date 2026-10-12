@@ -459,6 +459,7 @@ struct AccountButton: View {
     @AppStorage(CarDebug.pageOnlyKey) private var carPageOnly = false
     @AppStorage(CarDebug.richIdentityKey) private var carRichIdentity = false
     @AppStorage(CarDebug.publishDelayKey) private var carPublishDelay = false
+    @AppStorage(CarDebug.artCapKey) private var carArtCap = 0
     var body: some View {
         Menu {
             if auth.isSignedIn {
@@ -472,6 +473,12 @@ struct AccountButton: View {
                 Toggle("Page-only Now Playing (native off)", isOn: $carPageOnly)
                 Toggle("Rich track identity", isOn: $carRichIdentity)
                 Toggle("Delay publish 0.7s", isOn: $carPublishDelay)
+                Picker("Cover size cap", selection: $carArtCap) {
+                    Text("No cap").tag(0)
+                    Text("300 px").tag(300)
+                    Text("200 px").tag(200)
+                    Text("120 px").tag(120)
+                }
             }
         } label: {
             Image(systemName: auth.isSignedIn ? "person.crop.circle.fill" : "person.crop.circle")

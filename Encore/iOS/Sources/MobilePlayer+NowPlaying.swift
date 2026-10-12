@@ -302,7 +302,13 @@ extension PlayerEngine {
         req.timeoutInterval = 3
         guard let (data, _) = try? await URLSession.shared.data(for: req),
               let image = UIImage(data: data) else { return }
-        artworkCache = (track.videoId, MPMediaItemArtwork(boundsSize: image.size) { _ in image })
+        // Hand back the size the system asks for (never upscaled), not always
+        // the full 544px image: Bluetooth cover art went out as an
+        // uncompressed 544x544 RGBA image (1,187,190 bytes) and the Tesla
+        // never showed it. See CarArt.
+        artworkCache = (track.videoId, MPMediaItemArtwork(boundsSize: image.size) { requested in
+            CarArt.render(image, requested: requested)
+        })
         artworkDataURI = (track.videoId, "data:image/jpeg;base64," + data.base64EncodedString())
     }
 
@@ -322,6 +328,8 @@ enum CarDebug {
     static let pageOnlyKey = "carDebug.pageOnly"
     static let richIdentityKey = "carDebug.richIdentity"
     static let publishDelayKey = "carDebug.publishDelay"
+    /// Max artwork edge in px handed to the system; 0 = no cap.
+    static let artCapKey = "carDebug.artCap"
 
     /// Native MPNowPlayingInfoCenter stays empty, so the page's MediaSession
     /// (WebKit) is the only Now Playing source the car can see. (Blanking the
@@ -333,8 +341,11 @@ enum CarDebug {
     /// Holds each new track's native publish back ~700ms.
     static var publishDelay: Bool { UserDefaults.standard.bool(forKey: publishDelayKey) }
 
+    static var artCap: Int { UserDefaults.standard.integer(forKey: artCapKey) }
+
     static var summary: String {
         let on = [pageOnly ? "page-only" : nil,
+                  artCap > 0 ? "cap\(artCap)" : nil,
                   richIdentity ? "rich-id" : nil,
                   publishDelay ? "delay" : nil].compactMap { $0 }
         return on.isEmpty ? "off" : on.joined(separator: "+")
@@ -345,5 +356,32 @@ enum CarDebug {
         var h: UInt64 = 0xcbf29ce484222325
         for b in s.utf8 { h = (h ^ UInt64(b)) &* 0x100000001b3 }
         return h
+    }
+}
+
+/// Native Now Playing artwork, rendered at the size the system asks for.
+/// MediaRemote forwards it to a Bluetooth car as an UNCOMPRESSED image at the
+/// size we return, so always returning the full 544px download meant a
+/// 1,187,190-byte cover over AVRCP/BIP (2026-10-12 drive: the Tesla requested
+/// it and the phone answered SUCCESS, but the car showed nothing).
+enum CarArt {
+    static func render(_ source: UIImage, requested: CGSize) -> UIImage {
+        let sourceSide = max(source.size.width, source.size.height)
+        var side = max(requested.width, requested.height)
+        if side <= 0 { side = sourceSide }
+        let cap = CarDebug.artCap
+        if cap > 0 { side = min(side, CGFloat(cap)) }
+        side = min(side, sourceSide)
+        Log.player.notice("artwork: requested \(Int(requested.width))x\(Int(requested.height)) -> \(Int(side))px (source \(Int(sourceSide)))")
+        if side >= sourceSide { return source }
+        let scale = side / sourceSide
+        let target = CGSize(width: (source.size.width * scale).rounded(),
+                            height: (source.size.height * scale).rounded())
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: target, format: format).image { _ in
+            source.draw(in: CGRect(origin: .zero, size: target))
+        }
     }
 }

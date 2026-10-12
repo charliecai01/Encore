@@ -397,6 +397,21 @@ app.
   on USB): it saves mediaremoted, Encore and bluetoothd lines to
   `~/Desktop/encore-car-<time>/`. Simulator note: `updateNowPlayingInfo` writes
   ~6-8 times in the ~150ms after a track change (same id, rate flipping 1→0→1).
+  **First drive (2026-10-12, build b0c5d8d, toggles off): lock screen fine,
+  Tesla showed NO art.** The phone's bluetoothd log shows the Tesla
+  (AVRCP 1.6.2, browsing + "BIP cover art channel established") DOES ask:
+  `GetLinkedThumbnail` on connect and on each new cover, answered
+  `result - SUCCESS, length - 1187190`. 1,187,190 = 544*544*4 + 3,446: the
+  native artwork goes out as an UNCOMPRESSED 544px RGBA image. The Tesla
+  requests a thumbnail only when the image handle changes (same-album songs
+  don't re-request), and also logged `Bad OBEX len: 3 for header ID: 0`.
+  Theory: the car can't take/decode a 1.2MB raw image over BIP. The track id
+  and art were correct on the phone for every write, so the earlier id/timing
+  theories were not the cause. `CarArt.render` now returns the size the system
+  asks for (never upscaled) and logs `artwork: requested WxH -> Npx`; Car debug
+  has a "Cover size cap" (300/200/120px) to force smaller. Read bluetoothd with
+  `log show --archive … --predicate 'process == "bluetoothd" AND
+  (composedMessage CONTAINS "Thumbnail" OR composedMessage CONTAINS "OBEX")'`.
 - **iOS site-autoplay on launch (fixed, don't reintroduce):** iOS sets
   `mediaTypesRequiringUserActionForPlayback = []`, so the real site can
   auto-start the account's last track on a cold launch. A `suppressSiteAutoplay`
