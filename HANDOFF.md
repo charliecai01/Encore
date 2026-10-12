@@ -421,6 +421,18 @@ app.
   (`GetLinkedThumbnail` response length). Also: before iOS 27 art reportedly
   worked once, so an iOS 27 beta change in how the cover is packaged is
   possible.
+- **Brief pause when pulling Notification Center / Control Center (2026-10-12,
+  reported; fix unverified).** Pulling either makes the scene INACTIVE (not
+  backgrounded), and the page's player paused for roughly the length of the
+  gesture. Only episodes were nudged back (`case 2` in the bridge); songs
+  waited for `didBecomeActive`. Songs paused by the page while
+  `applicationState == .inactive`, with `userWantsPlayback` still true, are
+  now nudged after 50ms. Cause not yet confirmed: new logs `app inactive` /
+  `app active` / `audio interruption reason=… state=…` /
+  `song paused while app inactive — nudge` show which path fires. The
+  AVAudioSession "interruption began shouldResume=false" also appears ~1s
+  after most track changes in the car captures (no `ended`); its reason is
+  now logged.
 - **iOS site-autoplay on launch (fixed, don't reintroduce):** iOS sets
   `mediaTypesRequiringUserActionForPlayback = []`, so the real site can
   auto-start the account's last track on a cold launch. A `suppressSiteAutoplay`

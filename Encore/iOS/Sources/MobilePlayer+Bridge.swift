@@ -155,6 +155,26 @@ extension PlayerEngine {
                         self.js("window.__encore && __encore.play()")
                     }
                 }
+                // A song the page paused while the app is merely INACTIVE
+                // (pulling Notification Center / Control Center, the app
+                // switcher gesture, an alert) — nobody asked for it, and the
+                // pause used to last until the app became active again, so a
+                // quick pull and release cut the music for ~0.3s. Kick it
+                // straight back. Explicit pauses clear `userWantsPlayback`
+                // first (togglePlay), calls/Siri set `audioInterrupted`.
+                if let track = current, !track.isEpisode,
+                   userWantsPlayback, !sleepStopActive, !audioInterrupted, !suppressSiteAutoplay,
+                   UIApplication.shared.applicationState == .inactive,
+                   backgroundResumeNudges < 6 {
+                    backgroundResumeNudges += 1
+                    Log.player.notice("song paused while app inactive — nudge #\(self.backgroundResumeNudges)")
+                    let id = track.videoId
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                        guard let self, self.userWantsPlayback, !self.audioInterrupted,
+                              self.current?.videoId == id, !self.isPlaying else { return }
+                        self.js("window.__encore && __encore.play()")
+                    }
+                }
             case 0:
                 isPlaying = false
                 // Only advance on a *trustworthy* end-of-song. The page can briefly

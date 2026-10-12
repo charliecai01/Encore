@@ -19,7 +19,11 @@ extension PlayerEngine {
                   let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
             let shouldResume = (info[AVAudioSessionInterruptionOptionKey] as? UInt)
                 .map { AVAudioSession.InterruptionOptions(rawValue: $0).contains(.shouldResume) } ?? false
+            // Why (default / appWasSuspended / builtInMicMuted / routeDisconnected),
+            // so a stray "began" can be attributed.
+            let reason = (info[AVAudioSessionInterruptionReasonKey] as? UInt) ?? 99
             DispatchQueue.main.async {
+                Log.player.notice("audio interruption reason=\(reason) state=\(UIApplication.shared.applicationState.rawValue)")
                 self?.handleInterruption(began: type == .began, shouldResume: shouldResume)
             }
         }
@@ -30,6 +34,7 @@ extension PlayerEngine {
             forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil
         ) { [weak self] _ in
             DispatchQueue.main.async {
+                Log.player.notice("app active playing=\(self?.isPlaying == true) wants=\(self?.userWantsPlayback == true)")
                 self?.audioInterrupted = false
                 self?.backgroundResumeNudges = 0
                 // Timers don't fire while suspended, so the bridge legitimately
@@ -45,7 +50,10 @@ extension PlayerEngine {
         NotificationCenter.default.addObserver(
             forName: UIApplication.willResignActiveNotification, object: nil, queue: nil
         ) { [weak self] _ in
-            DispatchQueue.main.async { self?.lastResignAt = Date() }
+            DispatchQueue.main.async {
+                self?.lastResignAt = Date()
+                Log.player.notice("app inactive (resign active) playing=\(self?.isPlaying == true)")
+            }
         }
     }
 
