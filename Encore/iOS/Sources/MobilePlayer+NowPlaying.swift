@@ -136,6 +136,9 @@ extension PlayerEngine {
             keepAlivePlayer?.prepareToPlay()
         }
         guard let player = keepAlivePlayer, !player.isPlaying else { return }
+        if CarDebug.mixLoop {
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        }
         try? AVAudioSession.sharedInstance().setActive(true)
         player.play()
     }
@@ -375,11 +378,13 @@ enum CarDebug {
     /// Max artwork edge in px handed to the system; 0 = no cap.
     static let artCapKey = "carDebug.artCap"
     static let legacyArtKey = "carDebug.legacyArt"
-    // Both ON by default (the fix); the switches stay for A/B in the car.
-    // Keys renamed from carDebug.native* so earlier experiments' stored
-    // values don't override the new defaults.
+    // OFF by default. The "native silent audio" loop got the native client
+    // elected only because it PAUSED the page's audio (two non-mixable
+    // sessions fight; the later one interrupts the earlier), so the cover
+    // showed while the music was silent. See HANDOFF §5, "Tesla".
     static let nativeStateKey = "car.nativeState"
     static let nativeAudioKey = "car.nativeAudio"
+    static let mixLoopKey = "car.mixLoop"
 
     /// Native MPNowPlayingInfoCenter stays empty, so the page's MediaSession
     /// (WebKit) is the only Now Playing source the car can see. (Blanking the
@@ -393,9 +398,12 @@ enum CarDebug {
 
     static var artCap: Int { UserDefaults.standard.integer(forKey: artCapKey) }
     /// Native client declares MPNowPlayingInfoCenter.playbackState.
-    static var nativeState: Bool { UserDefaults.standard.object(forKey: nativeStateKey) as? Bool ?? true }
+    static var nativeState: Bool { UserDefaults.standard.bool(forKey: nativeStateKey) }
     /// Keep the app process's silent audio loop running during playback too.
-    static var nativeAudio: Bool { UserDefaults.standard.object(forKey: nativeAudioKey) as? Bool ?? true }
+    static var nativeAudio: Bool { UserDefaults.standard.bool(forKey: nativeAudioKey) }
+    /// Experimental: the silent loop's session mixes with others so it can't
+    /// interrupt (or be interrupted by) the page's audio.
+    static var mixLoop: Bool { UserDefaults.standard.bool(forKey: mixLoopKey) }
     /// Build the native artwork with `MPMediaItemArtwork(image:)`.
     static var legacyArt: Bool { UserDefaults.standard.bool(forKey: legacyArtKey) }
 
@@ -403,11 +411,12 @@ enum CarDebug {
         let on = [pageOnly ? "page-only" : nil,
                   artCap > 0 ? "cap\(artCap)" : nil,
                   legacyArt ? "legacy-art" : nil,
-                  nativeState ? nil : "no-native-state",
-                  nativeAudio ? nil : "no-native-audio",
+                  nativeState ? "native-state" : nil,
+                  nativeAudio ? "native-audio" : nil,
+                  mixLoop ? "mix-loop" : nil,
                   richIdentity ? "rich-id" : nil,
                   publishDelay ? "delay" : nil].compactMap { $0 }
-        return on.isEmpty ? "fix" : "fix+" + on.joined(separator: "+")
+        return on.isEmpty ? "off" : on.joined(separator: "+")
     }
 
     /// Deterministic 64-bit id (FNV-1a) — Swift's Hasher is randomized per launch.

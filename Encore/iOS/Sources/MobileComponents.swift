@@ -461,8 +461,9 @@ struct AccountButton: View {
     @AppStorage(CarDebug.publishDelayKey) private var carPublishDelay = false
     @AppStorage(CarDebug.artCapKey) private var carArtCap = 0
     @AppStorage(CarDebug.legacyArtKey) private var carLegacyArt = false
-    @AppStorage(CarDebug.nativeStateKey) private var carNativeState = true
-    @AppStorage(CarDebug.nativeAudioKey) private var carNativeAudio = true
+    @AppStorage(CarDebug.nativeStateKey) private var carNativeState = false
+    @AppStorage(CarDebug.nativeAudioKey) private var carNativeAudio = false
+    @AppStorage(CarDebug.mixLoopKey) private var carMixLoop = false
     var body: some View {
         Menu {
             if auth.isSignedIn {
@@ -477,8 +478,9 @@ struct AccountButton: View {
                 Toggle("Rich track identity", isOn: $carRichIdentity)
                 Toggle("Delay publish 0.7s", isOn: $carPublishDelay)
                 Toggle("Legacy artwork init", isOn: $carLegacyArt)
-                Toggle("Car art fix: native playback state", isOn: $carNativeState)
-                Toggle("Car art fix: native silent audio", isOn: $carNativeAudio)
+                Toggle("Native playback state", isOn: $carNativeState)
+                Toggle("Native silent audio (can stop the music!)", isOn: $carNativeAudio)
+                Toggle("Silent audio mixes with others", isOn: $carMixLoop)
                 Picker("Cover size cap", selection: $carArtCap) {
                     Text("No cap").tag(0)
                     Text("300 px").tag(300)
