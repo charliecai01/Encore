@@ -295,8 +295,13 @@ extension PlayerEngine {
         // The car art fix: while the app process is itself producing (silent)
         // audio, mediaremoted elects the NATIVE Now Playing client — whose
         // JPEG cover the Tesla can take — instead of WebKit's raw-TIFF one.
-        // Not during a call/Siri interruption or after the sleep timer.
-        if CarDebug.nativeAudio, isPlaying, !audioInterrupted, !sleepStopActive { startKeepAlive() }
+        // Gated on `isPlaying`, NOT `audioInterrupted`: a real call/Siri
+        // interruption pauses the page (handleInterruption), so isPlaying is
+        // false then; but iOS also posts a spurious "interruption began"
+        // (reason 0, app active) at every track start that never gets an
+        // "ended", so `audioInterrupted` sticks true and blocked the loop in
+        // the first shipped version of this fix (2026-10-12).
+        if CarDebug.nativeAudio, isPlaying, !sleepStopActive { startKeepAlive() }
         // One line per write: what the system (and so the car) is being given.
         Log.player.notice("nowplaying: id=\(track.videoId) '\(track.title)' art=\(info[MPMediaItemPropertyArtwork] != nil ? "yes" : "no") rate=\(isPlaying ? 1 : 0) qi=\(index) car=\(CarDebug.summary)")
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info

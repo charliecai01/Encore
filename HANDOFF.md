@@ -461,6 +461,13 @@ app.
   timer) and the bridge no longer stops it on `state 1`. Watch for: battery,
   calls/Siri (interruption path stops the loop), and `audio interruption`
   lines in the log.
+  **Regression of the same day, don't repeat:** the first shipped version
+  gated the loop on `!audioInterrupted` and the Tesla art stopped working
+  again. iOS posts a spurious `audio interruption began` (reason 0, app
+  active, `shouldResume=false`) at EVERY track start with no matching `ended`,
+  so `audioInterrupted` stayed true and the loop never started (elected client
+  stayed WebKit, thumbnails back to 1,187,190). Gate on `isPlaying` instead (a
+  real call pauses the page first).
 - **Brief pause when pulling Notification Center / Control Center (2026-10-12,
   reported; fix unverified).** Pulling either makes the scene INACTIVE (not
   backgrounded), and the page's player paused for roughly the length of the
