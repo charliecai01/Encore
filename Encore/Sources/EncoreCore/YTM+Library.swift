@@ -10,16 +10,35 @@ extension YTM {
     private static let hiddenAutoPlaylists: Set<String> = ["RDPN", "SE", "LM"]
 
     public func libraryPlaylists() async throws -> [CardItem] {
+        // The library landing page is fetched alongside the playlists grid
+        // because, as of 2026-10-15, FEmusic_liked_playlists silently left out
+        // Charlie's own "Fav Songs" (unlisted, owned, 732 tracks) while the
+        // landing page still listed it — the playlist vanished from every
+        // playlist list in both apps. Best-effort: a failed landing fetch
+        // just falls back to the grid alone.
+        async let landing = try? net.post("browse", body: ["browseId": "FEmusic_library_landing"])
         let r = try await net.post("browse", body: ["browseId": "FEmusic_liked_playlists"])
         var cards = r.findAll("musicTwoRowItemRenderer").compactMap { P.card(fromMTRIR: $0) }
         for page in await continuationPages(after: r, maxPages: 3) {
             cards.append(contentsOf: P.continuationCards(from: page))
         }
-        return cards.filter { card in
-            let pid = card.playlistId
-                ?? card.browseId.map(\.strippingPlaylistVLPrefix)
-                ?? card.id
-            return !Self.hiddenAutoPlaylists.contains(pid)
+        let landingCards = await landing?.findAll("musicTwoRowItemRenderer")
+            .compactMap { P.card(fromMTRIR: $0) } ?? []
+        return Self.mergedLibraryPlaylists(landing: landingCards, grid: cards)
+    }
+
+    /// The landing page's playlists first (it mixes in albums, which are
+    /// dropped), then any grid playlists it didn't have — the landing page
+    /// has no continuation, so the grid is what covers a long library.
+    /// Deduped by playlist id; hidden auto-playlists removed.
+    static func mergedLibraryPlaylists(landing: [CardItem], grid: [CardItem]) -> [CardItem] {
+        func pid(_ card: CardItem) -> String {
+            card.playlistId ?? card.browseId.map(\.strippingPlaylistVLPrefix) ?? card.id
+        }
+        var seen = Set<String>()
+        return (landing.filter { $0.kind == .playlist } + grid).filter { card in
+            let id = pid(card)
+            return !hiddenAutoPlaylists.contains(id) && seen.insert(id).inserted
         }
     }
 

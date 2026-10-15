@@ -29,6 +29,14 @@ final class HomeSectionsTests: XCTestCase {
         }
     }
 
+    /// "Favorite Songs" was renamed "Fav Songs" (2026-10-15); it must still
+    /// pin first, ahead of R&B.
+    func testFavSongsPinsFirst() {
+        let input = [playlist("Road Trip"), playlist("R&B by Sonnet"), playlist("Fav Songs")]
+        XCTAssertEqual(HomeSections.orderedPlaylists(input).map(\.title),
+                       ["Fav Songs", "R&B by Sonnet", "Road Trip"])
+    }
+
     func testPinMatchingIsCaseInsensitive() {
         let input = [playlist("r&b by sonnet"), playlist("favorite songs")]
         XCTAssertEqual(HomeSections.orderedPlaylists(input).map(\.title),

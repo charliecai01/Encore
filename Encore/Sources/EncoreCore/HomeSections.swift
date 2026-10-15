@@ -18,7 +18,10 @@ public enum HomeSections {
     /// gets renamed around its stem still pins — "R&B by Sonnet5" was
     /// renamed to "R&B by Sonnet" the same day this shipped, which an
     /// exact-equality match silently dropped to the bottom of the list.
-    public static let pinnedPlaylistTitles = ["Favorite Songs", "R&B by Sonnet"]
+    ///
+    /// "Favorite Songs" was renamed to "Fav Songs" by 2026-10-15; both are
+    /// listed (only one exists at a time) so either spelling pins first.
+    public static let pinnedPlaylistTitles = ["Fav Songs", "Favorite Songs", "R&B by Sonnet"]
 
     /// `playlists` with the pinned titles first in `pinnedPlaylistTitles`
     /// order, then everything else in the order the server returned it.
