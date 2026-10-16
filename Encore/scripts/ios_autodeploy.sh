@@ -12,7 +12,10 @@
 # last *successful* deploy is ≥3 days old. Deploying needs the phone unlocked
 # and on the same Wi-Fi, so a failed attempt just retries next hour until it
 # lands — leaving 4 days of slack before the 7-day signing expiry. It runs
-# silently (no macOS notifications either way); check `status` or the log.
+# silently (check `status` or the log), with ONE exception: if Xcode has lost
+# the Apple ID ("No Accounts"), no retry can succeed until Charlie signs back
+# in, so it posts a single macOS notification per outage (Oct 12–14 2026 it
+# failed that way for days unnoticed, nearly letting the app expire).
 #
 # Free provisioning profiles last 7 days from *creation*, and Xcode reuses the
 # cached one until it expires — reinstalling with it doesn't extend anything.
@@ -27,6 +30,10 @@ LOG="$HOME/Library/Logs/encore-ios-autodeploy.log"
 STATE_DIR="$HOME/Library/Application Support/dev.charlie.encore"
 STAMP="$STATE_DIR/ios-autodeploy-last-success"
 LOCK="$STATE_DIR/ios-autodeploy.lock"
+OUT="$STATE_DIR/ios-autodeploy-last-output"
+# Present while a "signed out of Xcode" notification has been shown and not
+# yet resolved by a successful deploy — keeps it to one alert, not hourly.
+AUTH_ALERTED="$STATE_DIR/ios-autodeploy-auth-alerted"
 BUNDLE_ID="dev.charlie.encore.ios"
 MIN_AGE_SECS=$((3 * 24 * 3600))
 INTERVAL_SECS=3600
@@ -51,6 +58,17 @@ drop_cached_profiles() {
     done
 }
 
+# Xcode's Apple ID session is gone — every retry will fail the same way.
+signed_out_of_xcode() {
+    grep -qE "No Accounts|session has expired|Unable to log in with account" "$OUT"
+}
+
+notify_signed_out() {
+    [ -f "$AUTH_ALERTED" ] && return 0
+    /usr/bin/osascript -e 'display notification "Open Xcode → Settings → Accounts and sign in, or Encore on your iPhone will expire." with title "Encore auto-deploy" subtitle "Signed out of Xcode"' \
+        && touch "$AUTH_ALERTED"
+}
+
 last_success() { [ -f "$STAMP" ] && cat "$STAMP" || echo 0; }
 
 deploy() {
@@ -64,11 +82,17 @@ deploy() {
 
     echo "=== $(date) — deploying EncoreiOS"
     drop_cached_profiles
-    if "$SCRIPT_DIR/deploy_ios.sh"; then
+    if "$SCRIPT_DIR/deploy_ios.sh" 2>&1 | tee "$OUT"; then
         date +%s > "$STAMP"
+        rm -f "$AUTH_ALERTED"
         echo "=== $(date) — success"
     else
-        echo "=== $(date) — FAILED (will retry in ~1h)"
+        if signed_out_of_xcode; then
+            echo "=== $(date) — FAILED: signed out of Xcode (notified; will retry in ~1h)"
+            notify_signed_out
+        else
+            echo "=== $(date) — FAILED (will retry in ~1h)"
+        fi
         return 1
     fi
 }
