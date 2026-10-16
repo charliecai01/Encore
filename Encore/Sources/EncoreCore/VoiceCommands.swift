@@ -43,6 +43,49 @@ public enum VoiceCommands {
         return scored.reversed().max(by: { $0.1 < $1.1 })?.0
     }
 
+    /// Extra spoken names per playlist id, handed to Siri as entity synonyms.
+    /// Siri only fills "Play <playlist> in Encore" with a registered title or
+    /// synonym — "play R&B in Encore" against "R&B by Sonnet" otherwise falls
+    /// through to Siri's built-in media domain, which Encore doesn't serve
+    /// ("the app doesn't support that request"). Aliases: the title before
+    /// " by …" / " - …" / " (…)", and "&" spelled out as "and". An alias that
+    /// is another playlist's name, or that two playlists would share, is
+    /// dropped so it can't hijack the wrong playlist.
+    public static func spokenAliases(for playlists: [CardItem]) -> [String: [String]] {
+        func pid(_ card: CardItem) -> String { card.playlistId ?? card.browseId ?? card.id }
+        func stems(_ title: String) -> [String] {
+            var out = [title]
+            for sep in [" by ", " - ", " – ", " ("] {
+                if let r = title.range(of: sep, options: .caseInsensitive), r.lowerBound > title.startIndex {
+                    out.append(String(title[..<r.lowerBound]))
+                }
+            }
+            for s in out where s.contains("&") {
+                out.append(s.replacingOccurrences(of: "&", with: " and ")
+                    .split(separator: " ").joined(separator: " "))
+            }
+            return out.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        }
+        let titles = Set(playlists.map { normalize($0.title) })
+        var claims: [String: Set<String>] = [:]   // normalized alias → playlist ids
+        var aliases: [String: [String]] = [:]
+        for card in playlists {
+            let own = normalize(card.title)
+            // Dedupe on the spelled form: "R&B" and "R and B" normalize alike
+            // but are different things for Siri to hear.
+            var seen: Set<String> = [card.title.lowercased()]
+            for alias in stems(card.title) {
+                let key = normalize(alias)
+                guard !key.isEmpty, seen.insert(alias.lowercased()).inserted,
+                      key == own || !titles.contains(key) else { continue }
+                claims[key, default: []].insert(pid(card))
+                aliases[pid(card), default: []].append(alias)
+            }
+        }
+        return aliases.mapValues { $0.filter { claims[normalize($0)]?.count == 1 } }
+            .filter { !$0.value.isEmpty }
+    }
+
     /// Lowercased, Han-simplified, accent-free words with "&" spelled out and
     /// filler ("my", "the", "playlist") dropped.
     static func normalize(_ s: String) -> String {

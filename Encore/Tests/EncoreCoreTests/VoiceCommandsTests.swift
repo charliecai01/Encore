@@ -36,6 +36,25 @@ final class VoiceCommandsTests: XCTestCase {
         XCTAssertEqual(VoiceCommands.bestPlaylistMatch(for: "周杰倫", in: library)?.title, "周杰伦 精选")
     }
 
+    /// "play R&B in Encore" — Siri needs "R&B" registered as a synonym of
+    /// "R&B by Sonnet" or the request never reaches the intent.
+    func testSpokenAliases() {
+        let aliases = VoiceCommands.spokenAliases(for: library)
+        XCTAssertEqual(aliases["PLR&B by Sonnet"], ["R&B", "R and B by Sonnet", "R and B"])
+        XCTAssertNil(aliases["PLRoad Trip"])
+        XCTAssertNil(aliases["PLFav Songs"])
+    }
+
+    func testAliasNeverShadowsAnotherPlaylist() {
+        // "Chill - Morning" must not claim "Chill", which is its own playlist;
+        // two "Jazz by …" playlists can't both own "Jazz".
+        let lib = ["Chill", "Chill - Morning", "Jazz by Ann", "Jazz by Bob"].map(playlist)
+        let aliases = VoiceCommands.spokenAliases(for: lib)
+        XCTAssertNil(aliases["PLChill - Morning"])
+        XCTAssertNil(aliases["PLJazz by Ann"])
+        XCTAssertNil(aliases["PLJazz by Bob"])
+    }
+
     func testWordOverlapFallbackAndNoMatch() {
         XCTAssertEqual(VoiceCommands.bestPlaylistMatch(for: "jazz from the cafe", in: library)?.title, "Café Jazz")
         XCTAssertNil(VoiceCommands.bestPlaylistMatch(for: "heavy metal", in: library))
