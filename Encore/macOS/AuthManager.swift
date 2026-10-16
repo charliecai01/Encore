@@ -345,6 +345,8 @@ final class LibraryStore: ObservableObject {
         }
         loaded = true
         playlists = applyCustomOrder(fetched)
+        // Teach Siri the playlist names for "Play <playlist> in Encore".
+        EncoreShortcuts.updateAppShortcutParameters()
         // Neither depends on the other, so fetch them concurrently rather
         // than paying two sequential round-trips at sign-in.
         async let albumsResult = YTM.shared.libraryAlbums()

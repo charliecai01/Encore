@@ -730,6 +730,23 @@ app.
 
 ---
 
+- **Siri / Shortcuts (App Intents, 2026-10-15).** `Encore/macOS/EncoreIntents.swift`
+  is ONE file compiled into both apps (iOS `project.yml` lists it as an extra
+  source); playlist-name matching is `EncoreCore.VoiceCommands` (tested).
+  Phrases: "Play my favorites / Play|Shuffle <playlist> / Shuffle my library /
+  Like this song / What's playing / Next song / Resume — in Encore". Plain
+  "next track"/"pause" need none of this (MPRemoteCommandCenter). Siri only
+  registers phrases from `Metadata.appintents` in the bundle: Xcode makes it
+  for iOS, but the macOS app is a SwiftPM build, so `build_app.sh` re-creates
+  Xcode's ExtractAppIntentsMetadata step by hand (a const-values type-check
+  of EncoreIntents.swift + `appintentsmetadataprocessor` with a synthesized
+  linker dependency-info file). Watch for `App Intents metadata: OK` in the
+  build output. Keep every AppIntents type in that one file (it's the only
+  `-primary-file` in the type-check). Intent properties like `openAppWhenRun`
+  must be literals, or the processor rejects the whole set. Playlist names
+  reach Siri via `EncoreShortcuts.updateAppShortcutParameters()` in
+  `LibraryStore.loadIfNeeded` (both apps).
+
 ## 6. Feature inventory (DONE & verified unless noted)
 
 Both platforms unless stated:

@@ -60,6 +60,61 @@ if [ -f assets/AppIcon.icns ]; then
     cp assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 fi
 
+# Siri / Shortcuts ("Play my favorites in Encore"): the system registers App
+# Shortcuts from Metadata.appintents inside the bundle. Xcode generates it
+# for the iOS app (its ExtractAppIntentsMetadata step); SwiftPM doesn't, so
+# this does the same by hand:
+#  1. type-check macOS/EncoreIntents.swift — every AppIntents type lives
+#     there — with const-value extraction on (SwiftPM's build rejects the
+#     flag, hence a separate ~10s pass),
+#  2. run appintentsmetadataprocessor on the result. It only extracts when
+#     the linker's dependency-info file lists AppIntents.framework; SwiftPM
+#     doesn't write one, so a minimal one is synthesized (the binary does
+#     link AppIntents — `otool -L` shows it).
+# Needs full Xcode (the processor isn't in the Command Line Tools). Best-
+# effort: without the metadata the app still works, Siri just doesn't know
+# the phrases.
+emit_appintents_metadata() {
+    local work=".build/appintents"
+    local sdk swiftc processor xcode_build
+    sdk=$(xcrun --sdk macosx --show-sdk-path) || return 1
+    swiftc=$(xcrun -f swiftc) || return 1
+    processor=$(xcrun -f appintentsmetadataprocessor 2>/dev/null) || return 1
+    xcode_build=$(xcodebuild -version 2>/dev/null | awk '/Build version/{print $3}')
+    rm -rf "$work"; mkdir -p "$work"
+    # The protocol list Xcode 27 passes for the same step.
+    echo '["AnyResolverProviding","AppEntity","AppEnum","AppExtension","AppIntent","AppIntentsPackage","AppShortcutProviding","AppShortcutsProvider","AppUnionValue","AppUnionValueCasesProviding","DynamicOptionsProvider","EntityQuery","ExtensionPointDefining","IntentValueQuery","Resolver","TransientEntity","_AssistantIntentsProvider","_GenerativeFunctionExtractable","_IntentValueRepresentable"]' > "$work/protocols.json"
+    "$swiftc" -frontend -typecheck -module-name Encore -sdk "$sdk" \
+        -target "$(uname -m)-apple-macos15.0" -swift-version 5 -I .build/release \
+        -primary-file macOS/EncoreIntents.swift $(ls macOS/*.swift | grep -v '/EncoreIntents.swift$') \
+        -emit-const-values-path "$work/EncoreIntents.swiftconstvalues" \
+        -const-gather-protocols-file "$work/protocols.json" || return 1
+    echo "$PWD/$work/EncoreIntents.swiftconstvalues" > "$work/constvals.list"
+    ls "$PWD"/macOS/*.swift > "$work/sources.list"
+    : > "$work/metadata.list"; : > "$work/static-metadata.list"
+    printf '\0ld\n\0\020%s\0\100%s\0' \
+        "$sdk/System/Library/Frameworks/AppIntents.framework/AppIntents.tbd" \
+        "$PWD/$APP/Contents/MacOS/Encore" > "$work/dependency_info.dat"
+    "$processor" --toolchain-dir "$(dirname "$(dirname "$(dirname "$swiftc")")")" \
+        --module-name Encore --sdk-root "$sdk" --xcode-version "${xcode_build:-unknown}" \
+        --platform-family macOS --deployment-target 15.0 \
+        --bundle-identifier dev.charlie.encore --target-triple "$(uname -m)-apple-macos15.0" \
+        --output "$APP/Contents/Resources" --binary-file "$APP/Contents/MacOS/Encore" \
+        --dependency-file "$work/dependency_info.dat" \
+        --stringsdata-file "$work/ExtractedAppShortcutsMetadata.stringsdata" \
+        --source-file-list "$work/sources.list" --metadata-file-list "$work/metadata.list" \
+        --static-metadata-file-list "$work/static-metadata.list" \
+        --swift-const-vals-list "$work/constvals.list" \
+        --compile-time-extraction --deployment-aware-processing --no-app-shortcuts-localization \
+        2>&1 | grep -E 'error|warning' || true
+    [ -d "$APP/Contents/Resources/Metadata.appintents" ]
+}
+if emit_appintents_metadata; then
+    echo "App Intents metadata: OK"
+else
+    echo "warning: App Intents metadata NOT generated — Siri phrases won't register"
+fi
+
 # Ad-hoc signing (--sign -) gives every rebuild a throwaway identity with no
 # Team ID, which breaks TCC-gated APIs that key permission off a stable
 # signing identity (e.g. per-app audio capture/routing tools using macOS
