@@ -746,11 +746,6 @@ app.
   must be literals, or the processor rejects the whole set. Playlist names
   reach Siri via `EncoreShortcuts.updateAppShortcutParameters()` in
   `LibraryStore.loadIfNeeded` (both apps).
-  **"Play … in Encore" can never work**: Siri routes it to its built-in media
-  domain (INPlayMediaIntent), which is macOS-unavailable and needs the iOS
-  Siri entitlement a free personal team can't get — Siri replies "Encore
-  doesn't support playing X directly". Play-type shortcuts therefore also
-  have "Start / Put on / Queue up … in Encore" phrasings.
 
 ## 6. Feature inventory (DONE & verified unless noted)
 

@@ -70,49 +70,35 @@ struct PlaylistEntity: AppEntity {
 
     let id: String
     let title: String
-    /// Shorter spoken names ("R&B" for "R&B by Sonnet") — see
-    /// `VoiceCommands.spokenAliases`.
-    var aliases: [String] = []
 
-    var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(title)", synonyms: aliases.map { "\($0)" })
-    }
+    var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(title)") }
 
-    init?(_ card: CardItem, aliases: [String] = []) {
+    init?(_ card: CardItem) {
         guard let id = card.playlistId ?? card.browseId?.strippingPlaylistVLPrefix else { return nil }
         self.id = id
         self.title = card.title
-        self.aliases = aliases
-    }
-
-    /// Entities for the whole library, each carrying its spoken aliases.
-    static func all(from cards: [CardItem]) -> [PlaylistEntity] {
-        let aliases = VoiceCommands.spokenAliases(for: cards)
-        return cards.compactMap { card in
-            PlaylistEntity(card, aliases: aliases[card.playlistId ?? card.browseId ?? card.id] ?? [])
-        }
     }
 }
 
 struct PlaylistQuery: EntityStringQuery {
     @MainActor
     func entities(for identifiers: [String]) async throws -> [PlaylistEntity] {
-        let all = PlaylistEntity.all(from: try await IntentSupport.playlists())
+        let all = try await IntentSupport.playlists().compactMap(PlaylistEntity.init)
         return identifiers.compactMap { id in all.first { $0.id == id } }
     }
 
     @MainActor
     func entities(matching string: String) async throws -> [PlaylistEntity] {
         let cards = try await IntentSupport.playlists()
-        guard let hit = VoiceCommands.bestPlaylistMatch(for: string, in: cards) else { return [] }
-        return PlaylistEntity.all(from: cards).filter { $0.title == hit.title }
+        return VoiceCommands.bestPlaylistMatch(for: string, in: cards)
+            .flatMap(PlaylistEntity.init).map { [$0] } ?? []
     }
 
     /// Also the vocabulary Siri listens for in parameterized phrases —
     /// refreshed via `updateAppShortcutParameters()` when the library loads.
     @MainActor
     func suggestedEntities() async throws -> [PlaylistEntity] {
-        PlaylistEntity.all(from: try await IntentSupport.playlists())
+        try await IntentSupport.playlists().compactMap(PlaylistEntity.init)
     }
 }
 
@@ -250,15 +236,6 @@ struct ResumeIntent: AppIntent {
 }
 
 // MARK: - Siri phrases
-//
-// "Play … in Encore" is claimed by Siri's built-in media domain
-// (INPlayMediaIntent) before App Shortcut phrases are consulted, and Encore
-// can't serve that domain: INPlayMediaIntent is unavailable on macOS, and on
-// iOS it needs the Siri entitlement, which a free (personal-team) signing
-// identity can't get. Siri answered "The Encore app doesn't support playing
-// R&B by Sonnet directly" (2026-10-15). So every play-type shortcut also has
-// "start" / "put on" / "queue up" phrasings that avoid the media domain; the
-// "play" ones stay in case Siri ever routes them here.
 
 struct EncoreShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
@@ -269,19 +246,12 @@ struct EncoreShortcuts: AppShortcutsProvider {
             "Shuffle my favorites in \(.applicationName)",
             "Play my favorites on \(.applicationName)",
             "Play my favorite songs on \(.applicationName)",
-            "Start my favorites in \(.applicationName)",
-            "Put on my favorites in \(.applicationName)",
-            "Queue up my favorites in \(.applicationName)",
         ], shortTitle: "Play Favorites", systemImageName: "heart.fill")
         AppShortcut(intent: PlayPlaylistIntent(), phrases: [
             "Play \(\.$playlist) in \(.applicationName)",
             "Play \(\.$playlist) on \(.applicationName)",
             "Play my \(\.$playlist) playlist in \(.applicationName)",
             "Play a playlist in \(.applicationName)",
-            "Start \(\.$playlist) in \(.applicationName)",
-            "Put on \(\.$playlist) in \(.applicationName)",
-            "Queue up \(\.$playlist) in \(.applicationName)",
-            "Start a playlist in \(.applicationName)",
         ], shortTitle: "Play Playlist", systemImageName: "music.note.list")
         AppShortcut(intent: ShufflePlaylistIntent(), phrases: [
             "Shuffle \(\.$playlist) in \(.applicationName)",
@@ -292,7 +262,6 @@ struct EncoreShortcuts: AppShortcutsProvider {
             "Shuffle my library in \(.applicationName)",
             "Shuffle my music in \(.applicationName)",
             "Shuffle all my songs in \(.applicationName)",
-            "Start my library in \(.applicationName)",
         ], shortTitle: "Shuffle Library", systemImageName: "shuffle.circle")
         AppShortcut(intent: LikeCurrentSongIntent(), phrases: [
             "Like this song in \(.applicationName)",
