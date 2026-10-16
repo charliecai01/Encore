@@ -206,8 +206,6 @@ final class LibraryStore: ObservableObject {
         }
         loaded = true
         playlists = fetched
-        // Teach Siri the playlist names for "Play <playlist> in Encore".
-        EncoreShortcuts.updateAppShortcutParameters()
         // Warm liked songs + every playlist page into the cache (disk-backed)
         // in the background, so hearts are correct app-wide and playlists open
         // instantly instead of fetching on first tap.

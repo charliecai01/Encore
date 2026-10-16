@@ -10,11 +10,7 @@ targets:
   EncoreiOS:
     type: application
     platform: iOS
-    # EncoreIntents.swift (Siri/Shortcuts) is shared with the macOS target,
-    # which owns the file.
-    sources:
-      - Sources
-      - ../macOS/EncoreIntents.swift
+    sources: [Sources]
     dependencies:
       - package: Encore
         product: EncoreCore
