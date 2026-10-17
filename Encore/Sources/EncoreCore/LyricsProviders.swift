@@ -96,6 +96,22 @@ public enum Musixmatch {
         return fresh
     }
 
+    /// The matcher's pick must actually be `track`. With the anonymous
+    /// desktop token Musixmatch now answers every query with a decoy — the
+    /// same unrelated song (Drake, "NOKIA") and generated gibberish lyrics
+    /// on a fixed 4s grid. Reported live 2026-10-17: "Anti-Hero" showed
+    /// "Wob gopini den / Tefe woxica fero…". Better no lyrics than fake ones.
+    static func isPlausibleMatch(_ matched: JSONValue, for track: Track) -> Bool {
+        let wantedTitle = track.title.matchNormalized
+        let wantedArtist = (track.artists.first?.name ?? track.artistLine).matchNormalized
+        let name = (matched["track_name"].string ?? "").matchNormalized
+        let artist = (matched["artist_name"].string ?? "").matchNormalized
+        guard !name.isEmpty, !wantedTitle.isEmpty,
+              name.contains(wantedTitle) || wantedTitle.contains(name) else { return false }
+        guard !wantedArtist.isEmpty else { return true }
+        return !artist.isEmpty && (artist.contains(wantedArtist) || wantedArtist.contains(artist))
+    }
+
     public static func fetch(track: Track) async -> LyricsResult? {
         guard let token = await getToken() else { return nil }
         var comps = URLComponents(string: "https://apic-desktop.musixmatch.com/ws/1.1/macro.subtitles.get")!
@@ -119,6 +135,9 @@ public enum Musixmatch {
         guard let (data, _) = try? await URLSession.shared.data(for: req) else { return nil }
 
         let body = JSONValue.parse(data)["message"]["body"]["macro_calls"]
+        guard isPlausibleMatch(body["matcher.track.get"]["message"]["body"]["track"], for: track) else {
+            return nil
+        }
         let subtitle = body["track.subtitles.get"]["message"]["body"]["subtitle_list"][0]["subtitle"]
         if let lrc = subtitle["subtitle_body"].string, !lrc.isEmpty,
            let lines = LRCLib.parseLRC(lrc) {

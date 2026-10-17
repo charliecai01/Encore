@@ -90,8 +90,18 @@ extension P {
             let thumb = thumbnailURL(in: card["thumbnail"])
             let nav = card["title"].runs.first?["navigationEndpoint"] ?? .null
             if let videoId = nav["watchEndpoint"]["videoId"].string {
-                results.top = .track(Track(videoId: videoId, title: title,
-                                           artistLine: subtitle, thumbnailURL: thumb))
+                // Subtitle is "Video • Artist • 247M views • 5:10" — pull the
+                // real artist refs and duration out of it, like a song row.
+                let runs = card["subtitle"].runs
+                let (artists, album, line) = artistsAlbumAndLine(
+                    fromRuns: runs, fallbackText: subtitle, stripLabelsAndDuration: true)
+                let duration = runs.compactMap { $0["text"].string }.last(where: isDurationText)
+                    .flatMap(durationSeconds(fromText:))
+                let mvTypes = card.findAll("musicVideoType").compactMap { $0.string }
+                let isVideo = mvTypes.contains { $0.contains("MUSIC_VIDEO_TYPE") && !$0.contains("ATV") }
+                results.top = .track(Track(videoId: videoId, title: title, artists: artists,
+                                           artistLine: line, album: album, durationSeconds: duration,
+                                           thumbnailURL: thumb, isVideo: isVideo))
             } else if let browseId = nav["browseEndpoint"]["browseId"].string {
                 let pageType = nav["browseEndpoint"].findFirst("pageType")?.string
                 let kind = cardKind(forBrowseId: browseId, pageType: pageType)
@@ -115,7 +125,44 @@ extension P {
             merged.insert(Shelf(title: "Results", items: untitledItems), at: 0)
         }
         results.shelves = merged
+        if let top = results.top, isDuplicate(top, of: merged.flatMap(\.items)) {
+            results.top = nil
+        }
         return results
+    }
+
+    /// The top hit is nearly always repeated as a result row — the same item,
+    /// or (for a song) its music video above the audio track. Showing both
+    /// reads as a duplicate first row (Charlie, 2026-10-17), so the top hit
+    /// only stays when it's something the rows don't already have.
+    static func isDuplicate(_ top: ShelfItem, of items: [ShelfItem]) -> Bool {
+        switch top {
+        case .card(let card):
+            return items.contains { if case .card(let c) = $0 { return c.id == card.id }; return false }
+        case .track(let track):
+            // Artists by channel id first: the video credits "Jay Chou", the
+            // song row "周杰倫" — same UC… id.
+            let title = baseTitle(track.title)
+            let ids = Set(track.artists.compactMap(\.id))
+            let names = Set(track.artists.map { $0.name.matchNormalized })
+            return items.contains {
+                guard case .track(let t) = $0 else { return false }
+                if t.videoId == track.videoId { return true }
+                guard baseTitle(t.title) == title else { return false }
+                return names.isEmpty || t.artists.contains {
+                    ($0.id.map(ids.contains) ?? false) || names.contains($0.name.matchNormalized)
+                }
+            }
+        }
+    }
+
+    /// "Anti-Hero (Official Music Video)" → "anti-hero", "晴天 - Sunny Day" →
+    /// "晴天": drops trailing (…)/[…] qualifiers and a " - …" subtitle so a
+    /// video and its song compare equal.
+    static func baseTitle(_ title: String) -> String {
+        title.replacingOccurrences(of: #"\s*[\(\[][^\)\]]*[\)\]]\s*$"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+[-–—]\s+.*$"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces).matchNormalized
     }
 
     public static func suggestions(from root: JSONValue) -> [String] {
